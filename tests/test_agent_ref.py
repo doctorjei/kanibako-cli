@@ -573,3 +573,46 @@ def test_agent_segment_case_folds_case_and_nothing_else(segment, node):
   from kanibako.agent_ref import agent_segment_case
 
   assert agent_segment_case(segment) == node
+
+
+def test_agent_identity_keeps_registered_names_and_paths_independent():
+  from pathlib import Path
+
+  from kanibako.agent_ref import AgentIdentity
+
+  first = AgentIdentity("one", "One", "Navigator", "Claude", "claude", Path("/Store/Mixed"))
+  second = AgentIdentity("two", "Two", "Navigator", "Claude", "claude", Path("/Elsewhere/Case"))
+  assert first.designation == second.designation == ("Navigator", "Claude")
+  assert first.node == "one"
+  assert first.registered_name == "One"
+  assert second.registered_name == "Two"
+  assert first.entry_path == Path("/Store/Mixed")
+  assert second.entry_path == Path("/Elsewhere/Case")
+  assert first.target_name == second.target_name == "claude"
+  assert first != second
+  assert display_agent_ref("Navigator℘Claude") == "Navigator+Claude"
+
+
+@pytest.mark.parametrize(
+  "field",
+  ["node", "registered_name", "persona", "harness", "target_name", "entry_path", "designation"],
+)
+def test_agent_identity_is_immutable(field):
+  from dataclasses import FrozenInstanceError
+
+  from kanibako.agent_ref import AgentIdentity
+
+  identity = AgentIdentity("claude", None, "claude", "claude", "claude", None)
+  assert identity.designation == ("claude", "claude")
+  with pytest.raises(FrozenInstanceError):
+    setattr(identity, field, "changed")
+
+
+def test_agent_identity_shell_has_no_designation_or_attached_entry():
+  from kanibako.agent_ref import AgentIdentity
+
+  identity = AgentIdentity(GENERAL_SLOT, None, None, None, GENERAL_SLOT, None)
+  assert identity.designation is None
+  assert identity.registered_name is None
+  assert identity.entry_path is None
+  assert identity.target_name == GENERAL_SLOT

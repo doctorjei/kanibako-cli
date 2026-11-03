@@ -763,6 +763,12 @@ module indirectly, so importing it at module scope risks a cycle. This mirrors `
 use elsewhere.
 
 
+```resolve_agent_identity(*, explicit_agent: str | None, requested: str | None = None) -> AgentIdentity```
+Legacy selection view: calls `resolve_agent` once and packages its node, keeping its errors
+and case. Shell carries no persona/harness; registered name and entry path stay None. No PG
+lookup, extra discovery, or validation.
+
+
 ```_flatten_leaves(data: dict, prefix: str = "", *, with_nodes: bool = False) -> dict[str, object]```
 Flatten nested dict into DOTTED-key form, each leaf AS STORED. ⚑ THE ONE WALK: `_flatten_dotted`
 below is this with its leaves stringified, so the keys one names are the keys the other names. The

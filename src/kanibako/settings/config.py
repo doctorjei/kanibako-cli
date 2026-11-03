@@ -39,6 +39,7 @@ from kanibako.settings.messages import (
 from kanibako.utils import stat_unless_gone
 
 if TYPE_CHECKING:
+  from kanibako.agent_ref import AgentIdentity
   from kanibako.settings.paths import BoxMode
 
 # ---------------------------------------------------------------------------
@@ -1016,6 +1017,40 @@ def resolve_agent(
     "  kanibako setup\n"
     "Or name one for a single run with '--agent <name>'.\n"
     "'kanibako shell' reaches the box's container without an agent."
+  )
+
+
+def resolve_agent_identity(
+  *,
+  explicit_agent: str | None,
+  requested: str | None = None,
+) -> AgentIdentity:
+  """Describe one legacy selection without a PG lookup or additional validation."""
+  from kanibako.agent_ref import (
+    ADDRESSABLE_PSEUDO_AGENTS,
+    AgentIdentity,
+    harness_of,
+    persona_of,
+  )
+
+  node = resolve_agent(explicit_agent=explicit_agent, requested=requested)
+  if node in ADDRESSABLE_PSEUDO_AGENTS:
+    return AgentIdentity(
+      node=node,
+      registered_name=None,
+      persona=None,
+      harness=None,
+      target_name=node,
+      entry_path=None,
+    )
+  harness = harness_of(node)
+  return AgentIdentity(
+    node=node,
+    registered_name=None,
+    persona=persona_of(node),
+    harness=harness,
+    target_name=harness,
+    entry_path=None,
   )
 
 

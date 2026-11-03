@@ -7,6 +7,10 @@
 """
 
 from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+
 from kanibako.errors import ConfigError
 from kanibako.identifiers import NAME_CHAR_CLASS, agent_node_case, find_identifier, name_flaw
 
@@ -91,6 +95,25 @@ GENERAL_SLOT = "shell"
 # here, never equality with one name.  ``tests/test_settings/test_settings_keyspace.py``
 # holds this set equal to the fences that declare ``settings``.
 ADDRESSABLE_PSEUDO_AGENTS = frozenset({GENERAL_SLOT})
+
+
+@dataclass(frozen=True)
+class AgentIdentity:
+  """Selection identity; an absent entry_path means no PG entry is attached, not a lookup miss."""
+
+  node: str
+  registered_name: str | None
+  persona: str | None
+  harness: str | None
+  target_name: str
+  entry_path: Path | None
+
+  @property
+  def designation(self) -> tuple[str, str] | None:
+    """Return the persona/harness pair, or None for a persona-less pseudo-agent."""
+    if self.persona is None or self.harness is None:
+      return None
+    return self.persona, self.harness
 
 
 def _is_segment_safe(segment: str) -> bool:

@@ -476,3 +476,130 @@ def test_two_pass_agent_default_when_no_box(tmp_home, config_file, monkeypatch):
   assert name == "claude"
   # With no box override the agent file's value is the effective one.
   assert eff["model"] == "agent-default"
+
+
+@pytest.mark.parametrize(
+  ("explicit", "requested", "node", "persona", "harness"),
+  [
+    ("claude", None, "claude", "claude", "claude"),
+    ("CLAUDE", None, "claude", "claude", "claude"),
+    (" Claude ", None, "claude", "claude", "claude"),
+    ("goose", None, "goose", "goose", "goose"),
+    ("codex", None, "codex", "codex", "codex"),
+    ("Navigator+Claude", None, "Navigator℘claude", "Navigator", "claude"),
+    ("Navigator℘CLAUDE", None, "Navigator℘claude", "Navigator", "claude"),
+    (None, "Navigator+Claude", "Navigator℘claude", "Navigator", "claude"),
+    ("claude", "goose", "claude", "claude", "claude"),
+    (None, "goose", "goose", "goose", "goose"),
+    ("shell", "claude", "shell", None, None),
+    (" Shell ", None, "shell", None, None),
+    (None, "SHELL", "shell", None, None),
+  ],
+)
+def test_identity_view_preserves_legacy_selection(
+  monkeypatch, explicit, requested, node, persona, harness
+):
+  from kanibako.settings.config import resolve_agent_identity
+
+  _patch_targets(monkeypatch, ["claude", "goose", "codex"])
+  identity = resolve_agent_identity(explicit_agent=explicit, requested=requested)
+  assert identity.node == resolve_agent(explicit_agent=explicit, requested=requested) == node
+  assert identity.persona == persona
+  assert identity.harness == harness
+  assert identity.target_name == (harness if harness is not None else "shell")
+  assert identity.designation == ((persona, harness) if harness is not None else None)
+  assert identity.registered_name is None
+  assert identity.entry_path is None
+
+
+@pytest.mark.parametrize(
+  ("explicit", "requested"),
+  [
+    (None, None),
+    ("", "claude"),
+    ("  ", "goose"),
+    (None, ""),
+    ("default", None),
+    ("Navigator+shell", None),
+    ("shell+claude", None),
+    ("Navigator+unknown", None),
+    ("unknown", "claude"),
+    ("None", None),
+    ("none", None),
+  ],
+)
+def test_identity_view_preserves_legacy_errors(monkeypatch, explicit, requested):
+  from kanibako.errors import KanibakoError
+  from kanibako.settings.config import resolve_agent_identity
+
+  _patch_targets(monkeypatch, ["claude"])
+  with pytest.raises(KanibakoError) as legacy:
+    resolve_agent(explicit_agent=explicit, requested=requested)
+  with pytest.raises(type(legacy.value)) as rich:
+    resolve_agent_identity(explicit_agent=explicit, requested=requested)
+  assert str(rich.value) == str(legacy.value)
+
+
+def test_identity_view_delegates_once_without_extra_discovery_or_store_access(monkeypatch):
+  from kanibako import persona_store, targets
+  from kanibako.settings import config
+
+  calls = []
+
+  def legacy(*, explicit_agent, requested):
+    calls.append((explicit_agent, requested))
+    return "Navigator℘Claude"
+
+  def unexpected(*args, **kwargs):
+    raise AssertionError("the identity view must not discover targets or read a store")
+
+  monkeypatch.setattr(config, "resolve_agent", legacy)
+  monkeypatch.setattr(targets, "discover_targets", unexpected)
+  monkeypatch.setattr(targets, "get_target", unexpected)
+  monkeypatch.setattr(targets, "resolve_target", unexpected)
+  monkeypatch.setattr(persona_store, "locate_entry", unexpected)
+  monkeypatch.setattr(persona_store, "read_persona_bundle", unexpected)
+  identity = config.resolve_agent_identity(explicit_agent="  ", requested="unchanged")
+  assert calls == [("  ", "unchanged")]
+  assert identity.node == "Navigator℘Claude"
+  assert identity.designation == ("Navigator", "Claude")
+  assert identity.target_name == "Claude"
+  assert identity.entry_path is None
+
+
+def test_identity_view_propagates_the_original_resolver_error(monkeypatch):
+  from kanibako.errors import ConfigError
+  from kanibako.settings import config
+
+  error = ConfigError("legacy resolution failed")
+  calls = []
+
+  def legacy(**kwargs):
+    calls.append(kwargs)
+    raise error
+
+  monkeypatch.setattr(config, "resolve_agent", legacy)
+  with pytest.raises(ConfigError) as raised:
+    config.resolve_agent_identity(explicit_agent=None, requested=None)
+  assert raised.value is error
+  assert calls == [{"explicit_agent": None, "requested": None}]
+
+
+def test_identity_view_keeps_the_legacy_discovery_warning_and_call_count(monkeypatch):
+  import warnings
+
+  from kanibako.settings.config import resolve_agent_identity
+
+  calls = []
+
+  def discover():
+    calls.append("discover")
+    warnings.warn("legacy discovery warning", UserWarning, stacklevel=2)
+    return {"claude": object}
+
+  monkeypatch.setattr("kanibako.targets.discover_targets", discover)
+  with pytest.warns(UserWarning, match="legacy discovery warning") as emitted:
+    identity = resolve_agent_identity(explicit_agent="Claude")
+  assert len(emitted) == 1
+  assert calls == ["discover"]
+  assert identity.node == "claude"

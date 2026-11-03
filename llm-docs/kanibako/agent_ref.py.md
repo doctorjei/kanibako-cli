@@ -57,6 +57,12 @@ keyspace gate's agent-node set), and ``kinemata.toml``'s ``reserved-agent-names`
 calls that function. A distribution's ``pyproject.toml`` still spells the string,
 because packaging requires it there.
 
+## Identity carrier
+
+`AgentIdentity` is frozen selection data, not a lookup. Its `designation` is derived from
+persona and harness (None for shell); names and paths stay independent of it. A None
+`entry_path` means no PG entry is attached, not a store miss.
+
 ## Functions
 
 ```_is_segment_safe(segment: str) -> bool```

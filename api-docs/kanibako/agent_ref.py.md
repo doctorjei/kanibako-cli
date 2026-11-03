@@ -33,3 +33,19 @@ def _is_segment_safe(segment: str) -> bool
 def _segment_refusal(what: str, segment: str) -> str
 def _first_sep_index(raw: str) -> int
 ```
+
+## Classes
+
+```
+@dataclass(frozen=True)
+class AgentIdentity:
+    node: str
+    registered_name: str | None
+    persona: str | None
+    harness: str | None
+    target_name: str
+    entry_path: Path | None
+
+    @property
+    def designation(self) -> tuple[str, str] | None
+```
