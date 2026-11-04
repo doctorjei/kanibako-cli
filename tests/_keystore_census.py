@@ -277,9 +277,19 @@ _rows: dict[RowKey, dict[str, Any]] = {}
 #: dotted prefix -> oracle verdict, so the oracle runs once per distinct prefix.
 _verdicts: dict[str, KeyJudgment] = {}
 
-#: Writes the collector itself failed on.  A census bug must not red the suite for
-#: the WRONG reason, so the failure is COUNTED and reported rather than raised.
+#: Writes the collector itself failed on.  COUNTED, not raised -- but it FAILS the
+#: run (``pytest_sessionfinish``): a census that silently missed writes is worse
+#: than no census, because a green result would be a lie about the keyspace.
 _collector_errors: list[str] = []
+
+#: Writes the real funnel ACCEPTED.  The denominator that makes a missing row
+#: arithmetic-visible instead of a matter of opinion.
+_crossings = 0
+
+#: Set once the funnel is installed and NEVER cleared: ``_uninstall`` drops
+#: ``_original_setitem`` before the finish hooks read, so without this a funnel
+#: that never armed looks exactly like a suite that wrote nothing.
+_funnel_armed = False
 
 _original_setitem: Callable[..., None] | None = None
 _finalized = False
@@ -366,10 +376,14 @@ def _record(node: KeyStore[Any], key: str, value: Any) -> None:
 
 def _patched_setitem(self: KeyStore[Any], key: str, value: Any) -> None:
   """The interposition.  Records only writes the real funnel ACCEPTED."""
+  global _crossings
   assert _original_setitem is not None
   # Original FIRST: a refused key (reserved name, dunder, non-str) is not a write,
   # and censusing one would invent a row out of a test that asserts a refusal.
   _original_setitem(self, key, value)
+  # Counted HERE, before the collector runs: the write was ACCEPTED whether or not
+  # our own recording of it then threw.  Rows-vs-crossings is the hole detector.
+  _crossings += 1
   try:
     # The STORED value, not the argument: ``__wrap`` turns a plain dict into a
     # node, and whether a write landed a NODE or a LEAF is what the CONTAINER rule
@@ -551,7 +565,7 @@ def pytest_configure(config: "pytest.Config") -> None:
   primed before any test patches discovery (see ``plugin_agent_leaf_map``'s
   docstring in ``settings_keyspace_probe.py``).
   """
-  global _original_setitem
+  global _original_setitem, _funnel_armed
   config.addinivalue_line(
     "markers",
     f"{NEGATIVE_MARKER}(*paths, reason=...): this test writes these UNDECLARED key "
@@ -564,6 +578,9 @@ def pytest_configure(config: "pytest.Config") -> None:
     plugin_agent_leaf_map()  # discover before any test patches discovery
   _original_setitem = KeyStore.__setitem__
   KeyStore.__setitem__ = _patched_setitem  # type: ignore[method-assign]
+  # Armed is recorded separately and is NOT cleared by ``_uninstall`` -- the finish
+  # hooks must be able to tell "installed, nothing written" from "never installed".
+  _funnel_armed = True
 
 
 def pytest_runtest_setup(item: "pytest.Item") -> None:
@@ -653,10 +670,27 @@ def pytest_terminal_summary(terminalreporter: Any) -> None:
   stale = unused_negatives()
   write = terminalreporter.write_line
   write("")
-  write(f"KeyStore census: {len(ordered)} distinct path/shape rows -> {_census_file()}")
+  write(
+    f"KeyStore census: {len(ordered)} distinct path/shape rows / {_crossings} accepted "
+    f"crossings -> {_census_file()}"
+  )
   write("  " + "  ".join(f"{k}={v}" for k, v in sorted(counts.items())))
+  if not _funnel_armed:
+    write("")
+    write(
+      "KEYSTORE CENSUS NOT ARMED -- the census was enabled but the write funnel was "
+      "never installed, so NOTHING in this run was censused."
+    )
   if _collector_errors:
-    write(f"  collector errors ({len(_collector_errors)}): {_collector_errors[:3]}")
+    write("")
+    write(
+      f"KEYSTORE CENSUS BUG -- {len(_collector_errors)} accepted write(s) the "
+      f"collector could not record: {_collector_errors[:3]}"
+    )
+    write(
+      "  The CENSUS failed, not the code under test: no key was fabricated here, "
+      "these writes simply went unseen."
+    )
   if stale:
     write("")
     write(
@@ -695,7 +729,11 @@ def pytest_sessionfinish(session: Any, exitstatus: Any) -> None:
   # ``pytest_sessionfinish`` hook, so setting it here is what turns the report into a
   # failed run — but overwriting an INTERRUPTED / NO-TESTS-COLLECTED status would
   # relabel a run that never got far enough to have a census.
-  if (violations() or unused_negatives()) and session.exitstatus == 0:
+  # A census that never armed, or that dropped writes, must not report clean: both
+  # leave a green result asserting something about the keyspace that is not true.
+  if (
+    violations() or unused_negatives() or _collector_errors or not _funnel_armed
+  ) and session.exitstatus == 0:
     session.exitstatus = 1
 
 
