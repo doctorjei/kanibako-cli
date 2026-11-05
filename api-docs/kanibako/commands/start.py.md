@@ -20,6 +20,7 @@ _BOOTSTRAP_NULL = _NullRefused('bootstrap', 'a program such as tmux, or none', '
 _TRANSFORM_NULL = _NullRefused('transform', 'a transform such as tweakcc, or "" for none', '')
 _LABEL_NULL = _NullRefused('label', 'the text to show', '')
 _BOOTSTRAP_MISSING = object()
+_E_SUPPRESSES: _ESuppresses = _ESuppresses()
 _PERSONA_KEY_CURE = 'Set the key for this persona, then retry.'
 _ASSEMBLY_BINDINGS: 'tuple[str, ...]' = ('meta', 'assembly', 'bindings')
 _ASSEMBLY_SEEDED: 'tuple[str, ...]' = ('meta', 'assembly', 'seeded')
@@ -139,7 +140,8 @@ def _verify_takes_token(verify) -> bool
 def _resolve_codex_persona_env_key(secret_paths, wiring) -> 'str | None'
 def _resolve_codex_persona_provider(agent_id: str, endpoint: str, env_key: str, model: str | None, wiring) -> 'CodexModelProvider'
 def _preflight_persona_load(agent_id: str, secret_paths, keyspace_endpoint: str | None, logger, *, target=None, keyspace_model: str | None=None, bundle=None, probe: bool=False, cli_env: 'Mapping[str, str] | None'=None) -> 'tuple[str | None, str | None, CodexModelProvider | None]'
-def _persona_cli_token(cli_env: 'Mapping[str, str] | None', var: 'str | None') -> 'str | None'
+def _persona_cli_token(cli_env: 'Mapping[str, str] | None', var: 'str | None') -> 'str | None | _ESuppresses'
+def _warn_e_suppressed_credential(display: str, var: 'str | None') -> None
 def _preflight_env_persona(secret_paths, endpoint: str, keyspace_model: str | None, wiring, display: str, *, bundle=None, target=None, probe: bool=False, logger=None, cli_env: 'Mapping[str, str] | None'=None) -> 'tuple[str | None, str | None, CodexModelProvider | None]'
 def _persona_endpoint_refusal(display: str, endpoint: str, missing: str, detail: str, cure: str) -> str
 def _persona_no_endpoint_error(agent_id: str, wiring) -> str
@@ -255,6 +257,11 @@ class _NullRefused(NamedTuple):
     key: str
     values: str
     flags: str
+
+class _ESuppresses:
+    __slots__ = ()
+
+    def __repr__(self) -> str
 
 class _LaunchRealizer:
     def __init__(self, *, desc, agent_id: str, cli_level=None, provider_pin=())

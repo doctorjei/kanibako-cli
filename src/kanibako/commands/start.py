@@ -7327,7 +7327,9 @@ def _preflight_persona_load(
 
   *cli_env* is the launch's parsed ``-e`` map (only ``start`` has ``-e``).  A
   non-empty ``-e`` value for the token var satisfies the token gate and is the
-  token the probe sends (:func:`_persona_cli_token`).
+  token the probe sends.  A BLANK one suppresses the credential outright — no
+  read, stat or probe — and the launch is reported UNVERIFIED, never PASS
+  (approved canon P5).  :func:`_persona_cli_token` holds the three states.
 
   See ``llm-docs/kanibako/commands/start.py.md``, "``_preflight_persona_load`` — a
   persona's LOADABILITY", for the two harness gates and what each input means.
@@ -7390,20 +7392,61 @@ def _preflight_persona_load(
   )
 
 
-def _persona_cli_token(cli_env: "Mapping[str, str] | None", var: "str | None") -> "str | None":
-  """The ``-e`` value of token var *var*, stripped, or ``None`` when ``-e`` gives none.
+class _ESuppresses:
+  """Sentinel TYPE for :data:`_E_SUPPRESSES`; a distinct singleton (not ``object``)."""
 
-  ``-e`` outranks a ``secret_path`` file (spec §1A): the launch then mounts no file
-  for *var* and the box reads this value.  An EMPTY value counts as none, so the
-  gate and the probe act on the file exactly as they did before ``-e`` was read
-  here: no launch that passes today is refused.  Never logged.
+  __slots__ = ()
+
+  def __repr__(self) -> str:
+    return "_E_SUPPRESSES"
+
+
+_E_SUPPRESSES: _ESuppresses = _ESuppresses()
+
+
+def _persona_cli_token(
+  cli_env: "Mapping[str, str] | None", var: "str | None"
+) -> "str | None | _ESuppresses":
+  """The ``-e`` STATE of token var *var*: a value, a suppression, or nothing.
+
+  Three states on one carrier, because what to SEND and whether to SUPPRESS must
+  never be read apart.  ``-e`` outranks a ``secret_path`` file (spec §1A).
+
+  * ``None`` -- ``-e`` says nothing of *var*; fall through to ``secret_path``.
+  * :data:`_E_SUPPRESSES` -- ``-e VAR=`` blank or whitespace-only, a
+    DELIBERATE suppression: no shadowed credential material is read, stat'd,
+    fetched, staged, mounted or exported, and the credential gate and
+    ``verify_persona`` are skipped entirely.  The launch proceeds UNVERIFIED and
+    never PASS (approved canon P5).
+  * a ``str`` -- the stripped value; the box reads this and mounts no file.
+
+  Never logged, either way.
   """
   if not var or not cli_env:
     return None
   value = cli_env.get(var)
   if value is None:
     return None
-  return value.strip() or None
+  return _E_SUPPRESSES if not value.strip() else value
+
+
+def _warn_e_suppressed_credential(display: str, var: "str | None") -> None:
+  """Say OUT LOUD that a blank ``-e`` suppressed the credential and nothing was checked.
+
+  P5's required outcome: warn UNVERIFIED, never PASS.  Called once per launch --
+  the two harness arms are mutually exclusive.  Names the VAR, never a value.
+  """
+  named = f" `-e {var}`" if var else " `-e`"
+  print(
+    f"Warning: persona '{display}' launches UNVERIFIED:{named} is blank, which "
+    f"suppresses the shadowed credential.",
+    file=sys.stderr,
+  )
+  print(
+    "  Nothing was read, staged, mounted or exported for it, and no verification "
+    "probe ran -- the endpoint was NOT checked.",
+    file=sys.stderr,
+  )
 
 
 def _preflight_env_persona(
@@ -7443,7 +7486,9 @@ def _preflight_env_persona(
      present. A usable pointer is STAT'd arm's length — never read; the value
      flows only through the launch mount.  A declared block with NO token var
      gets no token check.  A non-empty ``-e`` value for the token var
-     (:func:`_persona_cli_token`) passes this gate whatever the file's state.
+     (:func:`_persona_cli_token`) passes this gate whatever the file's state; a
+     BLANK one is skipped BEFORE the pointer is read, so nothing is stat'd and
+     nothing is probed, and the launch is reported UNVERIFIED (P5).
   2. on the LAUNCH path only, the verify probe (:func:`_persona_probe_error`)
      — reached for a PRESENT-null token too, sent with no ``Authorization``
      header, and for a persona with no model (``keyspace_model`` ``None``), sent
@@ -7457,6 +7502,15 @@ def _preflight_env_persona(
   """
 
   cli_token = _persona_cli_token(cli_env, wiring.token_var)
+  if isinstance(cli_token, _ESuppresses):
+    # P5.  Returning BEFORE the pointer read is the whole of it: the stat lives in
+    # _secret_pointer_usable just below and the probe after it, so a blank `-e`
+    # never touches the shadowed credential -- not read, not stat'd, not probed.
+    # ``isinstance`` rather than ``is`` because it NARROWS: the sentinel must not
+    # survive toward ``token=`` even as a type (a mutant proved it would be sent
+    # verbatim as a bearer token if the guard were dropped).
+    _warn_e_suppressed_credential(display, wiring.token_var)
+    return endpoint, None, None
   token_state = (
     _persona_token_pointer(secret_paths, wiring.token_var)
     if wiring.token_var and cli_token is None
@@ -7594,6 +7648,9 @@ def _preflight_config_file_persona(
      * a non-empty ``-e`` value for that key (:func:`_persona_cli_token`) passes
        whatever the pointer's state; the key must still be declared, because it
        names the provider ``env_key``.
+     * a BLANK ``-e`` for that key skips ``verify_persona`` entirely and reports
+       UNVERIFIED (P5); the provider still builds, since it carries the
+       ``config.toml`` wiring rather than the credential.
 
   There is no ``model`` gate: *keyspace_model* (the box-level cascade read) is a
   model id; ``""``, the empty model, which :func:`_provider_model` maps through the
@@ -7619,21 +7676,26 @@ def _preflight_config_file_persona(
   assert env_key is not None  # guaranteed by the passed token gate above.
   if probe:
     cli_token = _persona_cli_token(cli_env, env_key)
-    probe_token_state = (
-      _persona_token_pointer(secret_paths, env_key) if cli_token is None else None
-    )
-    probe_err = _persona_probe_error(
-      target,
-      endpoint,
-      probe_token_state if isinstance(probe_token_state, str) else None,
-      keyspace_model,
-      display,
-      logger,
-      env=_persona_probe_env(secret_paths, bundle),
-      token=cli_token,
-    )
-    if probe_err is not None:
-      return None, probe_err, None
+    if isinstance(cli_token, _ESuppresses):
+      # P5: skip verify_persona entirely.  The provider is still built below --
+      # it carries the config.toml wiring, not the credential.
+      _warn_e_suppressed_credential(display, env_key)
+    else:
+      probe_token_state = (
+        _persona_token_pointer(secret_paths, env_key) if cli_token is None else None
+      )
+      probe_err = _persona_probe_error(
+        target,
+        endpoint,
+        probe_token_state if isinstance(probe_token_state, str) else None,
+        keyspace_model,
+        display,
+        logger,
+        env=_persona_probe_env(secret_paths, bundle),
+        token=cli_token,
+      )
+      if probe_err is not None:
+        return None, probe_err, None
   provider = _resolve_codex_persona_provider(
     agent_id,
     endpoint,

@@ -200,16 +200,69 @@ class TestEnvHarness:
     _preflight(NODE_ID, {VAR: None}, server.endpoint, ClaudeTarget(), cli_env={VAR: E_TOKEN})
     assert _authorizations(server) - {None} == {f"Bearer {E_TOKEN}"}
 
-  @pytest.mark.parametrize("value", ["", "   "])
-  def test_an_empty_e_changes_nothing(self, server, file_token, value):
-    """An empty ``-e`` is no token: the gate and the probe act on the file as before."""
+  @pytest.mark.parametrize("value", ["", "   ", "\t"])
+  def test_a_blank_e_suppresses_the_credential(self, server, file_token, value, capsys):
+    """P5: a blank ``-e`` SUPPRESSES the shadowed credential — no probe, no refusal.
+
+    Replaces the old ``test_an_empty_e_changes_nothing``, which pinned the
+    opposite contract ("act on the file as before").  Approved canon P5 reverses
+    it: blank/whitespace ``-e`` skips the credential gate and ``verify_persona``
+    entirely, warns UNVERIFIED, and never PASS.
+    """
     ep, err, _ = _preflight(
       NODE_ID, {VAR: str(file_token)}, server.endpoint, ClaudeTarget(), cli_env={VAR: value}
     )
     assert err is None and ep == server.endpoint
-    assert _authorizations(server) - {None} == {f"Bearer {FILE_TOKEN}"}
-    _ep, err, _ = _preflight(NODE_ID, {}, server.endpoint, ClaudeTarget(), cli_env={VAR: value})
-    assert err is not None and "no usable auth token" in err
+    assert server.log == [], "a suppressed credential must not be probed at all"
+    err_text = capsys.readouterr().err
+    assert "UNVERIFIED" in err_text
+    assert VAR in err_text
+    assert FILE_TOKEN not in err_text
+
+  @pytest.mark.parametrize("value", ["", "   "])
+  def test_a_blank_e_proceeds_when_there_is_nothing_to_suppress(self, server, value, capsys):
+    """No ``secret_path`` either: the launch still proceeds UNVERIFIED, not refused.
+
+    This is the half that newly ALLOWS a launch today's code errors on.  A blank
+    ``-e`` is a deliberate "run unverified", so refusing it would be kanibako
+    closing the very door it exists to open.
+    """
+    ep, err, _ = _preflight(NODE_ID, {}, server.endpoint, ClaudeTarget(), cli_env={VAR: value})
+    assert err is None and ep == server.endpoint
+    assert server.log == []
+    assert "UNVERIFIED" in capsys.readouterr().err
+
+  @pytest.mark.parametrize("value", ["", "   "])
+  def test_a_blank_e_never_stats_the_shadowed_pointer(self, server, file_token, value):
+    """The load-bearing claim: NO read and NO stat of the credential material.
+
+    Without this the suite stays green while a ``stat()`` still happens.  The
+    contract is about the ABSENCE OF THE CALL, not about the verdict it returns,
+    so the call itself is what gets asserted.
+    """
+    from kanibako.commands import start as start_mod
+
+    seen = []
+    real = start_mod._secret_pointer_usable
+
+    def _spy(raw_path):
+      seen.append(raw_path)
+      return real(raw_path)
+
+    with patch.object(start_mod, "_secret_pointer_usable", _spy):
+      ep, err, _ = _preflight(
+        NODE_ID, {VAR: str(file_token)}, server.endpoint, ClaudeTarget(), cli_env={VAR: value}
+      )
+    assert err is None
+    assert seen == [], f"suppression must not stat the pointer; saw {seen}"
+
+  def test_a_nonblank_e_still_stats_and_probes_as_before(self, server, file_token):
+    """Positive control: the suppression is the blank case ONLY."""
+    ep, err, _ = _preflight(
+      NODE_ID, {VAR: str(file_token)}, server.endpoint, ClaudeTarget(), cli_env={VAR: E_TOKEN}
+    )
+    assert err is None and ep == server.endpoint
+    assert _authorizations(server) - {None} == {f"Bearer {E_TOKEN}"}
 
   def test_another_vars_e_does_not_satisfy_the_gate(self, server):
     _ep, err, _ = _preflight(
@@ -248,6 +301,35 @@ class TestConfigFileHarness:
     """The declared name IS the provider ``env_key``; ``-e`` alone cannot name it."""
     _ep, err, _ = _preflight(
       CODEX_ID, {}, server.endpoint, CodexTarget(), cli_env={self.KEY: E_TOKEN}
+    )
+    assert err is not None and "none was found" in err
+
+  @pytest.mark.parametrize("value", ["", "   "])
+  def test_a_blank_e_suppresses_the_codex_probe_too(self, server, file_token, value, capsys):
+    """Same P5 contract on the config-file harness — and the provider still builds.
+
+    The provider carries the ``config.toml`` wiring, not the credential, so
+    suppressing the credential must not suppress it.
+    """
+    ep, err, provider = _preflight(
+      CODEX_ID,
+      {self.KEY: str(file_token)},
+      server.endpoint,
+      CodexTarget(),
+      cli_env={self.KEY: value},
+    )
+    assert err is None and ep == server.endpoint
+    assert provider is not None and provider.env_key == self.KEY
+    assert server.log == [], "a suppressed credential must not be probed at all"
+    err_text = capsys.readouterr().err
+    assert "UNVERIFIED" in err_text
+    assert FILE_TOKEN not in err_text
+
+  @pytest.mark.parametrize("value", ["", "   "])
+  def test_a_blank_e_still_cannot_name_an_undeclared_key(self, server, value):
+    """Suppression suppresses the CREDENTIAL, not the declaration the provider needs."""
+    _ep, err, _ = _preflight(
+      CODEX_ID, {}, server.endpoint, CodexTarget(), cli_env={self.KEY: value}
     )
     assert err is not None and "none was found" in err
 

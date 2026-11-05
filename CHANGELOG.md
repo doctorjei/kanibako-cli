@@ -10,6 +10,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **A blank `-e VAR=` now suppresses the credential instead of being ignored.** On
+  `kanibako start`, a blank or whitespace-only value for a persona's token
+  variable means "run without it": nothing is read, stat'd, fetched, staged,
+  mounted or exported for the shadowed `secret_path`, and the persona
+  verification probe is skipped. The launch reports `UNVERIFIED` and proceeds —
+  it is never reported as passing. Previously a blank `-e` fell through to the
+  `secret_path.<VAR>` file and the launch was verified against it. A launch that
+  used to fail with *"no usable auth token"* (no `secret_path` configured and a
+  blank `-e`) now starts, unverified. A non-blank `-e VAR=<token>` is unchanged.
+  An intentionally keyless endpoint (`secret_path.<VAR>: null`) is unaffected and
+  is still probed without an `Authorization` header.
+
 ## [1.8.0] - 2026-10-25
 
 This release completes the **settings-keyspace rework** and lands the **canon books**.
