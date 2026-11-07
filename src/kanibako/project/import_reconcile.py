@@ -54,7 +54,7 @@ from kanibako.settings.paths import (
   standalone_box_store,
   treewalk_levels,
 )
-from kanibako.utils import is_home_dir, literal_path
+from kanibako.utils.files import is_home_dir, literal_path
 
 if TYPE_CHECKING:
   from kanibako.settings.workset_dirkeys import EarlyScope

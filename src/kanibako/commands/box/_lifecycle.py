@@ -118,17 +118,15 @@ from kanibako.tree_copy import (
   removed_root_of,
   repoint_mounted_links,
 )
-from kanibako.utils import (
-  container_name_for_box_name,
-  is_dir_unless_gone,
-  literal_path,
-  logical_cwd,
-  unreadable_path_error,
-)
+from kanibako.utils import container_name_for_box_name
 from kanibako.utils.files import (
   gitignore_holds_only_kanibako,
   gitignore_to_strip,
+  is_dir_unless_gone,
+  literal_path,
+  logical_cwd,
   strip_gitignore,
+  unreadable_path_error,
   write_gitignore,
 )
 from kanibako.project.workset_registry import workset_registry_path
@@ -2765,7 +2763,7 @@ def _is_per_box_leaf(leaf: Path, arm: Path) -> bool:
 
 
 def _eloop(path: Path) -> OSError:
-  """The ``ELOOP`` error for *path*, for :func:`~kanibako.utils.unreadable_path_error`."""
+  """``ELOOP`` for *path*, via :func:`~kanibako.utils.files.unreadable_path_error`."""
   import errno
   import os
 

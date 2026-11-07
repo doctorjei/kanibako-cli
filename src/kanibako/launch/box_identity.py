@@ -43,11 +43,11 @@ from kanibako.settings.messages import (
 from kanibako.utils import (
   legacy_workset_cure,
   legacy_workset_reason,
-  literal_path,
   rename_box_cure,
   renders_no_name,
   workset_renders_no_name,
 )
+from kanibako.utils.files import literal_path
 
 # Maximum length of the sanitized leaf component.
 _LEAF_CAP = 32

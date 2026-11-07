@@ -95,16 +95,16 @@ from kanibako.settings.settings_resolve import (
 
 from kanibako.project.names import resolve_name, resolve_qualified_name
 from kanibako.launch.box_identity import Designation, box_name_reason, classify_designation
-from kanibako.utils import (
+from kanibako.utils import short_hash
+from kanibako.utils.files import (
   is_dir_unless_gone,
   is_home_dir,
   iterdir_unless_gone,
   literal_path,
   logical_cwd,
-  short_hash,
+  path_hash,
   stat_unless_gone,
 )
-from kanibako.utils.files import path_hash
 from kanibako.settings.bootstrap import (
   BASHRC_FILE,
   CONFIG_PATH_DEFAULTS,

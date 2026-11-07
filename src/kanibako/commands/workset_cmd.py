@@ -36,7 +36,8 @@ from kanibako.settings.paths import (
   refuse_derived_box_name,
   workset_settings_path,
 )
-from kanibako.utils import confirm_or_abort, literal_path, logical_cwd
+from kanibako.utils import confirm_or_abort
+from kanibako.utils.files import literal_path, logical_cwd
 from kanibako.identifiers import derived_name, find_identifier
 from kanibako.project.workset_registry import (
   load_workset_boxes,
@@ -1139,11 +1140,11 @@ def _registry_unseen(path: Path) -> str | None:
   ⚑ ABSENT IS ONLY "NOTHING THERE, NO LINK ON THE WAY": a dangling link at the leaf or at
   a parent directory, or a non-file at the leaf, is present, and the reader would answer
   "no members" for it.  A loop or an unreadable path is the member loader's refusal
-  (:func:`~kanibako.utils.stat_unless_gone`), raised before this runs.
+  (:func:`~kanibako.utils.files.stat_unless_gone`), raised before this runs.
   """
   import stat as stat_mod
 
-  from kanibako.utils import stat_unless_gone
+  from kanibako.utils.files import stat_unless_gone
 
   st = stat_unless_gone(path)
   if st is None:

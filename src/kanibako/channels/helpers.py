@@ -16,7 +16,7 @@ from kanibako.settings.bootstrap import SPAWN_BUDGET_DEFAULTS
 from kanibako.settings.config import SYSTEM_HELPERS_SECTION, read_system_helpers
 from kanibako.settings.config_io import dump_doc, load_doc
 from kanibako.settings.core_defaults import CANON_GUEST_ROOT, NOTEBOOK_SCRIPTS_REL
-from kanibako.utils import stat_unless_gone
+from kanibako.utils.files import stat_unless_gone
 
 # ---------------------------------------------------------------------------
 # Spawn budget

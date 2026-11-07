@@ -445,7 +445,7 @@ def load_doc(path: Path | None) -> dict:
   except OSError as exc:
     if exc.errno in (errno.EACCES, errno.EPERM, errno.ELOOP):
       # ⚑ The file may be fine: the cure is to make the path reachable, not to edit it.
-      from kanibako.utils import unreadable_path_error
+      from kanibako.utils.files import unreadable_path_error
 
       raise unreadable_path_error(path, exc) from exc
     raise ConfigError(
@@ -563,7 +563,7 @@ def write_root_key(path: Path, key: str, value: object) -> None:
 
 def remove_root_key(path: Path, key: str) -> bool:
   """Remove a TOP-LEVEL scalar key.  Returns True if it was present."""
-  from kanibako.utils import stat_unless_gone  # lazy: config_io stays import-light
+  from kanibako.utils.files import stat_unless_gone  # lazy: config_io stays import-light
 
   if stat_unless_gone(path) is None:
     return False
@@ -588,7 +588,7 @@ def refuse_scalar_sections(
   *path* that is not a file, is a writer's to create, so neither refuses.  *data* is the
   ALREADY-READ doc, not re-read.
   """
-  from kanibako.utils import is_file_unless_gone  # lazy: config_io stays import-light
+  from kanibako.utils.files import is_file_unless_gone  # lazy: config_io stays import-light
 
   if not is_file_unless_gone(path):
     return
@@ -657,7 +657,7 @@ def remove_nested_key(
   key: str,
 ) -> bool:
   """Remove *key* from a nested table, pruning now-empty intermediates.  True if found."""
-  from kanibako.utils import stat_unless_gone  # lazy: config_io stays import-light
+  from kanibako.utils.files import stat_unless_gone  # lazy: config_io stays import-light
 
   if stat_unless_gone(path) is None:
     return False
@@ -751,7 +751,7 @@ def stored_leaf_object(
   from the ``None`` default.  Pass a sentinel to tell them apart; leave it ``None`` only
   where absent and present-``None`` mean the same thing to you.
   """
-  from kanibako.utils import stat_unless_gone  # lazy: config_io stays import-light
+  from kanibako.utils.files import stat_unless_gone  # lazy: config_io stays import-light
 
   if noun_file is None or stat_unless_gone(noun_file) is None:
     return default

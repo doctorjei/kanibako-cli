@@ -33,7 +33,7 @@ from kanibako.identifiers import find_identifier
 from kanibako.project import registry_store
 from kanibako.errors import AmbiguousNameError, ConfigError, ProjectError
 from kanibako.log import get_logger
-from kanibako.utils import is_home_dir, literal_path
+from kanibako.utils.files import is_home_dir, literal_path
 
 logger = get_logger("names")
 

@@ -35,7 +35,7 @@ from kanibako.settings.paths import (
   Treewalk,
   treewalk_levels,
 )
-from kanibako.utils import is_file_unless_gone, literal_path, refuse_unreadable_file
+from kanibako.utils.files import is_file_unless_gone, literal_path, refuse_unreadable_file
 
 # The PRIMARY workset's NAME (not a mode).  Anchored by ``config.primary_workset``,
 # not listed in the global ``worksets:`` section — so the enumeration yields it

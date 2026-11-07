@@ -47,7 +47,8 @@ from kanibako.settings.settings_resolve import (
   delete_before_set_step,
   normalize_bind_dest,
 )
-from kanibako.utils import deep_merge, stat_unless_gone
+from kanibako.utils import deep_merge
+from kanibako.utils.files import stat_unless_gone
 
 #: The per-agent file's ROOT table — the file's self-reference, spelled ONCE, HERE.
 _ROOT: Final[str] = "self"

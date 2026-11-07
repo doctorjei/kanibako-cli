@@ -81,9 +81,8 @@ from kanibako.settings.workset_dirkeys import (
   refuse_inherited_per_owner,
   resolve_workset_dir_key,
 )
-from kanibako.utils import (
-  WORKSET_SEGMENT_PRIMARY,
-  WORKSET_SEGMENT_STANDALONE,
+from kanibako.utils import WORKSET_SEGMENT_PRIMARY, WORKSET_SEGMENT_STANDALONE
+from kanibako.utils.files import (
   is_dir_unless_gone,
   is_file_unless_gone,
   literal_path,

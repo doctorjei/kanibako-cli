@@ -236,7 +236,7 @@ def _stub_project(metadata_path, project_path, std, config):
   from kanibako.launch import box_resolve
   from kanibako.settings.paths import ProjectPaths, _primary_box_paths
   from kanibako.utils.files import path_hash
-  from kanibako.utils import literal_path
+  from kanibako.utils.files import literal_path
 
   # P8a: name from box_resolve's identity (registry KEY / composed standalone
   # name).  A gone-path box that is STILL registered resolves by its (now

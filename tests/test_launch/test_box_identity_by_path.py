@@ -211,7 +211,7 @@ class TestARelativePathJoinsThePathTheUserTook:
     tmp_home,
     monkeypatch,
   ):
-    from kanibako.utils import literal_path
+    from kanibako.utils.files import literal_path
 
     std = load_std_paths(load_config(config_file))
     real = tmp_home / "real"

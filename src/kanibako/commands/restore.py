@@ -24,7 +24,8 @@ from kanibako.settings.paths import (
   resolve_any_project,
 )
 from kanibako.tree_copy import copy_tree_keeping_links
-from kanibako.utils import confirm_or_abort, logical_cwd
+from kanibako.utils import confirm_or_abort
+from kanibako.utils.files import logical_cwd
 from kanibako.channels.channels import workset_name_token, workset_root
 from kanibako.settings.workset_dirkeys import EarlyScope, refuse_inherited_per_owner
 from kanibako.settings.messages import MSG_DONE

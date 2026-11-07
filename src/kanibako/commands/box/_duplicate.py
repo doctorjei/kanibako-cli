@@ -49,7 +49,8 @@ from kanibako.settings.paths import (
   resolve_workset_project,
   unregister_primary_box_name,
 )
-from kanibako.utils import confirm_or_abort, literal_path
+from kanibako.utils import confirm_or_abort
+from kanibako.utils.files import literal_path
 from kanibako.errors import BoxNameError, DerivedBoxNameError, ProjectError
 from kanibako.launch.box_identity import (
   box_name_cure,

@@ -36,7 +36,7 @@ from kanibako.settings.messages import (
   ERR_CONFIG_REF_ORDER,
   PER_OWNER_SHARERS,
 )
-from kanibako.utils import stat_unless_gone
+from kanibako.utils.files import stat_unless_gone
 
 if TYPE_CHECKING:
   from kanibako.agent_ref import AgentIdentity
@@ -587,7 +587,7 @@ def is_standalone_mark_file(path: Path) -> bool:
   import errno
 
   from kanibako import boxfs
-  from kanibako.utils import unreadable_path_error
+  from kanibako.utils.files import unreadable_path_error
 
   try:
     raw = read_box_doc_bytes(path, path.parent)

@@ -40,14 +40,5 @@ def box_labels(proj: ProjectPaths, helper_num: int | None=None) -> dict[str, str
 def box_container(runtime: ContainerRuntime, proj: ProjectPaths, *, check: bool=False) -> str | None
 def box_container_named(runtime: ContainerRuntime, box: str, workset: str, *, check: bool=False) -> str | None
 def legacy_container_names(proj: ProjectPaths) -> tuple[str, ...]
-def stat_unless_gone(path: str | os.PathLike[str]) -> os.stat_result | None
-def is_dir_unless_gone(path: str | os.PathLike[str]) -> bool
-def is_file_unless_gone(path: str | os.PathLike[str]) -> bool
-def iterdir_unless_gone(path: Path) -> list[Path] | None
-def refuse_unreadable_file(path: str | os.PathLike[str]) -> None
-def unreadable_path_error(path: str | os.PathLike[str], exc: OSError) -> ConfigError
-def literal_path(value: str | os.PathLike[str]) -> str
-def is_home_dir(path: str | os.PathLike[str]) -> bool
-def logical_cwd() -> str
 def _labeled_or_rendered(runtime: ContainerRuntime, labels: dict[str, str], rendered: str, *, check: bool) -> str
 ```

@@ -30,7 +30,8 @@ from pathlib import Path
 
 from kanibako._atomic import rmw_lock
 from kanibako.settings.config_io import dump_doc, load_doc
-from kanibako.utils import literal_path, utc_stamp
+from kanibako.utils import utc_stamp
+from kanibako.utils.files import literal_path
 
 # The single top-level mapping in the journal document.
 _ENTRIES = "entries"

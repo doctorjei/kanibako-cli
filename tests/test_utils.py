@@ -675,9 +675,9 @@ class TestWriteGitignoreLinkPolicy:
 
 class TestTheCwdIsReadOnlyThroughLogicalCwd:
   """AST guard: the physical cwd is read in ``src/kanibako`` only inside
-  :func:`kanibako.utils.logical_cwd`, so every cwd read honors ``$PWD``."""
+  :func:`kanibako.utils.files.logical_cwd`; cwd reads honor ``$PWD``."""
 
-  _ALLOWED = {("utils/__init__.py", "logical_cwd")}
+  _ALLOWED = {("utils/files.py", "logical_cwd")}
 
   @staticmethod
   def _physical_cwd_reads(source: str):

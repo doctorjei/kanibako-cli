@@ -1,4 +1,4 @@
-"""Every registry writer stores a path as :func:`kanibako.utils.literal_path`.
+"""Registry writers store paths as :func:`kanibako.utils.files.literal_path`.
 
 Registry entries are data, never keystore references: each writer seam normalizes the
 value it stores, and a value already literal is stored unchanged (round-trips stay put).

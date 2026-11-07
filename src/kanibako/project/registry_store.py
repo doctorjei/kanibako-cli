@@ -24,7 +24,8 @@ from kanibako._atomic import rmw_lock
 from kanibako.identifiers import find_identifier
 from kanibako.log import get_logger
 from kanibako.settings.config_io import _dump_text, dump_doc, load_doc
-from kanibako.utils import literal_path, utc_stamp
+from kanibako.utils import utc_stamp
+from kanibako.utils.files import literal_path
 
 logger = get_logger(__name__)
 
@@ -60,7 +61,7 @@ def load_registry(registry: Path) -> dict[str, dict]:
   Every canonical section key is always present, so callers can index the result
   without a ``.get`` default.
   """
-  from kanibako.utils import is_file_unless_gone  # lazy, as below
+  from kanibako.utils.files import is_file_unless_gone  # lazy, as below
 
   data = load_doc(registry) if is_file_unless_gone(registry) else {}
   return {
@@ -106,7 +107,7 @@ def write_registry_doc(
 
 
 def _is_file(path: Path) -> bool:
-  from kanibako.utils import is_file_unless_gone  # lazy, as in load_registry
+  from kanibako.utils.files import is_file_unless_gone  # lazy, as in load_registry
 
   return is_file_unless_gone(path)
 
@@ -426,7 +427,7 @@ def _metadata_definitively_gone(path: str) -> bool:
   Only ``ENOENT`` / ``ENOTDIR`` prove removal; anything else KEEPS the entry.
   """
   from kanibako.errors import ConfigError
-  from kanibako.utils import stat_unless_gone
+  from kanibako.utils.files import stat_unless_gone
 
   try:
     return stat_unless_gone(path) is None

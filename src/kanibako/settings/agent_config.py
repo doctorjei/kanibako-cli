@@ -25,7 +25,7 @@ from kanibako.settings.settings_categories import (
   agent_declaration_root_ref,
 )
 from kanibako.settings.settings_resolve import match_braced, starts_bare_reference
-from kanibako.utils import logical_cwd
+from kanibako.utils.files import logical_cwd
 
 
 @dataclass

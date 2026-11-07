@@ -1,12 +1,15 @@
-"""File and path helpers: path_hash, and the standalone box's .gitignore line and its purge."""
+"""Filesystem probes, literal paths, hashing, and standalone .gitignore maintenance."""
 
 from __future__ import annotations
 
+import errno
 import hashlib
 import os
+import stat
 import sys
 from pathlib import Path
 
+from kanibako.errors import ConfigError
 from kanibako.settings.bootstrap import IGNORE_FILE, STANDALONE_META_DIR
 from kanibako.settings.config_io import (
   append_doc_text_in_existing_parent,
@@ -150,3 +153,110 @@ def strip_gitignore(gitignore: Path) -> bool:
     print(f"Warning: could not remove kanibako's line from {gitignore} ({exc}).", file=sys.stderr)
     return False
   return True
+
+
+def stat_unless_gone(path: str | os.PathLike[str]) -> os.stat_result | None:
+  """*path*'s stat, or ``None`` when it is DEFINITIVELY absent (``ENOENT``/``ENOTDIR``).
+
+  ⚑ NOT ``Path.exists()``/``is_dir()``: they raise a bare ``PermissionError`` on an
+  unreadable parent.  Any other failure refuses, naming *path*: a box kanibako cannot
+  see is never "gone".
+  """
+  try:
+    return os.stat(path)
+  except OSError as exc:
+    if exc.errno in (errno.ENOENT, errno.ENOTDIR):
+      return None
+    raise unreadable_path_error(path, exc) from exc
+
+
+def is_dir_unless_gone(path: str | os.PathLike[str]) -> bool:
+  """Whether *path* is a directory; refuses (:func:`stat_unless_gone`) when it cannot tell."""
+  st = stat_unless_gone(path)
+  return st is not None and stat.S_ISDIR(st.st_mode)
+
+
+def is_file_unless_gone(path: str | os.PathLike[str]) -> bool:
+  """Whether *path* is a regular file; refuses (:func:`stat_unless_gone`) when it cannot tell.
+
+  ⚑ NOT ``Path.is_file()``/``exists()``: they raise a bare ``PermissionError`` on an
+  unreadable parent and read a link loop as absent.
+  """
+  st = stat_unless_gone(path)
+  return st is not None and stat.S_ISREG(st.st_mode)
+
+
+def iterdir_unless_gone(path: Path) -> list[Path] | None:
+  """*path*'s entries, or ``None`` when it is definitively absent or no directory.
+
+  ⚑ NOT ``Path.iterdir()``: an unlistable directory raises a bare ``PermissionError``.
+  Any failure but absence refuses, naming *path*, as :func:`stat_unless_gone` does.
+  """
+  if not is_dir_unless_gone(path):
+    return None
+  try:
+    return list(path.iterdir())
+  except OSError as exc:
+    raise unreadable_path_error(path, exc) from exc
+
+
+def refuse_unreadable_file(path: str | os.PathLike[str]) -> None:
+  """Refuse, as :func:`stat_unless_gone` does, a regular file at *path* that cannot be read.
+
+  A gone path or a non-file passes: this answers only "is it there but unreadable",
+  which a reader that maps any failure to "absent" or "malformed" cannot tell apart.
+  """
+  if not is_file_unless_gone(path):
+    return
+  try:
+    with open(path, "rb"):
+      pass
+  except OSError as exc:
+    raise unreadable_path_error(path, exc) from exc
+
+
+def unreadable_path_error(path: str | os.PathLike[str], exc: OSError) -> ConfigError:
+  """The refusal for *path*, which *exc* says kanibako cannot reach: a loop, or unreadable."""
+  if exc.errno == errno.ELOOP:
+    # ⚑ A loop is no permission problem: "make it readable" would be the wrong cure.
+    from kanibako.settings.messages import CANON_SYMLINK_LOOP_WHY
+
+    return ConfigError(
+      f"{os.fspath(path)}: {CANON_SYMLINK_LOOP_WHY}. Remove or repair the link, then retry."
+    )
+  return ConfigError(
+    f"{os.fspath(path)} could not be read ({exc.strerror}). Make it and its parent "
+    "directories readable, then retry."
+  )
+
+
+def literal_path(value: str | os.PathLike[str]) -> str:
+  """*value* absolute and normalized, links unfollowed: box identity's form.
+
+  A relative *value* joins :func:`logical_cwd`, the directory as the user reached it.
+  """
+  text = os.fspath(value)
+  if not os.path.isabs(text):
+    text = os.path.join(logical_cwd(), text)
+  return os.path.normpath(text)
+
+
+def is_home_dir(path: str | os.PathLike[str]) -> bool:
+  """True when *path* is ``$HOME``, as spelled (:func:`literal_path`) or with every link resolved.
+
+  ⚑ Never raises: ``os.path.realpath`` stops at a symlink loop where ``Path.resolve`` raises
+  on 3.11, and a looped link is never ``$HOME``.
+  """
+  literal, home = literal_path(path), literal_path(Path.home())
+  return literal == home or os.path.realpath(literal) == os.path.realpath(home)
+
+
+def logical_cwd() -> str:
+  """``$PWD`` when it names the current directory, else :func:`os.getcwd`."""
+  pwd = os.environ.get("PWD", "")
+  try:
+    if os.path.isabs(pwd) and os.path.samefile(pwd, "."):
+      return os.path.normpath(pwd)
+  except OSError:
+    pass
+  return os.getcwd()

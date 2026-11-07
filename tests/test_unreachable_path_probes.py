@@ -14,7 +14,7 @@ import pytest
 
 from kanibako.errors import ConfigError
 from kanibako.settings.config_io import load_doc
-from kanibako.utils import stat_unless_gone
+from kanibako.utils.files import stat_unless_gone
 
 needs_non_root = pytest.mark.skipif(os.geteuid() == 0, reason="root reads a mode-000 directory")
 
@@ -42,7 +42,7 @@ def test_a_loop_is_named_as_a_loop(tmp_path):
 
 @needs_non_root
 def test_iterdir_unless_gone_refuses_an_unlistable_dir_and_passes_a_gone_one(tmp_path, locked):
-  from kanibako.utils import iterdir_unless_gone
+  from kanibako.utils.files import iterdir_unless_gone
 
   (tmp_path / "plain").write_text("")
   assert iterdir_unless_gone(tmp_path / "plain") is None
@@ -145,7 +145,7 @@ def test_a_guarded_reader_refuses_a_file_under_an_unreadable_parent(locked, read
 
 
 def test_is_file_unless_gone_absent_forms(tmp_path):
-  from kanibako.utils import is_file_unless_gone
+  from kanibako.utils.files import is_file_unless_gone
 
   (tmp_path / "file").write_text("")
   assert is_file_unless_gone(tmp_path / "file")

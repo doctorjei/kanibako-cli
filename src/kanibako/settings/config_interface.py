@@ -175,7 +175,8 @@ from kanibako.settings.settings_keyspace import (
 from kanibako.settings.keystore import ReservedKeyError, clone_store
 from kanibako.settings.settings_cli_level import SELECTION_KEY
 from kanibako.settings.settings_prefs import PREF_ROOT
-from kanibako.utils import confirm_prompt, stat_unless_gone
+from kanibako.utils import confirm_prompt
+from kanibako.utils.files import stat_unless_gone
 
 _log = get_logger(__name__)
 

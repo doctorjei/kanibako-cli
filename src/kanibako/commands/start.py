@@ -136,14 +136,11 @@ from kanibako.utils import (
   box_labels,
   container_name_for,
   container_name_segments,
-  is_home_dir,
   legacy_container_names,
-  literal_path,
-  logical_cwd,
   render_socket_identity,
   short_hash,
-  stat_unless_gone,
 )
+from kanibako.utils.files import is_home_dir, literal_path, logical_cwd, stat_unless_gone
 
 # The box-local AGENT LIVENESS MARKERS directory (per-PID).  Canonically owned by
 # :mod:`kanibako.vscode.vscode_config`, the low-level module that also owns the marker

@@ -43,7 +43,7 @@ from kanibako.project.registry_store import write_registry_doc
 from kanibako.settings.config import WORKSET_REGISTRY_FILE, is_standalone_mark_file
 from kanibako.settings.config_io import load_doc
 from kanibako.errors import LegacyRegistryIdentityError, ProjectError, WorksetError
-from kanibako.utils import is_file_unless_gone, literal_path
+from kanibako.utils.files import is_file_unless_gone, literal_path
 
 
 # The box-membership section of a per-workset registry file: box name → path.

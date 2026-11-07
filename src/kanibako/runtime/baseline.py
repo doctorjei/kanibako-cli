@@ -24,7 +24,7 @@ from kanibako.settings.bootstrap import SITE_CONFIG_DIR
 from kanibako.settings.config_io import load_doc
 from kanibako.settings.core_defaults import PACKAGED_SETTINGS_PARTS, packaged_data_dir
 from kanibako.settings.paths import resolve_data_path
-from kanibako.utils import is_file_unless_gone
+from kanibako.utils.files import is_file_unless_gone
 
 # Filename used both for the shipped default (under ``PACKAGED_SETTINGS_PARTS``) and the overlays.
 BASELINE_FILENAME = "image-baseline.yaml"

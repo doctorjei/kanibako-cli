@@ -1,4 +1,4 @@
-"""Every ``$HOME`` guard asks :func:`kanibako.utils.is_home_dir`: ``$HOME`` as spelled or resolved,
+"""``$HOME`` guards use :func:`kanibako.utils.files.is_home_dir`: ``$HOME`` as spelled or resolved,
 and a looped link is an ordinary non-home path, never a traceback (``Path.resolve`` raises on 3.11)."""
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from kanibako.errors import ProjectError
 from kanibako.project import import_reconcile, names
 from kanibako.settings import paths
 from kanibako.settings.config import load_config
-from kanibako import utils
+from kanibako.utils import files as utils
 
 
 @pytest.fixture
