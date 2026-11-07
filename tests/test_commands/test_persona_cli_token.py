@@ -264,6 +264,20 @@ class TestEnvHarness:
     assert err is None and ep == server.endpoint
     assert _authorizations(server) - {None} == {f"Bearer {E_TOKEN}"}
 
+  def test_a_padded_nonblank_e_is_probed_exactly_as_typed(self, server, file_token):
+    """No strip on the way to the probe.
+
+    1.8.0 returned ``value.strip()``, so a pasted trailing space verified a token
+    the box never ran with -- the probe could pass while the box held the padded
+    one.  The probe now sees exactly what ``_apply_cli_env`` hands the box.
+    """
+    padded = f"  {E_TOKEN} "
+    ep, err, _ = _preflight(
+      NODE_ID, {VAR: str(file_token)}, server.endpoint, ClaudeTarget(), cli_env={VAR: padded}
+    )
+    assert err is None and ep == server.endpoint
+    assert _authorizations(server) - {None} == {f"Bearer {padded}"}
+
   def test_another_vars_e_does_not_satisfy_the_gate(self, server):
     _ep, err, _ = _preflight(
       NODE_ID, {}, server.endpoint, ClaudeTarget(), cli_env={"SOME_OTHER_VAR": E_TOKEN}

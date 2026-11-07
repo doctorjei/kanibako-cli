@@ -16,11 +16,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `kanibako start`, a blank or whitespace-only value for a persona's token
   variable means "run without it": nothing is read, stat'd, fetched, staged,
   mounted or exported for the shadowed `secret_path`, and the persona
-  verification probe is skipped. The launch reports `UNVERIFIED` and proceeds —
-  it is never reported as passing. Previously a blank `-e` fell through to the
-  `secret_path.<VAR>` file and the launch was verified against it. A launch that
-  used to fail with *"no usable auth token"* (no `secret_path` configured and a
-  blank `-e`) now starts, unverified. A non-blank `-e VAR=<token>` is unchanged.
+  verification probe is skipped. The launch reports `UNVERIFIED`, never passing.
+  Previously a blank `-e` fell through to the `secret_path.<VAR>` file and the
+  launch was verified against it, so a launch with no `secret_path` configured
+  and a blank `-e` failed with *"no usable auth token"*; it now starts.
+  A non-blank `-e VAR=<token>` now reaches the probe exactly as typed — 1.8.0
+  stripped it there, so a pasted trailing space verified a token the box never got.
   An intentionally keyless endpoint (`secret_path.<VAR>: null`) is unaffected and
   is still probed without an `Authorization` header.
 

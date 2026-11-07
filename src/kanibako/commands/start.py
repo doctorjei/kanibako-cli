@@ -7417,8 +7417,8 @@ def _persona_cli_token(
     DELIBERATE suppression: no shadowed credential material is read, stat'd,
     fetched, staged, mounted or exported, and the credential gate and
     ``verify_persona`` are skipped entirely.  The launch proceeds UNVERIFIED and
-    never PASS (approved canon P5).
-  * a ``str`` -- the stripped value; the box reads this and mounts no file.
+    never PASS (spec §1A "Preflight").
+  * a ``str`` -- the value as typed; probe and box get it unstripped.
 
   Never logged, either way.
   """

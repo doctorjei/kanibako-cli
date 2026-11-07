@@ -8996,15 +8996,16 @@ class TestAPerRunEBeatsASecretPath:
     p.write_text("sk-from-the-file\n")
     return str(p)
 
-  def test_a_persona_token_var_set_by_e_wins(self, tok):
-    """The persona's token pointer is an ``agent.<node>.secret_path`` key."""
+  @pytest.mark.parametrize("value", ["sk-from-the-cli", "", " \t "])
+  def test_a_persona_token_var_set_by_e_wins(self, tok, value):
+    """Even blank ``-e`` values suppress the persona's secret mount and export."""
     from kanibako.settings.settings_categories import SECRET_MOUNT_DIR
 
     env, export_vars, dests = self._assemble(
       {f"agent.navigator+claude.secret_path.{self.VAR}": tok},
-      {self.VAR: "sk-from-the-cli"},
+      {self.VAR: value},
     )
-    assert env[self.VAR] == "sk-from-the-cli"
+    assert env[self.VAR] == value
     assert self.VAR not in export_vars
     assert f"{SECRET_MOUNT_DIR}/{self.VAR}" not in dests
 
