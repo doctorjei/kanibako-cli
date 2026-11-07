@@ -87,7 +87,7 @@ def _runtime_dir() -> str:
 
   Per the ratified design: ``$XDG_RUNTIME_DIR`` (honored iff set AND absolute),
   else ``$TMPDIR`` (iff absolute), else ``/tmp``.  Deliberately NOT the
-  :func:`kanibako.settings.paths.resolve_xdg` runtime fallback (which appends
+  :func:`kanibako.utils.xdg.resolve_xdg` runtime fallback (which appends
   ``/kanibako`` and warns) — the ControlPath just needs a short, writable,
   per-user dir the mux socket can live under.
   """

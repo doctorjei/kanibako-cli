@@ -338,7 +338,7 @@ def _host_ctx() -> ResolveCtx:
   not have side effects.  ``{$AGENT}`` / ``{$WORKSET}`` are deliberately unset — neither
   is known before the snapshot, so both refuse rather than resolve to a guess.
   """
-  from kanibako.settings.paths import spec_default_xdg_map
+  from kanibako.utils.xdg import spec_default_xdg_map
 
   return ResolveCtx(
     agent_name=None,

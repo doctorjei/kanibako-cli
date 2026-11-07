@@ -1516,7 +1516,8 @@ _UNDECLARED_KEY = "frobnicate"
 
 def _write_undeclared_key(config_file: Path) -> Path:
   """Put an undeclared `box.<_UNDECLARED_KEY>` in the system-tier settings file."""
-  from kanibako.settings.paths import load_system_config, xdg
+  from kanibako.settings.paths import load_system_config
+  from kanibako.utils.xdg import xdg
 
   settings_path = load_system_config(
     config_file,

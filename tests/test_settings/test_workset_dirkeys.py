@@ -295,14 +295,14 @@ class TestTheRouteItself:
     # ⚑ Detection walks ancestors that may not be worksets; ``host_xdg_map`` would
     # mkdir an XDG_RUNTIME_DIR fallback here.  The route must use the
     # side-effect-free map instead.
-    import kanibako.settings.paths as paths_mod
+    import kanibako.utils.xdg as xdg_mod
 
     early = _scope(tmp_path, {})  # built before the probe, so it watches the route alone
 
     def _boom(*args, **kwargs):
       raise AssertionError("the no-snapshot route touched XDG_RUNTIME_DIR")
 
-    monkeypatch.setattr(paths_mod, "_fallback_runtime_dir", _boom)
+    monkeypatch.setattr(xdg_mod, "_fallback_runtime_dir", _boom)
     monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
     assert resolve_workset_dir_key(
       Path("/ws"),

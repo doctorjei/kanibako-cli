@@ -552,7 +552,7 @@ def _check_vscode(config_home: Path | None = None) -> list[tuple[str, str, str]]
 
   # 3. dev.containers.dockerPath in the user settings.json.
   if config_home is None:
-    from kanibako.settings.paths import user_config_home
+    from kanibako.utils.xdg import user_config_home
 
     config_home = user_config_home()
   settings_path = config_home / "Code" / "User" / "settings.json"
@@ -849,7 +849,7 @@ def _diagnose_baseline(args: object, errors: _SettingsErrorLog) -> None:
   naming every check it broke.  The caller emits it.
   """
   from kanibako.runtime import baseline as baseline_mod
-  from kanibako.settings.paths import user_config_home
+  from kanibako.utils.xdg import user_config_home
   from kanibako.settings.settings_launch import load_merged_config
   from kanibako.runtime.container import ContainerRuntime
 

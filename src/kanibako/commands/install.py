@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import subprocess
 
-from kanibako.settings.paths import default_data_home
+from kanibako.utils.xdg import default_data_home
 
 
 def _install_completion() -> None:

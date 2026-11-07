@@ -23,11 +23,8 @@ from kanibako.settings.config import user_config_file, load_config
 from kanibako.runtime.container import ContainerRuntime
 from kanibako.errors import ContainerError, KanibakoError
 from kanibako.log import get_logger
-from kanibako.settings.paths import (
-  user_config_home,
-  load_std_paths,
-  resolve_box_target,
-)
+from kanibako.settings.paths import load_std_paths, resolve_box_target
+from kanibako.utils.xdg import user_config_home
 from kanibako.settings.config_io import (
   load_jsonc,
   overwrite_doc_text,

@@ -242,7 +242,7 @@ class ResolveCtx:
 Context for variable expansion.
 
 *xdg* maps XDG variable names (e.g. `"XDG_DATA_HOME"`) to host paths. Every host-side `ResolveCtx`
-gets its `xdg=` from one builder in `paths.py`, deliberately — an ad-hoc environment read here would
+gets its `xdg=` from one builder in `utils/xdg.py`, deliberately — an ad-hoc environment read here would
 give two contexts two answers.
 
 *term* answers `{$TERM}` and is **defaulted, not built per call site**, which is the one place this
@@ -250,9 +250,8 @@ class parts company with *xdg*: `TERM` is a single process-wide host fact with n
 variation and no map to assemble, so a builder threaded through every construction site would buy
 nothing and would leave exactly the PARTIAL per-context namespace the spec calls a bug. The
 default reads the host env once per context (`_host_term`); a caller that knows better overrides
-it. The fallback lives here rather than in `paths.py` beside `resolve_xdg` because this module may
-import NOTHING from `settings/` — the ban is what splits the two, not a second opinion about where
-host-env defaults belong.
+it. `_host_term` stays here because this module imports nothing from `settings/`;
+`utils.xdg` retains bootstrap and message dependencies.
 
 *colorterm* answers `{$COLORTERM}` and is defaulted the same way, for the same reasons — but its type
 is `str | None`, and the `None` is the whole point. `COLORTERM` is a PASSTHROUGH of a host signal

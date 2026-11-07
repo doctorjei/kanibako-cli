@@ -2472,7 +2472,8 @@ class TestPrimaryWorksetSpecConvergence:
     the launch's own workset-tier file derivation, then the committed
     ``build_launch_snapshot`` pipeline.
     """
-    from kanibako.settings.paths import host_xdg_map, resolve_project
+    from kanibako.settings.paths import resolve_project
+    from kanibako.utils.xdg import host_xdg_map
     from kanibako.settings.settings_launch import build_launch_snapshot
     from kanibako.settings.settings_resolve import ResolveCtx
 
@@ -2823,11 +2824,8 @@ class TestPrimaryWorksetMigration:
     DROPPED — never read into the cascade, never touched on disk.
     """
     from kanibako.settings.keystore import KeyStore
-    from kanibako.settings.paths import (
-      host_xdg_map,
-      resolve_project,
-      workset_settings_path,
-    )
+    from kanibako.settings.paths import resolve_project, workset_settings_path
+    from kanibako.utils.xdg import host_xdg_map
     from kanibako.settings.settings_launch import build_launch_snapshot
     from kanibako.settings.settings_resolve import ResolveCtx
 

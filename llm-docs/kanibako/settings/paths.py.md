@@ -1,8 +1,7 @@
 # Standard & Project Paths
-_XDG resolution, project hash computation, directory creation, and initialization_
+_Standard paths, project discovery, directory creation, and initialization_
 
-This module owns the LAYOUT tier: where a box's state lives on the HOST. It resolves the XDG base
-directories, the two-layer path foundation (Layer-1 `config.*` bootstrap keys, Layer-2 `system.*`
+This module owns the LAYOUT tier: where a box's state lives on the HOST. It resolves the two-layer path foundation (Layer-1 `config.*` bootstrap keys, Layer-2 `system.*`
 path settings), detects which of the three box MODES a directory is in, and resolves — and
 optionally materializes — the per-box directory set for each mode.
 
@@ -167,13 +166,8 @@ primary vault dirs from the PRIMARY workset's `workset.*` keys.
 
 ### Module-level singletons
 
-`logger` is the module logger (`get_logger("paths")`); the XDG fallback warnings and the `_flag_*`
-advisories go through it (the advisories use `get_logger(__name__)`).
-
-### `XDG_SPEC_DEFAULTS` (imported from `settings/bootstrap`)
-
-`spec_default_xdg_map` loops over it; `host_xdg_map` adds `XDG_RUNTIME_DIR`, which has no spec
-default, through `resolve_xdg(XDG_RUNTIME_DIR, None)`. The table itself is in `bootstrap.py.md`.
+`logger` uses `get_logger("paths")`. XDG helpers live in
+[`utils/xdg.py`](../utils/xdg.py.md), including the runtime fallback and map builders.
 
 ## Functions
 
@@ -347,80 +341,6 @@ read, floored with `config.box_scalar_defaults_floor()`, then merged without the
 So `resolve_project` does not enforce the closed keyspace; the launch does.
 `tests/test_settings/test_config.py::TestTheTwoBoxScalarResolvesAgree` pins its value equal to
 `settings_launch.load_merged_config`'s at every tier.
-
-```python
-def resolve_xdg(var_name: str, spec_default_suffix: str | None) -> Path
-```
-Resolve an XDG base directory per the freedesktop Base Directory spec.
-
-The environment variable *var_name* is honored **iff it is set AND absolute**; a relative value is
-INVALID per the spec and is ignored (we fall back to the default). When unset/invalid:
-
-* For the dirs that have a spec default (*spec_default_suffix* is the suffix under `$HOME`, e.g.
-  `".local/share"`), return `$HOME/<suffix>`.
-* For `XDG_RUNTIME_DIR` (*spec_default_suffix* is `None`) there is NO spec default: fall back to a
-  replacement dir with similar capabilities and **warn** — prefer `/run/user/<uid>/kanibako` when it
-  is usable (writable, owned by us), else a `0700` temp dir.
-
-An absolute env value is returned as-is (resolved); the runtime-dir fallback is the only case that
-creates a directory.
-
-```python
-_runtime_fallback_cache: dict[tuple[str, str], Path]
-```
-Process-lifetime cache of the chosen runtime-dir fallback. Without it, a temp-dir fallback would
-leak a NEW dir (and re-warn) on every `resolve_system_paths` call within a single process. Keyed by
-`(var_name, env value)` so a test/process that later SETS the var is unaffected.
-
-```python
-def _fallback_runtime_dir(var_name: str) -> Path
-```
-Choose a replacement for an unset/invalid `XDG_RUNTIME_DIR` and warn.
-
-Prefers `/run/user/<uid>/kanibako` when `/run/user/<uid>` exists and is a writable directory owned
-by us; otherwise a `0700` per-user temp dir. Never substitutes silently — warns on first selection
-(cached per process so repeated calls don't leak temp dirs or re-warn).
-
-```python
-def _runtime_base_usable(
-    base: Path, *, follow_symlinks: bool = True, require_private: bool = False,
-) -> bool
-```
-True iff *base* is a directory we own and can write to.
-
-Mirrors the freedesktop requirement that the runtime dir be owned by the user and writable.
-Best-effort: any OS error → not usable. ⚑ The owner test is spelled ONCE, here, for both callers.
-*follow_symlinks* and *require_private* default to what the `/run/user` base gets (`stat`, which
-follows a link, and no mode test). The stable temp dir — a PREDICTABLE name in a world-writable
-root — passes both: `lstat`, so a planted symlink is refused as a symlink, and a mode test, so a
-group- or other-accessible directory is refused.
-
-```python
-def xdg(env_var: str, default_suffix: str) -> Path
-```
-Resolve an XDG directory from environment or default under `$HOME`.
-
-Thin wrapper over `resolve_xdg`: honors the env var only when set AND absolute (a relative value is
-ignored per the spec), else returns `$HOME/<default_suffix>`. Used by the
-many call sites that just need a spec-backed XDG base dir.
-
-```python
-def host_xdg_map(data_home: Path | None = None) -> dict[str, str]
-```
-Build the canonical HOST-side `{$XDG_*}` map for a `ResolveCtx`.
-
-THE single builder for the `xdg=` argument of every host-side
-`kanibako.settings.settings_resolve.ResolveCtx` ([Jei:2026-07-02]: XDG vars must have
-fallbacks). A hand-rolled partial map would make a stored value like `{$XDG_CACHE_HOME}/kanibako` (the
-setup-materialized `system.cache`) raise `Variable {$XDG_CACHE_HOME} is not set in this context` at
-expand time — the resolver reads ONLY this map, never the environment, so a missing key is
-unrecoverable at the call site.
-
-Every var in `XDG_SPEC_DEFAULTS` resolves via the hardened `resolve_xdg` (env honored iff set AND
-absolute; unset/empty/relative → the XDG-spec default under `$HOME`), plus `XDG_RUNTIME_DIR` (no
-spec default: fallback + warn). *data_home* is an optional already-resolved `$XDG_DATA_HOME`
-anchoring the default tree (the flat foundation/system resolver passes it); when None it resolves
-from the environment like the rest.
 
 ```python
 def resolve_config_paths(

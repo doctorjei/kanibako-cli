@@ -41,7 +41,7 @@ from kanibako.agent_ref import (
 )
 from kanibako.errors import ConfigError
 from kanibako.settings.config_io import read_doc_text_capped
-from kanibako.settings.paths import user_config_home
+from kanibako.utils.xdg import user_config_home
 from kanibako.targets.base import (
   PERSONA_DEFAULT_MODEL,
   _PersonaDefaultModel,
@@ -83,7 +83,7 @@ def persona_store_root() -> Path:
   """The persona-grata discovery root: ``$XDG_CONFIG_HOME/personas/``.
 
   FIXED by design (DESIGN §5a — not configurable); the single builder for the
-  store path, over the internal :func:`kanibako.settings.paths.user_config_home`
+  store path, over the internal :func:`kanibako.utils.xdg.user_config_home`
   resolver (keyspec §1A declares the finished config file,
   ``meta.runtime.user.config``, and no ``config_home`` key, so directory users
   route through here, not through a key).

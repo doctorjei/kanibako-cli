@@ -211,12 +211,12 @@ scalar leaf that merely ends in a category token must not be handed a dest-keyed
 
 
 ```_host_xdg_map(data_home: Path | None = None) -> dict[str, str]```
-Module-PRIVATE deferred-import delegate to `kanibako.settings.paths.host_xdg_map`.
+Module-PRIVATE deferred-import delegate to `kanibako.utils.xdg.host_xdg_map`.
 
 Exists so the ONE canonical XDG-map builder is reachable as a `config_interface` attribute
 (patchable, single-source) WITHOUT a module-load import of `paths` (which would cycle:
 `config_interface` ↔ `paths`). Underscored so it is NOT a second PUBLIC import surface for the
-builder (Editor NIT): the one public builder stays `paths.host_xdg_map`; this is only the
+builder (Editor NIT): the one public builder stays `utils.xdg.host_xdg_map`; this is only the
 deferred-import hook `_set_time_ctx` calls. There is no second hand-rolled XDG map (spec §1 XDG
 clause + L2 §3).
 
@@ -234,7 +234,7 @@ here — they are DEFERRED (S17) and the probe only resolves the `host_src` half
 *config* is the Layer-1 `config.*` foundation (resolved bootstrap paths) so an `{config.*}`
 `host_src` ref routes to the foundation (JC-2), NOT the snapshot.
 
-The `{$XDG_*}` map is built by the ONE canonical builder `paths.host_xdg_map` (spec §1 XDG clause +
+The `{$XDG_*}` map is built by the ONE canonical builder `utils.xdg.host_xdg_map` (spec §1 XDG clause +
 L2 §3 single-source-of-truth: a hand-rolled per-context map is a bug), reached through the
 module-private `_host_xdg_map` deferred-import hook so it stays a single source.
 

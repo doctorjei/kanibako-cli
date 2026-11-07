@@ -13,7 +13,8 @@ from kanibako.settings.config import (
   read_system_agent,
   read_setup_completed,
 )
-from kanibako.settings.paths import load_std_paths, xdg
+from kanibako.settings.paths import load_std_paths
+from kanibako.utils.xdg import xdg
 
 
 class _FakeTarget:

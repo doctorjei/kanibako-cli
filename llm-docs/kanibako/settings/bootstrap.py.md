@@ -37,12 +37,12 @@ Spec defaults for the XDG base dirs that HAVE one.
 
 Spec §1: *"use the env var iff set and absolute (a relative value is invalid → ignored → use
 default), else the spec default"*. The suffixes are stored HOME-RELATIVE, with no leading `~` or
-`/`, because `paths.resolve_xdg` joins them onto `Path.home()`.
+`/`, because `utils.xdg.resolve_xdg` joins them onto `Path.home()`.
 
 ⚑⚑ **`XDG_RUNTIME_DIR` is deliberately ABSENT, and adding it would break spec conformance
-SILENTLY.** The freedesktop spec defines no default for it, so `paths.resolve_xdg` takes
+SILENTLY.** The freedesktop spec defines no default for it, so `utils.xdg.resolve_xdg` takes
 `spec_default_suffix=None` for that one variable and routes to `_fallback_runtime_dir`, which warns.
-A row added here would be picked up by `paths.spec_default_xdg_map`'s loop, resolve against an
+A row added here would be picked up by `utils.xdg.spec_default_xdg_map`'s loop, resolve against an
 invented default, and then be overwritten in `host_xdg_map` by the explicit
 `resolve_xdg(XDG_RUNTIME_DIR, None)` that follows — so the warning would still run and nothing would
 look broken, while the invented default stayed live for every other reader of the table.

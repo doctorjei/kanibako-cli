@@ -468,11 +468,8 @@ class TestRunCreate:
     """`box create --name X` registers the project under name X,
     not the directory basename."""
     from kanibako.settings.config import config_file_path, load_config
-    from kanibako.settings.paths import (
-      load_primary_boxes,
-      load_std_paths,
-      xdg,
-    )
+    from kanibako.settings.paths import load_primary_boxes, load_std_paths
+    from kanibako.utils.xdg import xdg
 
     parser = build_parser()
     args = parser.parse_args(["box", "create", str(project_dir), "--name", "custom_name"])

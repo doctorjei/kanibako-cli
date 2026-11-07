@@ -103,12 +103,12 @@ from kanibako.settings.paths import (
   BoxMode,
   ProjectError,
   box_workset_settings_paths,
-  host_xdg_map,
   load_std_paths,
   project_cure_ref,
   system_path_floor,
   workset_settings_path,
 )
+from kanibako.utils.xdg import host_xdg_map
 from kanibako.settings.config_keys import is_path_valued_key, path_key_anchor
 from kanibako.settings.settings_assemble import (
   ReadPurpose,

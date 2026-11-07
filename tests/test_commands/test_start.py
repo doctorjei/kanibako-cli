@@ -12056,7 +12056,8 @@ class TestRetiredBehaviorRefusalWiring:
   def _call(self, tmp_path, *, box_doc=None, agent_doc=None, system_doc=None):
     from kanibako.settings.config import BOX_META_FILE
     from kanibako.settings.config_io import dump_doc
-    from kanibako.settings.paths import STANDALONE_META_DIR, host_xdg_map
+    from kanibako.settings.paths import STANDALONE_META_DIR
+    from kanibako.utils.xdg import host_xdg_map
     from kanibako.settings.settings_launch import build_launch_snapshot
     from kanibako.settings.settings_resolve import ResolveCtx
 

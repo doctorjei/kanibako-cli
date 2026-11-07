@@ -80,7 +80,7 @@ def _launch_auth_source(std, *, agent_name="claude", mode="primary"):
   """The LAUNCH's credential-sharing decision, off the REAL system settings
   file — the same ``build_launch_snapshot`` → ``resolve_auth_source`` read
   ``start._resolve_box_auth_source`` performs (system_path=std.settings)."""
-  from kanibako.settings.paths import host_xdg_map
+  from kanibako.utils.xdg import host_xdg_map
   from kanibako.settings.settings_launch import (
     auth_chain_floor,
     build_launch_snapshot,

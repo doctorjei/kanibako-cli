@@ -3360,7 +3360,8 @@ class TestCheckPersonaStoreForCreate:
   def _agents_root(self):
     """⚑ The store ROOT production resolves — never one the test composes."""
     from kanibako.settings.config import config_file_path, load_config
-    from kanibako.settings.paths import load_std_paths, user_config_home
+    from kanibako.settings.paths import load_std_paths
+    from kanibako.utils.xdg import user_config_home
 
     return load_std_paths(
       load_config(config_file_path(user_config_home())),

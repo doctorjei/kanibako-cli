@@ -157,7 +157,7 @@ def config_file_path(config_home: Path) -> Path:
 def user_config_file() -> Path:
   """The value of ``meta.runtime.user.config`` — callers READ it; they do not compose it
   (keyspec §1A "never composed")."""
-  from kanibako.settings.paths import user_config_home
+  from kanibako.utils.xdg import user_config_home
 
   return config_file_path(user_config_home())
 
@@ -415,7 +415,8 @@ def _typed_box_scalar(defaults: KanibakoConfig, field_name: str, value: object) 
 
 def _system_settings_path(global_path: Path) -> Path | None:
   """``{config.settings}`` off the Layer-1 file — the SYSTEM tier, or ``None`` if absent."""
-  from kanibako.settings.paths import default_data_home, load_system_config
+  from kanibako.settings.paths import load_system_config
+  from kanibako.utils.xdg import default_data_home
 
   path = load_system_config(
     global_path,

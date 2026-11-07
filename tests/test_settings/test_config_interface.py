@@ -5260,14 +5260,14 @@ class TestSiblingDownwardKeyGetAtNoun:
 
 class TestSetTimeCtxUsesHostXdgMap:
   """Dedup — ``_set_time_ctx`` must route its ``$XDG_*`` map through the
-  canonical :func:`kanibako.settings.paths.host_xdg_map` builder (spec §1 XDG clause +
+  canonical :func:`kanibako.utils.xdg.host_xdg_map` builder (spec §1 XDG clause +
   L2 §3 single-source-of-truth: ONE builder supplies every host-side context),
   not a hand-rolled 5-var dict.  (The builder's own resolution coverage lives
   in test_system_paths.py ``TestHostXdgMap`` — this only proves the wiring.)"""
 
   def test_set_time_ctx_xdg_equals_host_xdg_map(self):
     from kanibako.settings.config_interface import _set_time_ctx
-    from kanibako.settings.paths import host_xdg_map
+    from kanibako.utils.xdg import host_xdg_map
 
     ctx = _set_time_ctx()
     assert ctx.xdg == host_xdg_map()

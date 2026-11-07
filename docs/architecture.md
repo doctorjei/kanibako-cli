@@ -26,7 +26,7 @@ aids, not the authority.
 | `settings/config_io.py` | Centralized YAML load/dump for every kanibako config document, plus the document mutators the verbs write through |
 | `errors.py` | Kanibako exception hierarchy (incl. `AgentResolutionError` / `AgentUnsetError` / `AgentNoDefaultError` / `AgentNotInstalledError`, surfaced verbatim by the top-level handler) |
 | `install_method.py` | Detect kanibako's own install method (pipx/uv/pip) to tailor the "install a plugin" command — in `AgentNotInstalledError`, and in `setup`'s Step 2 when no agent plugin is installed at all |
-| `settings/paths.py` | XDG resolution, mode detection (primary/named/standalone), box/workset init |
+| `settings/paths.py` · `utils/xdg.py` | Box/workset paths/init · XDG resolution/fallback |
 | `runtime/container.py` | Box runtime (detect, pull, build, run, stop, detach) |
 | `snapshots.py` | Vault snapshot engine |
 | `project/workset.py` | Workset data model and persistence (members from `<root>/registry.yaml`'s `boxes:`; the NAME comes from the global registry) |

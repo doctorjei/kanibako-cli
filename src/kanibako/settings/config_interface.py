@@ -358,8 +358,8 @@ def _yaml_skeleton(target: str) -> list[str]:
 
 
 def _host_xdg_map(data_home: "Path | None" = None) -> dict[str, str]:
-  """Module-PRIVATE deferred-import delegate to :func:`kanibako.settings.paths.host_xdg_map`."""
-  from kanibako.settings.paths import host_xdg_map
+  """Module-PRIVATE deferred-import delegate to :func:`kanibako.utils.xdg.host_xdg_map`."""
+  from kanibako.utils.xdg import host_xdg_map
 
   return host_xdg_map(data_home)
 
@@ -389,7 +389,8 @@ def _path_tier_split() -> "tuple[dict[str, str], dict[str, str]]":
   # ⚑ THE FAILURE ARM IS THE CALLER'S, DELIBERATELY — do not add a ``try`` here: the two
   # callers disagree about what a failure means and both are right.
   from kanibako.settings.config import user_config_file
-  from kanibako.settings.paths import default_data_home, load_system_config
+  from kanibako.settings.paths import load_system_config
+  from kanibako.utils.xdg import default_data_home
 
   floor: dict[str, str] = {}
   config_foundation: dict[str, str] = {}

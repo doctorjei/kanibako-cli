@@ -591,7 +591,8 @@ def test_settings_refusal_warns_and_still_launches(
   """
   from pathlib import Path
 
-  from kanibako.settings.paths import load_system_config, xdg
+  from kanibako.settings.paths import load_system_config
+  from kanibako.utils.xdg import xdg
 
   settings_path = load_system_config(
     config_file,

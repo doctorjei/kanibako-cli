@@ -44,7 +44,7 @@ class TestSetupRuntime:
         "kanibako.targets.discover_targets",
         return_value={},
       ),
-      patch("kanibako.settings.paths.xdg", return_value=tmp_path),
+      patch("kanibako.utils.xdg.resolve_xdg", return_value=tmp_path),
       _templates_current(),
     ):
       rc = run_setup(setup_args)
@@ -101,7 +101,7 @@ class TestSetupAgents:
         "kanibako.commands.diagnose._check_image",
         return_value=("ok", "test:latest (available locally)"),
       ),
-      patch("kanibako.settings.paths.xdg", return_value=tmp_path),
+      patch("kanibako.utils.xdg.resolve_xdg", return_value=tmp_path),
       _templates_current(),
     ):
       rc = run_setup(setup_args)
@@ -122,7 +122,7 @@ class TestSetupAgents:
         "kanibako.targets.discover_targets",
         return_value={},
       ),
-      patch("kanibako.settings.paths.xdg", return_value=tmp_path),
+      patch("kanibako.utils.xdg.resolve_xdg", return_value=tmp_path),
       _templates_current(),
     ):
       rc = run_setup(setup_args)
@@ -155,7 +155,7 @@ class TestSetupAgents:
         "kanibako.commands.diagnose._check_image",
         return_value=("--", "not found"),
       ),
-      patch("kanibako.settings.paths.xdg", return_value=tmp_path),
+      patch("kanibako.utils.xdg.resolve_xdg", return_value=tmp_path),
       _templates_current(),
     ):
       rc = run_setup(setup_args)
@@ -204,7 +204,7 @@ class TestSetupParser:
       # this stays a test OF the init skip: unstubbed, the rc would follow
       # the developer's real template store and the marker would be written
       # into the real config file.
-      patch("kanibako.settings.paths.xdg", return_value=tmp_path),
+      patch("kanibako.utils.xdg.resolve_xdg", return_value=tmp_path),
       _templates_current(),
       patch.object(
         type(_ensure_initialized),
@@ -251,7 +251,8 @@ class TestSettingsRefusalStopsSetup:
     """Put an undeclared `box.frobnicate` in the system-tier settings file."""
     from pathlib import Path
 
-    from kanibako.settings.paths import load_system_config, xdg
+    from kanibako.settings.paths import load_system_config
+    from kanibako.utils.xdg import xdg
 
     settings_path = load_system_config(
       config_file,

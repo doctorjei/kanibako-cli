@@ -48,7 +48,7 @@ def helpers_env(tmp_path, monkeypatch):
   # ``system.helpers.*`` tier from ``config.system_settings_path()``, which resolves
   # ``{config.settings}`` off ``$XDG_CONFIG_HOME`` (the Layer-1 file) and
   # ``$XDG_DATA_HOME`` (the store the settings file sits in), and
-  # ``settings.paths.resolve_xdg`` honors the ENV VAR OVER ``Path.home()``: it falls
+  # ``utils.xdg.resolve_xdg`` honors the ENV VAR OVER ``Path.home()``: it falls
   # back to ``Path.home() / …`` only when the var is UNSET or set to a RELATIVE value
   # (which it warns about and ignores, per the XDG spec).  Unset — this box, and CI —
   # those fallbacks do land in the fake home, so dropping either line still passes here.
@@ -242,7 +242,7 @@ class TestRunSpawn:
     file would keep working, which is the breach silently not closing.
     """
     from kanibako.settings.bootstrap import KANIBAKO_PATH
-    from kanibako.settings.paths import xdg
+    from kanibako.utils.xdg import xdg
 
     retired = xdg("XDG_CONFIG_HOME", ".config") / KANIBAKO_PATH / "spawn.yaml"
     retired.parent.mkdir(parents=True, exist_ok=True)
@@ -265,7 +265,7 @@ class TestRunSpawn:
     by an accident of which files were read.
     """
     from kanibako.errors import ConfigError
-    from kanibako.settings.paths import xdg
+    from kanibako.utils.xdg import xdg
 
     config_home = xdg("XDG_CONFIG_HOME", ".config")
     (config_home / CONFIG_FILENAME).write_text("spawn:\n  depth: 0\n")

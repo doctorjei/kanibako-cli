@@ -32,15 +32,14 @@ from kanibako.settings.config import STANDARD_BIND_SOURCE_KEYS, load_config
 from kanibako.settings.paths import (
   CONFIG_PATH_DEFAULTS,
   SYSTEM_PATH_DEFAULTS,
-  host_xdg_map,
   load_std_paths,
   load_system_config,
   resolve_config_paths,
   resolve_data_path,
   resolve_state_path,
   resolve_system_paths,
-  resolve_xdg,
 )
+from kanibako.utils.xdg import host_xdg_map, resolve_xdg
 from kanibako.settings.settings_resolve import SettingsError
 
 from tests.support.filenames import CONFIG_FILENAME, SITE_CONFIG_FILENAME
@@ -512,11 +511,11 @@ class TestResolveXdg:
 
   def test_runtime_dir_unset_falls_back_and_warns(self, monkeypatch, caplog):
     """No spec default → must fall back to a usable 0700 dir AND warn."""
-    import kanibako.settings.paths as paths_mod
+    import kanibako.utils.xdg as xdg_mod
 
     monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
     # Clear the process cache so this test sees a fresh selection+warn.
-    monkeypatch.setattr(paths_mod, "_runtime_fallback_cache", {})
+    monkeypatch.setattr(xdg_mod, "_runtime_fallback_cache", {})
     with caplog.at_level(logging.WARNING, logger="kanibako.paths"):
       result = resolve_xdg("XDG_RUNTIME_DIR", None)
     # Fallback dir is real, owned, and 0700.
@@ -530,10 +529,10 @@ class TestResolveXdg:
     )
 
   def test_runtime_dir_relative_falls_back_and_warns(self, monkeypatch, caplog):
-    import kanibako.settings.paths as paths_mod
+    import kanibako.utils.xdg as xdg_mod
 
     monkeypatch.setenv("XDG_RUNTIME_DIR", "relative/run")
-    monkeypatch.setattr(paths_mod, "_runtime_fallback_cache", {})
+    monkeypatch.setattr(xdg_mod, "_runtime_fallback_cache", {})
     with caplog.at_level(logging.WARNING, logger="kanibako.paths"):
       result = resolve_xdg("XDG_RUNTIME_DIR", None)
     assert result.is_dir()
@@ -544,10 +543,10 @@ class TestResolveXdg:
 
   def test_runtime_dir_fallback_cached_within_process(self, monkeypatch):
     """Repeated resolution returns the SAME fallback dir (no temp leak)."""
-    import kanibako.settings.paths as paths_mod
+    import kanibako.utils.xdg as xdg_mod
 
     monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
-    monkeypatch.setattr(paths_mod, "_runtime_fallback_cache", {})
+    monkeypatch.setattr(xdg_mod, "_runtime_fallback_cache", {})
     first = resolve_xdg("XDG_RUNTIME_DIR", None)
     second = resolve_xdg("XDG_RUNTIME_DIR", None)
     assert first == second
@@ -574,18 +573,18 @@ class TestRuntimeDirFallbackReusesOneStableDir:
   def _force_the_temp_branch(self, tmp_path, monkeypatch) -> Path:
     """Unset ``XDG_RUNTIME_DIR`` and pin BOTH the temp root and the ``/run/user``
     base, then clear the process cache. Returns the pinned temp root."""
-    import kanibako.settings.paths as paths_mod
+    import kanibako.utils.xdg as xdg_mod
 
     monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
     temp_root = tmp_path / "temp"
     temp_root.mkdir()
     monkeypatch.setattr(tempfile, "tempdir", str(temp_root))
     monkeypatch.setattr(
-      paths_mod,
+      xdg_mod,
       "RUN_USER_UID_PATH",
       str(tmp_path / "absent-run-user" / "%d"),
     )
-    monkeypatch.setattr(paths_mod, "_runtime_fallback_cache", {})
+    monkeypatch.setattr(xdg_mod, "_runtime_fallback_cache", {})
     return temp_root
 
   def _assert_fresh_private_own_dir(self, result: Path, temp_root: Path) -> None:
@@ -607,9 +606,9 @@ class TestRuntimeDirFallbackReusesOneStableDir:
 
     first = resolve_xdg("XDG_RUNTIME_DIR", None)
     # A new process: the process-lifetime cache is empty again.
-    import kanibako.settings.paths as paths_mod
+    import kanibako.utils.xdg as xdg_mod
 
-    monkeypatch.setattr(paths_mod, "_runtime_fallback_cache", {})
+    monkeypatch.setattr(xdg_mod, "_runtime_fallback_cache", {})
     second = resolve_xdg("XDG_RUNTIME_DIR", None)
 
     assert first == second
@@ -621,11 +620,11 @@ class TestRuntimeDirFallbackReusesOneStableDir:
     """The reuse must not be a license to relax the mode: the second process adopts
     the existing dir and leaves it 0700."""
     temp_root = self._force_the_temp_branch(tmp_path, monkeypatch)
-    import kanibako.settings.paths as paths_mod
+    import kanibako.utils.xdg as xdg_mod
 
     first = resolve_xdg("XDG_RUNTIME_DIR", None)
     assert (first.stat().st_mode & 0o777) == 0o700
-    monkeypatch.setattr(paths_mod, "_runtime_fallback_cache", {})
+    monkeypatch.setattr(xdg_mod, "_runtime_fallback_cache", {})
     second = resolve_xdg("XDG_RUNTIME_DIR", None)
     assert second == first
     self._assert_fresh_private_own_dir(second, temp_root)
@@ -699,10 +698,10 @@ class TestRuntimeDirFallbackReusesOneStableDir:
   def test_stable_prefix_is_spelled_once(self):
     """P10: the ``kanibako-runtime-`` prefix lives in exactly one module constant,
     shared by the reused name and the ``mkdtemp`` arm."""
-    import kanibako.settings.paths as paths_mod
+    import kanibako.utils.xdg as xdg_mod
 
-    assert paths_mod._RUNTIME_TMP_PREFIX == "kanibako-runtime-"
-    source = Path(paths_mod.__file__).read_text()
+    assert xdg_mod._RUNTIME_TMP_PREFIX == "kanibako-runtime-"
+    source = Path(xdg_mod.__file__).read_text()
     # One declaration, and no second literal anywhere in the module.
     assert source.count('"kanibako-runtime-"') == 1
     assert 'mkdtemp(prefix="kanibako-runtime-")' not in source
@@ -720,16 +719,16 @@ class TestRuntimeBaseUsableTrustSeam:
   """
 
   def test_rejects_a_foreign_owner(self, tmp_path, monkeypatch):
-    import kanibako.settings.paths as paths_mod
+    import kanibako.utils.xdg as xdg_mod
 
     not_ours = tmp_path / "not-ours"
     not_ours.mkdir(mode=0o700)
     real_uid = not_ours.stat().st_uid
 
     monkeypatch.setattr(os, "getuid", lambda: real_uid + 1)
-    assert paths_mod._runtime_base_usable(not_ours) is False
+    assert xdg_mod._runtime_base_usable(not_ours) is False
     assert (
-      paths_mod._runtime_base_usable(
+      xdg_mod._runtime_base_usable(
         not_ours,
         follow_symlinks=False,
         require_private=True,
@@ -741,7 +740,7 @@ class TestRuntimeBaseUsableTrustSeam:
     # assertions above are about the OWNER and not about a broken path or a mode.
     monkeypatch.setattr(os, "getuid", lambda: real_uid)
     assert (
-      paths_mod._runtime_base_usable(
+      xdg_mod._runtime_base_usable(
         not_ours,
         follow_symlinks=False,
         require_private=True,
@@ -753,21 +752,21 @@ class TestRuntimeBaseUsableTrustSeam:
     """The ``/run/user`` call site passes NEITHER keyword, so it must keep both of
     its old answers: ``stat`` follows a symlink, and no mode test applies. A silent
     tightening there would be a regression on that path, not a cleanup."""
-    import kanibako.settings.paths as paths_mod
+    import kanibako.utils.xdg as xdg_mod
 
     target = tmp_path / "target"
     target.mkdir(mode=0o700)
     link = tmp_path / "link"
     link.symlink_to(target)
     # Default: the link reads as its target, and a 0755 dir is acceptable.
-    assert paths_mod._runtime_base_usable(link) is True
+    assert xdg_mod._runtime_base_usable(link) is True
     open_dir = tmp_path / "open"
     open_dir.mkdir(mode=0o755)
-    assert paths_mod._runtime_base_usable(open_dir) is True
+    assert xdg_mod._runtime_base_usable(open_dir) is True
 
     # The new branch's spelling refuses both — which is why it passes the keywords.
     assert (
-      paths_mod._runtime_base_usable(
+      xdg_mod._runtime_base_usable(
         link,
         follow_symlinks=False,
         require_private=True,
@@ -775,7 +774,7 @@ class TestRuntimeBaseUsableTrustSeam:
       is False
     )
     assert (
-      paths_mod._runtime_base_usable(
+      xdg_mod._runtime_base_usable(
         open_dir,
         follow_symlinks=False,
         require_private=True,
@@ -786,14 +785,14 @@ class TestRuntimeBaseUsableTrustSeam:
   def test_missing_path_and_regular_file_are_not_usable(self, tmp_path):
     """The pre-existing answers, pinned: an absent path and a regular file are both
     refused, and neither raises."""
-    import kanibako.settings.paths as paths_mod
+    import kanibako.utils.xdg as xdg_mod
 
-    assert paths_mod._runtime_base_usable(tmp_path / "absent") is False
+    assert xdg_mod._runtime_base_usable(tmp_path / "absent") is False
     regular = tmp_path / "file"
     regular.write_text("x")
-    assert paths_mod._runtime_base_usable(regular) is False
+    assert xdg_mod._runtime_base_usable(regular) is False
     assert (
-      paths_mod._runtime_base_usable(
+      xdg_mod._runtime_base_usable(
         regular,
         follow_symlinks=False,
         require_private=True,
@@ -1286,13 +1285,13 @@ class TestResolveStatePath:
     """Mutation proof, and it bites HARDER than on the Layer-1 resolver: the Layer-2
     table holds ``system.runtime``, so a resolve routed through ``host_xdg_map`` (which
     resolves ``XDG_RUNTIME_DIR`` and can mkdir a fallback dir when unset) would fire."""
-    import kanibako.settings.paths as paths_mod
+    import kanibako.utils.xdg as xdg_mod
 
     self._isolate(monkeypatch, tmp_path)
     monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
-    monkeypatch.setattr(paths_mod, "_runtime_fallback_cache", {})
+    monkeypatch.setattr(xdg_mod, "_runtime_fallback_cache", {})
     spy = MagicMock()
-    monkeypatch.setattr(paths_mod, "_fallback_runtime_dir", spy)
+    monkeypatch.setattr(xdg_mod, "_fallback_runtime_dir", spy)
 
     resolve_state_path(config_home=tmp_path / "cfg", data_home=tmp_path / "data")
     spy.assert_not_called()

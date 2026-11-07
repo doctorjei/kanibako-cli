@@ -1453,7 +1453,7 @@ class TestSetupNudge:
     cf = tmp_path / CONFIG_FILENAME  # does not exist → absent marker
     with (
       patch("kanibako.settings.config.config_file_path", return_value=cf),
-      patch("kanibako.settings.paths.xdg", return_value=tmp_path),
+      patch("kanibako.utils.xdg.resolve_xdg", return_value=tmp_path),
     ):
       result = _setup_nudge(self._ns("start"))
     assert result is None  # non-blocking: no raise, no exit
@@ -1474,7 +1474,7 @@ class TestSetupNudge:
     cf = tmp_path / CONFIG_FILENAME  # absent marker
     with (
       patch("kanibako.settings.config.config_file_path", return_value=cf),
-      patch("kanibako.settings.paths.xdg", return_value=tmp_path),
+      patch("kanibako.utils.xdg.resolve_xdg", return_value=tmp_path),
     ):
       _setup_nudge(self._ns("start"))
     captured = capsys.readouterr()
@@ -1497,7 +1497,7 @@ class TestSetupNudge:
     write_system_value(_marker_file(tmp_path), "setup_completed", "1.6.0")
     with (
       patch("kanibako.settings.config.config_file_path", return_value=cf),
-      patch("kanibako.settings.paths.xdg", return_value=tmp_path),
+      patch("kanibako.utils.xdg.resolve_xdg", return_value=tmp_path),
       patch.object(kanibako, "__version__", "1.8.0"),
       patch.object(kanibako, "SETUP_BCV", "1.5.0"),
       patch.object(kanibako, "SETUP_FCV", "1.7.0"),
@@ -1525,7 +1525,7 @@ class TestSetupNudge:
     )
     with (
       patch("kanibako.settings.config.config_file_path", return_value=cf),
-      patch("kanibako.settings.paths.xdg", return_value=tmp_path),
+      patch("kanibako.utils.xdg.resolve_xdg", return_value=tmp_path),
     ):
       _setup_nudge(self._ns("start"))
     assert capsys.readouterr().err == ""
@@ -1538,7 +1538,7 @@ class TestSetupNudge:
     cf = tmp_path / CONFIG_FILENAME
     with (
       patch("kanibako.settings.config.config_file_path", return_value=cf),
-      patch("kanibako.settings.paths.xdg", return_value=tmp_path),
+      patch("kanibako.utils.xdg.resolve_xdg", return_value=tmp_path),
     ):
       _setup_nudge(self._ns("agent", agent_command="reauth"))
     assert "kanibako isn't set up yet" in capsys.readouterr().err
@@ -1552,7 +1552,7 @@ class TestSetupNudge:
     cf = tmp_path / CONFIG_FILENAME  # absent marker
     with (
       patch("kanibako.settings.config.config_file_path", return_value=cf),
-      patch("kanibako.settings.paths.xdg", return_value=tmp_path),
+      patch("kanibako.utils.xdg.resolve_xdg", return_value=tmp_path),
     ):
       _setup_nudge(self._ns("shell"))
     assert capsys.readouterr().err == ""
@@ -1565,7 +1565,7 @@ class TestSetupNudge:
     cf = tmp_path / CONFIG_FILENAME
     with (
       patch("kanibako.settings.config.config_file_path", return_value=cf),
-      patch("kanibako.settings.paths.xdg", return_value=tmp_path),
+      patch("kanibako.utils.xdg.resolve_xdg", return_value=tmp_path),
     ):
       _setup_nudge(self._ns("setup"))
     assert capsys.readouterr().err == ""
@@ -1579,7 +1579,7 @@ class TestSetupNudge:
     cf = tmp_path / CONFIG_FILENAME
     with (
       patch("kanibako.settings.config.config_file_path", return_value=cf),
-      patch("kanibako.settings.paths.xdg", return_value=tmp_path),
+      patch("kanibako.utils.xdg.resolve_xdg", return_value=tmp_path),
     ):
       _setup_nudge(self._ns("list"))
       _setup_nudge(self._ns("agent", agent_command="list"))
@@ -1615,7 +1615,7 @@ class TestSetupNudge:
     )  # < BCV
     with (
       patch("kanibako.settings.config.config_file_path", return_value=cf),
-      patch("kanibako.settings.paths.xdg", return_value=tmp_path),
+      patch("kanibako.utils.xdg.resolve_xdg", return_value=tmp_path),
     ):
       with pytest.raises(KanibakoError) as exc:
         _setup_nudge(self._ns("start"))
@@ -1643,7 +1643,7 @@ class TestSetupNudge:
     )  # > build
     with (
       patch("kanibako.settings.config.config_file_path", return_value=cf),
-      patch("kanibako.settings.paths.xdg", return_value=tmp_path),
+      patch("kanibako.utils.xdg.resolve_xdg", return_value=tmp_path),
     ):
       with pytest.raises(KanibakoError) as exc:
         _setup_nudge(self._ns("start"))
@@ -1658,7 +1658,7 @@ class TestSetupNudge:
     cf = tmp_path / CONFIG_FILENAME
     with (
       patch("kanibako.settings.config.config_file_path", return_value=cf),
-      patch("kanibako.settings.paths.xdg", return_value=tmp_path),
+      patch("kanibako.utils.xdg.resolve_xdg", return_value=tmp_path),
       patch(
         "kanibako.settings.config.setup_compat_gate",
         side_effect=RuntimeError("boom"),
@@ -1690,7 +1690,7 @@ class TestSetupNudge:
     )
     with (
       patch("kanibako.settings.config.config_file_path", return_value=cf),
-      patch("kanibako.settings.paths.xdg", return_value=tmp_path),
+      patch("kanibako.utils.xdg.resolve_xdg", return_value=tmp_path),
       patch("kanibako.cli._ensure_initialized"),
     ):
       with pytest.raises(SystemExit) as exc:
@@ -1713,7 +1713,7 @@ class TestSetupNudge:
     write_system_value(_marker_file(tmp_path), "setup_completed", "1.6.0")
     with (
       patch("kanibako.settings.config.config_file_path", return_value=cf),
-      patch("kanibako.settings.paths.xdg", return_value=tmp_path),
+      patch("kanibako.utils.xdg.resolve_xdg", return_value=tmp_path),
       patch.object(kanibako, "__version__", "1.8.0"),
       patch.object(kanibako, "SETUP_BCV", "1.6.0"),
       patch.object(kanibako, "SETUP_FCV", "1.6.0"),
@@ -1781,7 +1781,8 @@ class TestLegacySetupMarkerGuard:
     from pathlib import Path
 
     from kanibako.settings.config import user_config_file
-    from kanibako.settings.paths import load_system_config, xdg
+    from kanibako.settings.paths import load_system_config
+    from kanibako.utils.xdg import xdg
 
     monkeypatch.setattr(
       "kanibako.commands.diagnose._check_runtime",
@@ -1833,7 +1834,8 @@ class TestLegacySetupMarkerGuard:
     import kanibako
     from kanibako.settings.config import user_config_file
     from kanibako.settings.config_interface import write_system_value
-    from kanibako.settings.paths import load_system_config, xdg
+    from kanibako.settings.paths import load_system_config
+    from kanibako.utils.xdg import xdg
 
     if legacy:
       self._legacy(tmp_home, "system:\n  setup_completed: 1.7.2\n")
@@ -1903,7 +1905,7 @@ class TestTemplateStalenessRetired:
     cf = self._init_cf(tmp_path, stamp=stamp)
     with (
       patch("kanibako.settings.config.config_file_path", return_value=cf),
-      patch("kanibako.settings.paths.xdg", return_value=tmp_path),
+      patch("kanibako.utils.xdg.resolve_xdg", return_value=tmp_path),
     ):
       assert _setup_nudge(self._ns("start")) is None
     assert capsys.readouterr().err == ""
@@ -1917,7 +1919,7 @@ class TestTemplateStalenessRetired:
     cf = self._init_cf(tmp_path, stamp="stale-digest")
     with (
       patch("kanibako.settings.config.config_file_path", return_value=cf),
-      patch("kanibako.settings.paths.xdg", return_value=tmp_path),
+      patch("kanibako.utils.xdg.resolve_xdg", return_value=tmp_path),
     ):
       assert _setup_nudge(self._ns("agent", agent_command="reauth")) is None
 
@@ -1930,7 +1932,7 @@ class TestTemplateStalenessRetired:
     from kanibako.cli import _ensure_initialized, _setup_nudge
     from kanibako.settings.config import config_file_path
     from kanibako.settings.config_io import load_doc
-    from kanibako.settings.paths import xdg
+    from kanibako.utils.xdg import xdg
 
     _ensure_initialized()
     cf = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
@@ -1954,7 +1956,8 @@ class TestTemplateStalenessRetired:
     from kanibako.cli import _ensure_initialized
     from kanibako.settings.config import config_file_path, load_config
     from kanibako.settings.config_io import load_doc
-    from kanibako.settings.paths import load_std_paths, xdg
+    from kanibako.settings.paths import load_std_paths
+    from kanibako.utils.xdg import xdg
 
     _ensure_initialized()
     cf = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
@@ -1981,7 +1984,8 @@ class TestTemplateStalenessRetired:
       load_config,
     )
     from kanibako.settings.config_io import load_doc, write_nested_key
-    from kanibako.settings.paths import load_std_paths, xdg
+    from kanibako.settings.paths import load_std_paths
+    from kanibako.utils.xdg import xdg
 
     # Materialize the config file the way a first run would, WITHOUT the
     # rest of init, then plant a user value and let init run for real.
@@ -2031,7 +2035,8 @@ class TestTemplateStalenessRetired:
     from kanibako.commands.start import _build_config_env
     from kanibako.settings import core_defaults
     from kanibako.settings.config import config_file_path, load_config
-    from kanibako.settings.paths import load_std_paths, xdg
+    from kanibako.settings.paths import load_std_paths
+    from kanibako.utils.xdg import xdg
     from kanibako.settings.settings_launch import (
       build_launch_snapshot,
       snapshot_category_entries,
@@ -2094,7 +2099,8 @@ class TestTemplateStalenessRetired:
     from kanibako.commands.start import _build_config_env
     from kanibako.settings import core_defaults
     from kanibako.settings.config import config_file_path, load_config
-    from kanibako.settings.paths import load_std_paths, xdg
+    from kanibako.settings.paths import load_std_paths
+    from kanibako.utils.xdg import xdg
     from kanibako.settings.settings_launch import (
       build_launch_snapshot,
       snapshot_category_entries,
@@ -2152,7 +2158,8 @@ class TestTemplateStalenessRetired:
     from kanibako.settings import core_defaults
     from kanibako.settings.config import config_file_path, load_config
     from kanibako.settings.config_io import write_nested_key
-    from kanibako.settings.paths import load_std_paths, xdg
+    from kanibako.settings.paths import load_std_paths
+    from kanibako.utils.xdg import xdg
     from kanibako.settings.settings_launch import (
       build_launch_snapshot,
       snapshot_category_entries,
@@ -2208,7 +2215,8 @@ class TestTemplateStalenessRetired:
     from kanibako.commands.start import _build_config_env
     from kanibako.settings import core_defaults
     from kanibako.settings.config import config_file_path, load_config
-    from kanibako.settings.paths import load_std_paths, xdg
+    from kanibako.settings.paths import load_std_paths
+    from kanibako.utils.xdg import xdg
     from kanibako.settings.settings_launch import (
       build_launch_snapshot,
       snapshot_category_entries,
@@ -2457,7 +2465,7 @@ class TestBoxConfigVerbsAcceptBoxFlag:
     cf = tmp_path / CONFIG_FILENAME  # absent marker
     with (
       patch("kanibako.settings.config.config_file_path", return_value=cf),
-      patch("kanibako.settings.paths.xdg", return_value=tmp_path),
+      patch("kanibako.utils.xdg.resolve_xdg", return_value=tmp_path),
     ):
       _setup_nudge(argparse.Namespace(command="shell"))
     assert capsys.readouterr().err == ""

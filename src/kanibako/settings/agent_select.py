@@ -137,7 +137,8 @@ def host_resolve_ctx(std, group: "_WorksetGroup | None", agent_name: "str | None
   (the system scope).  The primary working set is spelled like ``None``:
   ``ResolveCtx.workset_name`` names a NAMED working set only.
   """
-  from kanibako.settings.paths import host_config_map, host_xdg_map
+  from kanibako.settings.paths import host_config_map
+  from kanibako.utils.xdg import host_xdg_map
   from kanibako.settings.settings_resolve import ResolveCtx
 
   workset_name = group.name if (group is not None and not group.is_default) else None

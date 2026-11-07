@@ -3100,7 +3100,7 @@ class TestEarlySystemTierIsData:
   def _paths(self):
     """The user CONFIG file and the SYSTEM SETTINGS file Layer 1 points at."""
     from kanibako.settings.config import config_file_path, system_settings_path
-    from kanibako.settings.paths import user_config_home, xdg
+    from kanibako.utils.xdg import user_config_home, xdg
 
     return (
       config_file_path(user_config_home()),
@@ -3129,7 +3129,8 @@ class TestEarlySystemTierIsData:
   def _std(self):
     """A real ``StandardPaths`` off an initialized (empty) Layer-1 file."""
     from kanibako.settings.config import config_file_path, load_config, write_global_config
-    from kanibako.settings.paths import load_std_paths, user_config_home
+    from kanibako.settings.paths import load_std_paths
+    from kanibako.utils.xdg import user_config_home
 
     cfg = config_file_path(user_config_home())
     cfg.parent.mkdir(parents=True, exist_ok=True)
@@ -3178,7 +3179,8 @@ class TestEarlySystemTierIsData:
     open S2a removes, and why the malformed-settings ``test_stop.py`` cases stay red
     until S2b rather than turning green here.
     """
-    from kanibako.settings.paths import _path_tier_set_values, host_xdg_map
+    from kanibako.settings.paths import _path_tier_set_values
+    from kanibako.utils.xdg import host_xdg_map
 
     cfg, _s, data_home = self._paths()
     kw = dict(data_home=data_home, home=Path.home(), xdg_vars=host_xdg_map(data_home))
@@ -3273,7 +3275,8 @@ class TestEarlySystemTierIsData:
     ``resolve_system_paths`` still open the file for themselves; taking the record there
     is S2a's change (decision 5), not this step's.
     """
-    from kanibako.settings.paths import _path_tier_set_values, host_xdg_map
+    from kanibako.settings.paths import _path_tier_set_values
+    from kanibako.utils.xdg import host_xdg_map
 
     sp = self._settings("workset:\n  boxes: /srv/kb\nsystem:\n  canon: /srv/canon\n")
     cfg, _s, data_home = self._paths()

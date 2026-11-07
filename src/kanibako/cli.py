@@ -253,7 +253,8 @@ def _ensure_initialized() -> None:
   )
   from pathlib import Path
 
-  from kanibako.settings.paths import default_data_home, load_system_config
+  from kanibako.settings.paths import load_system_config
+  from kanibako.utils.xdg import default_data_home
 
   cf = user_config_file()
 
@@ -407,7 +408,8 @@ def _setup_nudge(args: argparse.Namespace) -> None:
 
     from kanibako.settings.bootstrap import LEGACY_CONFIG_FILE
     from kanibako.settings.config import user_config_file, setup_compat_gate
-    from kanibako.settings.paths import default_data_home, load_system_config
+    from kanibako.settings.paths import load_system_config
+    from kanibako.utils.xdg import default_data_home
 
     cf = user_config_file()
     # The marker lives in the SYSTEM SETTINGS file (``{config.settings}``) since

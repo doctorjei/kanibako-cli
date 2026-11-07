@@ -11,8 +11,6 @@ Prose for these symbols lives in `llm-docs/kanibako/settings/paths.py.md`.
 STANDALONE_META_DIR = bootstrap.STANDALONE_META_DIR
 logger = get_logger('paths')
 SUBSCRIPTED_SYSTEM_PATH_KEYS: frozenset[str] = frozenset({'system.backup', 'system.channelroot', 'system.template', 'system.cache', 'system.state', 'system.runtime'})
-_runtime_fallback_cache: dict[tuple[str, str], Path] = {}
-_RUNTIME_TMP_PREFIX = 'kanibako-runtime-'
 _FLOOR_FIELD_ALIASES: dict[str, str] = {'system.channelroot': 'channels'}
 ```
 
@@ -40,12 +38,6 @@ def report_retained_store(store: Path, root: Path) -> None
 def box_metadata_dir(mode: BoxMode, metadata_path: Path, *, early: EarlyScope) -> Path
 def box_workset_settings_paths(proj: ProjectPaths) -> tuple[Path, Path | None]
 def resolve_box_enable_vault(global_path: Path, *, box_path: Path, workset_path: Path | None) -> bool
-def resolve_xdg(var_name: str, spec_default_suffix: str | None) -> Path
-def xdg(env_var: str, default_suffix: str) -> Path
-def user_config_home() -> Path
-def default_data_home() -> Path
-def spec_default_xdg_map(data_home: Path | None) -> dict[str, str]
-def host_xdg_map(data_home: Path | None=None) -> dict[str, str]
 def resolve_config_paths(set_values: Mapping[str, str | None], *, data_home: Path, home: Path, xdg_vars: Mapping[str, str] | None=None) -> dict[str, str]
 def resolve_system_paths(set_values: Mapping[str, str | None], *, data_home: Path, home: Path) -> dict[str, Path]
 def host_config_map(std: StandardPaths) -> dict[str, str]
@@ -103,8 +95,6 @@ def _default_project_group(std: StandardPaths) -> ProjectGroup
 def _standalone_settings_files(root: Path, *, early: EarlyScope) -> tuple[Path, Path]
 def _box_settings_files(mode: BoxMode, metadata_path: Path, group: '_WorksetRooted | None', *, early: EarlyScope | None=None) -> tuple[Path, Path | None]
 def _narrow_box_scalar_cascade(global_path: Path, *, workset_path: Path | None, box_path: Path | None) -> 'KeyStore'
-def _fallback_runtime_dir(var_name: str) -> Path
-def _runtime_base_usable(base: Path, *, follow_symlinks: bool=True, require_private: bool=False) -> bool
 def _refused_null_path_value_error(key: str, default: str, *, referent: 'str | None'=None) -> str
 def _refuse_bare_relative(key: str, raw: object, default: str, *, ctx: ResolveCtx, lookup: Callable[[str, tuple[str, ...]], str]) -> None
 def _resolve_system_path_keys(set_values: Mapping[str, str | None], keys: Iterable[str], *, data_home: Path, home: Path, xdg_vars: Mapping[str, str]) -> tuple[dict[str, str], dict[str, Path]]

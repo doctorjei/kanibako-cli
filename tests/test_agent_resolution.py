@@ -28,7 +28,8 @@ from kanibako.install_method import (
   detect_install_method,
   install_command,
 )
-from kanibako.settings.paths import load_std_paths, xdg
+from kanibako.settings.paths import load_std_paths
+from kanibako.utils.xdg import xdg
 
 # Exact UNSET refusal wording (must match resolve_agent verbatim).
 UNSET_REFUSAL = (

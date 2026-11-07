@@ -164,7 +164,7 @@ def _host_term() -> str:
   """Read the host's ``TERM`` for ``$TERM``; empty or unset ⇒ :data:`DEFAULT_TERM`.
 
   ⚑ A SET VALUE IS DELIBERATELY NOT CHECKED, and the asymmetry with the ``$XDG_*`` twin
-  (``paths.resolve_xdg``, which ignores a relative value) is the point: ``os.path.isabs`` is
+  (``utils.xdg.resolve_xdg``, which ignores a relative value) is the point: ``os.path.isabs`` is
   a pure test on a string, while "is this ``TERM`` usable" is a terminfo lookup — and this
   resolution runs HOST-side for a consumer that is IN the box, whose terminfo set differs.
   A host-side check would be guessing about a place it cannot see, so an unusable value is

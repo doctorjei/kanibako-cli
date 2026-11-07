@@ -345,7 +345,7 @@ class TestAShellBoxStampIsReadBackAsTheShellAgent:
     from unittest.mock import patch
 
     import kanibako.commands.code_cmd as code_cmd
-    from kanibako.settings.paths import user_config_home
+    from kanibako.utils.xdg import user_config_home
     from kanibako.vscode.vscode_config import attached_container_config_path
 
     _std_, _config, _proj, cname, _ = shell_box
