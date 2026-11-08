@@ -71,7 +71,7 @@ def test_claude_keyless_keeps_native_placeholder_without_fetch(pg, monkeypatch):
 
 
 def test_keyed_read_leaves_credential_lookup_to_pg(pg, monkeypatch):
-  pg.configure(secret_backend="pass")
+  pg.configure(defaults={"secret": {"backend": "pass"}})
   pg.create("scout", make_agent("minimax", "claude"))
   monkeypatch.setattr(
     "kanibako.settings.config_io.fetch_persona_secret", lambda *_: pytest.fail("fetch")
@@ -122,7 +122,7 @@ def fake_manager(tmp_path, monkeypatch):
 
 
 def test_released_pg_fetches_by_registered_name(pg, fake_manager, capsys):
-  pg.configure(secret_backend="pass")
+  pg.configure(defaults={"secret": {"backend": "pass"}})
   path = pg.create("Scout", make_agent("minimax", "claude"))
   before = {p: p.read_bytes() for p in pg.root.rglob("*") if p.is_file()}
   assert persona_store_agents() == {"Scout": path}
@@ -135,7 +135,7 @@ def test_released_pg_fetches_by_registered_name(pg, fake_manager, capsys):
 
 def test_named_fetch_uses_explicit_store(pg, fake_manager, tmp_path, monkeypatch):
   other = AgentStore(tmp_path / "other")
-  other.configure(secret_backend="pass")
+  other.configure(defaults={"secret": {"backend": "pass"}})
   other.create("scout", make_agent("minimax", "claude"))
   assert fetch_persona_secret("scout", root=other.root) == "synthetic-token"
   assert not pg.root.exists()
@@ -145,7 +145,7 @@ def test_named_fetch_uses_explicit_store(pg, fake_manager, tmp_path, monkeypatch
 
 @pytest.mark.parametrize("kind", ["missing", "keyless", "manager-failure", "invalid-name"])
 def test_released_pg_fetch_failure_is_private(pg, fake_manager, monkeypatch, capsys, kind):
-  pg.configure(secret_backend="pass")
+  pg.configure(defaults={"secret": {"backend": "pass"}})
   name = "scout"
   if kind == "keyless":
     import yapyon
@@ -169,7 +169,7 @@ def test_released_pg_fetch_failure_is_private(pg, fake_manager, monkeypatch, cap
 
 
 def test_named_fetch_tracks_pg_rename(pg, fake_manager):
-  pg.configure(secret_backend="pass")
+  pg.configure(defaults={"secret": {"backend": "pass"}})
   pg.create("scout", make_agent("minimax", "claude"))
   pg.rename("scout", "renamed")
   with pytest.raises(ConfigError, match="credential retrieval failed"):
@@ -236,7 +236,7 @@ def test_named_fetch_cancellation_reaps_invocation(monkeypatch, already_exited):
 
 @pytest.mark.skipif(not hasattr(os, "pidfd_open"), reason="requires Linux process-exit handles")
 def test_timeout_stops_real_pg_and_manager_children(pg, fake_manager, monkeypatch):
-  pg.configure(secret_backend="pass")
+  pg.configure(defaults={"secret": {"backend": "pass"}})
   pg.create("scout", make_agent("minimax", "claude"))
   manager = fake_manager.parent / "bin" / "pass"
   manager.write_text(
@@ -268,7 +268,7 @@ def test_timeout_stops_real_pg_and_manager_children(pg, fake_manager, monkeypatc
 def test_identity_read_does_not_inspect_backend_metadata(pg, monkeypatch):
   from kanibako.settings import config_io
 
-  pg.configure(secret_backend="pass")
+  pg.configure(defaults={"secret": {"backend": "pass"}})
   pg.create("scout", make_agent("minimax", "claude"))
   original = config_io.load_persona_agent
 
