@@ -295,72 +295,36 @@ def run_code(args: argparse.Namespace) -> int:
   return 0
 
 
-def _extension_for_agent(agent_name: str) -> str | None:
-  """Resolve *agent_name*'s ``descriptor.vscode_extension`` (or ``None``).
-
-  ``agent_name`` is a NODE-name; the plugin/target is keyed by its HARNESS
-  (``harness_of``), exactly as ``stop.py`` / ``start.py`` resolve a stamped box.
-  A descriptor-less target (the no-agent shell) or an unset extension → ``None``.
-  """
-  from kanibako.agent_ref import harness_of
+def _extension_for_agent(target_name: str) -> str | None:
+  """Return the resolved target's editor extension, or None without a descriptor."""
   from kanibako.targets import resolve_target
 
-  target = resolve_target(harness_of(agent_name))
+  target = resolve_target(target_name)
   desc = target.descriptor
   return desc.vscode_extension if desc is not None else None
 
 
-def _resolve_box_agent_node(runtime, std, proj, container_name: str) -> str | None:
-  """Best-effort: the RUNNING box's authoritative agent NODE-name (or ``None``).
+def _resolve_box_vscode_extension(runtime, std, proj, container_name: str) -> str | None:
+  """Resolve the running box's editor extension without blocking attach.
 
-  STAMP-FIRST, mirroring ``stop.py._writeback_on_stop`` and ``start.py``'s
-  reattach fast-source: a running box's authoritative agent is its
-  ``KANIBAKO_AGENT`` launch stamp (``runtime.inspect_env``), NOT the create-time
-  cascade.  Using the stamp avoids two cascade mis-resolutions on a running box:
-  (1) 2+ installed agents + no system default → the cascade RAISES (seed nothing
-  for a live claude box); (2) a system default that has since diverged from the
-  box's actually-running agent → seed the WRONG agent.
-
-  Falls back to the ``select_agent`` create-cascade ONLY for pre-stamp (older)
-  boxes with no ``KANIBAKO_AGENT`` env.  Swallows every failure → ``None``.
-  NEVER raises.  Resolved ONCE per ``code`` invocation and consumed by the
-  extension seed (:func:`_resolve_box_vscode_extension`) so the box is inspected
-  a single time.
+  The launch stamp wins over today's selection cascade. Only an absent stamp
+  permits selection fallback. Carry its resolved target without reparsing the node;
+  malformed stamps, missing targets, and settings failures seed no extension.
   """
   from kanibako.launch.creds_watcher import running_box_agent
+  from kanibako.settings.config import resolve_agent_identity
+  from kanibako.settings.agent_select import select_agent
 
   try:
-    # A NODE-name, which is what the ``select_agent`` fallback below returns
-    # too — so both branches answer in ONE spelling.
     node = running_box_agent(runtime, container_name)
-    if node is not None:
-      return node
-
-    # Pre-stamp (older) box: fall back to the create-time selection cascade
-    # (agent_select reads the SAME box-tier file ``box set
-    # pref.system.agent=…`` writes — the ONE tier pair, M-8).
-    from kanibako.settings.agent_select import select_agent
-
-    return select_agent(std=std, proj=proj).node or None
-  except Exception:
-    get_logger("code").debug(
-      "could not resolve box agent name; seeding none",
-      exc_info=True,
+    identity = (
+      resolve_agent_identity(explicit_agent=node)
+      if node is not None
+      else select_agent(std=std, proj=proj).identity
     )
-    return None
-
-
-def _resolve_box_vscode_extension(agent_name: str | None) -> str | None:
-  """Best-effort: *agent_name*'s ``descriptor.vscode_extension`` (or ``None``).
-
-  Takes the pre-resolved box agent NODE-name (see :func:`_resolve_box_agent_node`)
-  and maps it to its editor extension.  Swallows every failure (descriptor-less
-  / no-agent shell, unset extension) → ``None``.  NEVER raises.
-  """
-  if agent_name is None:
-    return None
-  try:
-    return _extension_for_agent(agent_name)
+    if not identity.node:
+      return None
+    return _extension_for_agent(identity.target_name)
   except Exception:
     get_logger("code").debug(
       "could not resolve box agent VS Code extension; seeding none",
@@ -478,8 +442,8 @@ def _seed_attached_config(runtime, std, proj, container_name: str) -> None:
 
   * image resolution — :func:`_resolve_box_image` (WARNS a settings refusal,
     debug otherwise) and returns ``None``, which SKIPS the seed;
-  * agent + extension resolution — :func:`_resolve_box_agent_node` /
-    :func:`_resolve_box_vscode_extension`, both debug-and-``None``;
+  * agent + extension resolution — :func:`_resolve_box_vscode_extension`,
+    debug-and-``None``;
   * the WRITE — :func:`_write_attached_config`, which WARNS on ``OSError``.
 
   What is left for this catch is therefore the UNFORESEEN: a bug in the seed
@@ -492,9 +456,7 @@ def _seed_attached_config(runtime, std, proj, container_name: str) -> None:
     image_ref = _resolve_box_image(runtime, proj, container_name)
     if image_ref is None:
       return  # can't key the image-shared config → skip, never crash
-    # Resolve the box agent ONCE (STAMP-first) for the extension seed.
-    agent_name = _resolve_box_agent_node(runtime, std, proj, container_name)
-    extension = _resolve_box_vscode_extension(agent_name)
+    extension = _resolve_box_vscode_extension(runtime, std, proj, container_name)
     path = attached_container_config_path(
       image_ref,
       user_config_home(),
@@ -652,6 +614,7 @@ def _seed_remote_attached_config(engine, container_name: str) -> None:
   user can act on, so both stay at debug — and the catch stays blanket so a
   seed bug can never cost the user their editor.
   """
+  from kanibako.agent_ref import harness_of
   from kanibako.launch.creds_watcher import running_box_agent
 
   try:
@@ -662,7 +625,7 @@ def _seed_remote_attached_config(engine, container_name: str) -> None:
     try:
       node = running_box_agent(engine, container_name)
       if node is not None:
-        extension = _extension_for_agent(node)
+        extension = _extension_for_agent(harness_of(node))
     except Exception:
       extension = None
     path = attached_container_config_path(

@@ -12,8 +12,12 @@ from __future__ import annotations
 
 import errno
 import json
+import os
 import re
 import shutil
+import signal
+import subprocess
+import sys
 import tomllib
 from importlib.resources.abc import Traversable
 from pathlib import Path
@@ -57,6 +61,75 @@ MAX_DOC_DEPTH = 64
 def read_packaged_bytes(ref: Traversable) -> bytes:
   """Read exact bytes from a packaged configuration resource."""
   return ref.read_bytes()
+
+
+def persona_store_location() -> Path:
+  """Return PG's public store root without creating it."""
+  from persona_grata import AgentStore  # type: ignore[import-untyped]
+
+  return Path(AgentStore().root)
+
+
+def persona_store_agents(*, root: Path | None = None) -> dict[str, Path]:
+  """Read registered names and paths through PG without resolving or fetching secrets."""
+  from persona_grata import AgentStore
+  from yapyon import AkanError  # type: ignore[import-untyped]
+
+  store = AgentStore(root)
+  try:
+    return dict(store.agents())
+  except AkanError as exc:
+    raise ConfigError(f"persona store at {store.root}: {exc}") from exc
+
+
+def load_persona_agent(name: str, *, root: Path | None = None) -> tuple[Path, dict[str, Any]]:
+  """Read a registered agent's current composed configuration through PG."""
+  from persona_grata import AgentStore
+  from yapyon import AkanError  # type: ignore[import-untyped]
+
+  store = AgentStore(root)
+  try:
+    return Path(store.locate(name)), store.load(name)
+  except AkanError as exc:
+    raise ConfigError(f"PG agent {name!r} at {store.root}: {exc}") from exc
+
+
+def fetch_persona_secret(name: str, *, root: Path | None = None) -> str:
+  """Fetch by registered name; child output never enters diagnostics."""
+  argv = [sys.executable, "-I", "-m", "persona_grata", f"--get-secret={name}"]
+  if root is not None:
+    argv.extend(["--store", str(root)])
+  try:
+    with subprocess.Popen(
+      argv,
+      stdin=subprocess.DEVNULL,
+      stdout=subprocess.PIPE,
+      stderr=subprocess.DEVNULL,
+      start_new_session=True,
+    ) as process:
+      try:
+        output, _ = process.communicate(timeout=120)
+      except (subprocess.TimeoutExpired, KeyboardInterrupt):
+        try:
+          os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+          pass
+        process.communicate()
+        raise
+      status = process.returncode
+  except subprocess.TimeoutExpired:
+    raise ConfigError(f"PG agent {name!r}: credential retrieval timed out") from None
+  except OSError:
+    raise ConfigError(f"PG agent {name!r}: could not run credential retrieval") from None
+  if status:
+    raise ConfigError(f"PG agent {name!r}: credential retrieval failed (exit {status})")
+  try:
+    token = output.decode("utf-8").removesuffix("\n")
+  except UnicodeError:
+    raise ConfigError(f"PG agent {name!r}: credential is not UTF-8 text") from None
+  if not token.strip() or any(char in token for char in "\x00\r\n"):
+    raise ConfigError(f"PG agent {name!r}: credential must be a nonempty single line")
+  return token
 
 
 def parse_native_yaml(text: str | bytes) -> Any:

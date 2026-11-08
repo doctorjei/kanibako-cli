@@ -337,34 +337,26 @@ def running_box_agent(runtime, container_name: str) -> str | None:
 
 
 def box_writeback_context(std, proj, agent: str):
-  """The ``(target, auth_src)`` a credential writeback for *proj* runs with.
+  """Resolve a stamped node's target and credential-sharing source once.
 
-  *agent* is the node from :func:`running_box_agent`.  The target is keyed by its
-  HARNESS; the auth source resolves through the auth chain (the same launch-snapshot
-  pipeline ``start`` uses), so a PRIVATE box gets a box-tier source and the writeback
-  is a no-op.  ⚑ The §1A SELECTION LEVEL is REQUIRED (P7): ``meta.box.auth.workset_path``
-  resolves ``{workset.auth.path}/{system.agent}``, so without it the credential dir
-  would name the agent the STORED settings select rather than the ``<auth>/<agent>``
-  the launch delivered from.  The stamp IS the resolved selection for a running box.
-
-  Raises ``SettingsError``/``ConfigError`` when the auth resolve refuses the box's
-  settings (a file that turned invalid after the box started); the refusal's text
-  names the file, and each caller says it in its own channel.  Target resolution
-  raises ``KeyError``/``ValueError`` only (:func:`~kanibako.targets.resolve_target`).
+  The identity selects the plugin; its node keys settings and the narrow selection
+  level. Settings refusals propagate to the caller's channel; stop/watch stay tolerant.
   """
-  from kanibako.agent_ref import harness_of
   from kanibako.commands.start import _resolve_box_auth_source
   from kanibako.settings.agent_config import agent_settings_path
+  from kanibako.settings.config import resolve_agent_identity
   from kanibako.targets import resolve_target
 
-  target = resolve_target(harness_of(agent))
+  identity = resolve_agent_identity(explicit_agent=agent)
+  target = resolve_target(identity.target_name)
   auth_src = _resolve_box_auth_source(
     std=std,
     proj=proj,
-    agent_name=agent,
+    agent_name=identity.node,
+    agent_identity=identity,
     system_settings_path=std.settings,
-    agent_cfg_path=agent_settings_path(std.agents, agent),
-    selection_level={"system.agent": agent},
+    agent_cfg_path=agent_settings_path(std.agents, identity.node),
+    selection_level={"system.agent": identity.node},
   )
   return target, auth_src
 

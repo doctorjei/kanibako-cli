@@ -1,7 +1,7 @@
 # Configuration I/O
 
-`load_doc`/`dump_doc` handle YAML; mutators preserve `(sections, leaf)`.
-`config_keys`/`config_dest` own routing. `pyproject.toml` is excluded.
+YAML: `load_doc`/`dump_doc`; routing: `config_keys`/`config_dest`. PG: `AkanError`→`ConfigError`
+(source/cause), private CLI fetches. Excludes `pyproject.toml`.
 
 ## Host transport and native codecs
 

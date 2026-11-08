@@ -583,6 +583,8 @@ def test_watch_context_canonicalizes_the_stamp_before_deriving(stamp):
     # The agent-tier discriminator and the §1A selection level take the NODE.
     kwargs = m_auth.call_args.kwargs
     assert kwargs["agent_name"] == "navigator℘claude"
+    assert kwargs["agent_identity"].node == "navigator℘claude"
+    assert kwargs["agent_identity"].target_name == "claude"
     assert kwargs["selection_level"] == {"system.agent": "navigator℘claude"}
 
 
@@ -662,15 +664,17 @@ def test_every_stamp_reader_goes_through_running_box_agent():
     "running_box_agent",
     return_value="navigator℘claude",
   ) as m_read:
-    assert (
-      code_cmd._resolve_box_agent_node(
-        runtime,
-        MagicMock(),
-        MagicMock(),
-        "box-c",
+    with patch.object(code_cmd, "_extension_for_agent", return_value="ext") as m_ext:
+      assert (
+        code_cmd._resolve_box_vscode_extension(
+          runtime,
+          MagicMock(),
+          MagicMock(),
+          "box-c",
+        )
+        == "ext"
       )
-      == "navigator℘claude"
-    )
+    m_ext.assert_called_once_with("claude")
     with (
       patch.object(creds_watcher, "box_writeback_context", return_value=("T", "A")) as m_ctx,
       patch("kanibako.commands.start.writeback_session_credentials") as m_wb,
@@ -693,5 +697,42 @@ def test_every_stamp_reader_goes_through_running_box_agent():
       patch.object(code_cmd, "attached_container_config_path"),
     ):
       code_cmd._seed_remote_attached_config(engine, "box-c")
-    m_ext.assert_called_once_with("navigator℘claude")
+    m_ext.assert_called_once_with("claude")
   assert [c.args[1] for c in m_read.call_args_list] == ["box-c", "box-c", "box-c"]
+
+
+def test_writeback_context_preserves_registered_identity(tmp_path):
+  from unittest.mock import MagicMock, patch
+
+  from kanibako.agent_ref import AgentIdentity
+  from kanibako.launch.creds_watcher import box_writeback_context
+  from kanibako.settings.agent_config import agent_settings_path
+
+  identity = AgentIdentity(
+    node="navigator",
+    registered_name="Navigator",
+    persona="Guide",
+    harness="Claude",
+    target_name="claude",
+    entry_path=tmp_path / "PG" / "Navigator",
+  )
+  std, proj = MagicMock(), MagicMock()
+  std.agents = tmp_path / "config" / "agents"
+  with (
+    patch("kanibako.settings.config.resolve_agent_identity", return_value=identity) as m_identity,
+    patch("kanibako.targets.resolve_target") as m_target,
+    patch("kanibako.commands.start._resolve_box_auth_source") as m_auth,
+  ):
+    result = box_writeback_context(std, proj, "navigator")
+  assert result == (m_target.return_value, m_auth.return_value)
+  m_identity.assert_called_once_with(explicit_agent="navigator")
+  m_target.assert_called_once_with("claude")
+  assert m_auth.call_args.kwargs == {
+    "std": std,
+    "proj": proj,
+    "agent_name": "navigator",
+    "agent_identity": identity,
+    "system_settings_path": std.settings,
+    "agent_cfg_path": agent_settings_path(std.agents, "navigator"),
+    "selection_level": {"system.agent": "navigator"},
+  }

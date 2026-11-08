@@ -46,23 +46,23 @@ _WrittenLevel = tuple[KeyStore, Path | None, KeyStore | None]
 def auth_chain_floor(*, mode: str | None, agent_name: str) -> dict[str, object]
 def meta_runtime_host_floor() -> dict[str, object]
 def meta_runtime_floor(*, mode: str, ws_name: str, ws_root_literal: str | None=None) -> dict[str, object]
-def meta_agent_path_floor(agent_name: str) -> dict[str, object]
+def meta_agent_path_floor(agent_name: str, *, identity: AgentIdentity | None=None) -> dict[str, object]
 def meta_agent_grammar_floor(agent_name: str, descriptor: 'PluginDescriptor | None') -> dict[str, object]
 def box_address_args(addr: 'BoxChannelAddresses') -> BoxAddressArgs
 def meta_identity_floor(*, box_name: str, project_path: str | None, inbox: str | None, share_global: str | None, share_workset: str | None, box_settings: str | None=None, agent_name: str | None=None, agent_real_name: str | None=None, agent_auth_share_support: bool=False) -> dict[str, object]
-def meta_agent_identity_floor(agent_name: str, agent_real_name: str | None, agent_auth_share_support: bool) -> dict[str, object]
+def meta_agent_identity_floor(agent_name: str, agent_real_name: str | None, agent_auth_share_support: bool, *, identity: AgentIdentity | None=None) -> dict[str, object]
 def workset_anchor_floor(*, mode: str, channelroot: str | None=None, workspaces: str | None=None, workset_channels: Mapping[str, str | None] | None=None) -> dict[str, object]
 def resolve_auth_source(snapshot: KeyStore, *, mode: str | None=None) -> AuthSource
 def refuse_read_time_faults(written: Sequence[_WrittenLevel], expanded: KeyStore, *, ctx: ResolveCtx, files: Sequence[SettingsFile], subject: ResolveSubject, tiers: Sequence[str], active_agent: str='', plugin_owners: Mapping[str, str] | None=None) -> None
 def internal_bind_refusals(arm: str, entries: dict[str, object], *, where: str, when: Literal['write', 'stored'], floor_entries: dict[str, object] | None=None) -> list[str]
 def depends_on_the_box(refs: Collection[str], *, in_workset: bool) -> bool
 @overload
-def resolve_inputs(*, subject: Literal[ResolveSubject.BOX], std, agent_name: str, system_path: Path | None, proj, ws: None=None) -> LaunchInputs
+def resolve_inputs(*, subject: Literal[ResolveSubject.BOX], std, agent_name: str, system_path: Path | None, agent_identity: AgentIdentity | None=None, proj, ws: None=None) -> LaunchInputs
 @overload
-def resolve_inputs(*, subject: Literal[ResolveSubject.WORKSET], std, agent_name: str, system_path: Path | None, proj: None=None, ws: Workset) -> LaunchInputs
+def resolve_inputs(*, subject: Literal[ResolveSubject.WORKSET], std, agent_name: str, system_path: Path | None, agent_identity: AgentIdentity | None=None, proj: None=None, ws: Workset) -> LaunchInputs
 @overload
-def resolve_inputs(*, subject: Literal[ResolveSubject.SYSTEM], std, agent_name: str, system_path: Path | None, proj: None=None, ws: None=None) -> LaunchInputs
-def resolve_inputs(*, subject: ResolveSubject, std, agent_name: str, system_path: Path | None, proj=None, ws: Workset | None=None) -> LaunchInputs
+def resolve_inputs(*, subject: Literal[ResolveSubject.SYSTEM], std, agent_name: str, system_path: Path | None, agent_identity: AgentIdentity | None=None, proj: None=None, ws: None=None) -> LaunchInputs
+def resolve_inputs(*, subject: ResolveSubject, std, agent_name: str, system_path: Path | None, agent_identity: AgentIdentity | None=None, proj=None, ws: Workset | None=None) -> LaunchInputs
 def fold_floor(*, subject: ResolveSubject, agent_name: str, behavior_floor: Mapping[str, object] | None=None, agent_behavior_floor: Mapping[str, object] | None=None, default_categories: Mapping[str, object] | None=None, auth_chain: Mapping[str, object] | None=None, meta_runtime: Mapping[str, object] | None=None, meta_identity: Mapping[str, object] | None=None, workset_anchor: Mapping[str, object] | None=None) -> dict[str, object]
 def assemble_cascade(*, agent_name: str, floor: dict[str, object], files: Sequence[SettingsFile], agent_partial: KeyStore | None=None, persona_values: Mapping[str, str | None] | None=None, prefs: 'Sequence[PrefRequest] | None'=None, valid_agents: 'Collection[str] | None'=None, cli_level: Mapping[str, object] | None=None) -> Cascade
 def build_launch_snapshot(*, agent_name: str, ctx: ResolveCtx, system_path: Path | None, agent_path: Path | None, workset_path: Path | None, box_path: Path | None, behavior_floor: Mapping[str, object] | None=None, agent_behavior_floor: Mapping[str, object] | None=None, default_categories: Mapping[str, object] | None=None, agent_partial: KeyStore | None=None, persona_values: Mapping[str, str | None] | None=None, auth_chain: Mapping[str, object] | None=None, meta_runtime: Mapping[str, object] | None=None, meta_identity: Mapping[str, object] | None=None, workset_anchor: Mapping[str, object] | None=None, prefs: 'Sequence[PrefRequest] | None'=None, valid_agents: 'Collection[str] | None'=None, cli_level: Mapping[str, object] | None=None, subject: ResolveSubject=ResolveSubject.BOX, refs_read: RefsRead | None=None, dest_keys: DestKeys | None=None, written_out: 'list[_WrittenLevel] | None'=None, descriptor: 'PluginDescriptor | None'=None, box_ref: str | None=None) -> KeyStore
@@ -99,10 +99,10 @@ def _workset_channel_floor_values(part: 'WorksetPartition', wch: 'WorksetChannel
 def _workset_workspaces_floor_value(mode: str, ws_root_literal: 'str | None', *, early: EarlyScope) -> 'str | None'
 def _box_less_omits(key: str, *, in_workset: bool) -> bool
 def _omit_derived(ctx: ResolveCtx, is_seed: Callable[[str], bool], *floors: dict[str, object]) -> None
-def _agent_identity(agent_name: str) -> dict[str, object]
+def _agent_identity(agent_name: str, identity: AgentIdentity | None=None) -> dict[str, object]
 def _workset_floors(std, *, mode: str, ws_token: str, ws_root: Path, local_channels: 'WorksetChannels | None', agent_name: str) -> tuple[dict[str, object], dict[str, object], dict[str, object]]
 def _box_workset_floors(std, proj, agent_name: str) -> tuple[dict[str, object], dict[str, object], dict[str, object]]
-def _box_inputs(*, std, proj, agent_name: str, system_path: Path | None) -> LaunchInputs
+def _box_inputs(*, std, proj, agent_name: str, system_path: Path | None, agent_identity: AgentIdentity | None) -> LaunchInputs
 def _floored_bind_entry(dest: str, entry: object) -> object
 def _internal_floor_binds(floor: Mapping[str, object]) -> dict[str, object]
 def _warn_once(message: str) -> None
@@ -174,6 +174,7 @@ class LaunchInputs:
     cascade_workset_path: Path | None
     prefs: tuple[PrefRequest, ...]
     box_ref: str | None = None
+    agent_identity: AgentIdentity | None = None
 
     def as_kwargs(self) -> _LaunchInputKwargs
 

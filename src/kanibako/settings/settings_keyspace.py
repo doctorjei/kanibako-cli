@@ -116,8 +116,7 @@ from typing import (
 
 # ⚑ MODULE SCOPE, and it closes no cycle: ``agent_ref`` is pure — stdlib ``re``
 # plus ``kanibako.errors``, no settings import in either direction. The keyspace
-# needs it because NORMALIZING a node to its harness is the KEYSPACE's rule, not a
-# supplier's: see :func:`agent_declared_leaves`.
+# needs legacy ref normalization; registered identities arrive as injected facts.
 from kanibako.agent_ref import (
   ENV_VAR_NAME,
   PSEUDO_AGENT_NAMES,
@@ -1422,35 +1421,25 @@ def unread_harnesses(declared: "AgentLeafMap") -> "Container[str]":
 
 
 class ConcedingLeafMap(Mapping[str, "Collection[str]"]):
-  """A leaf map that SAYS which harnesses it could not read
-  (keyspec §0 "The leaf VOCABULARY is partitioned by TIER").
+  """Plugin leaves, explicit unreadable-harness concessions, and resolved name facts.
 
-  ⚑⚑ THE CONCESSION IS A CLAIM A SUPPLIER MAKES, NEVER A GAP A JUDGE INFERS. It was
-  absence-of-a-key until 2026-08-30, and absence cannot tell apart the two states
-  that wear it: *"this machine has no goose plugin, so goose's vocabulary is
-  unreadable here"* — where keyspec §0 "The leaf VOCABULARY is partitioned by TIER"
-  requires ``agent.goose.provider`` be CONCEDED — and *"no vocabulary was supplied at
-  all"*, where conceding hands every named agent every tail it likes. Both are
-  ``{}``, and the second one was the DEFAULT: a supplier that had read nothing
-  conceded everything, so §0 failed OPEN on an omission.
-  🛑 A PLAIN ``dict`` THEREFORE CONCEDES NOTHING, and that is the fail-closed
-  direction — a map with no standing to concede refuses what it cannot vouch for.
-  The way to concede is to say so here.
-
-  ⚑ THE PAIR IS STILL ONE PARAMETER. The vocabulary and the concession were two
-  arguments once and were forwarded singly (``key_class``); making the concession
-  explicit must not un-collapse them, so it rides INSIDE the map rather than beside
-  it in a signature.
+  *agent_harnesses* maps registered nodes to plugin targets, copied at this boundary.
+  A plain mapping concedes nothing. A missing declaration is not evidence that a
+  plugin is unreadable: only *conceded* grants that judgment. Keeping name facts,
+  leaves, and concessions together prevents recursion from dropping one of them.
   """
 
-  __slots__ = ("_declared", "conceded")
+  __slots__ = ("_declared", "conceded", "agent_harnesses")
 
   def __init__(
     self,
     declared: "AgentLeafMap",
     conceded: "Container[str]",
+    *,
+    agent_harnesses: Mapping[str, str] | None = None,
   ) -> None:
     self._declared = declared
+    self.agent_harnesses = MappingProxyType(dict(agent_harnesses or {}))
     #: The harnesses whose vocabulary is UNREADABLE here — conceded, not refused.
     self.conceded = conceded
 
@@ -1484,16 +1473,9 @@ def agent_declared_leaves(
   named agent — the closed keyspace opened by an omission. :class:`ConcedingLeafMap`
   is how a supplier that HAS looked reports what it could not read.
 
-  ⚑ THE NORMALIZATION IS THE KEYSPACE'S, NOT A SUPPLIER'S, for the same reason
-  :func:`is_valid_agent_segment` gives: a rule every supplier has to re-implement is
-  a rule some supplier gets wrong. A persona takes its HARNESS's vocabulary
-  (*"or harness"*, keyspec §0 "The leaf VOCABULARY is partitioned by TIER"), and the
-  ref arrives RAW — ``config_keys`` hands this pre-canonicalization keys — so
-  ``harness_of`` alone is not enough: it splits on ``℘`` only, and a raw
-  ``nav+claude`` would miss the map and be silently CONCEDED.
-  That was live at the resolve seam: ``agent.nav+claude.zippity`` classified KEY
-  while the canonical ``agent.nav℘claude.zippity`` classified UNDECLARED — one key,
-  two answers by spelling.
+  Injected node-to-harness facts take precedence over spelling. Without one,
+  canonicalize the legacy ref before taking its harness: ``nav+claude`` and
+  ``nav℘claude`` must receive the same vocabulary. No store lookup belongs here.
 
   TWO KINDS of segment get NO plugin leaves and NO concession — a §2a category
   token, and a PSEUDO-AGENT name (``default``, ``shell``), which
@@ -1511,7 +1493,11 @@ def agent_declared_leaves(
     node = canonicalize_agent_ref(name)
   except ConfigError:
     return frozenset()
-  harness = harness_of(node)
+  harness = (
+    agent_leaf_map.agent_harnesses[node]
+    if isinstance(agent_leaf_map, ConcedingLeafMap) and node in agent_leaf_map.agent_harnesses
+    else harness_of(node)
+  )
   # ⚑ ASKED BY ``.get``, never an iteration: the map may be a lazy discovery view (pinned
   # by ``_NeverAsk``: consulted, never iterated). No case fold (Q87,
   # :func:`is_valid_agent_segment`).

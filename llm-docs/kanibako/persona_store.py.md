@@ -1,36 +1,21 @@
 # The Persona-Grata Store — discovery, pointer resolve, and the LIVE launch bundle
 
-`persona_store` is kanibako's reader for the persona-grata STANDARD: a fixed, external directory
-tree that holds harness-NATIVE config per persona and per harness. kanibako does not own the
-standard and does not write into it — it CONSUMES it. Everything in this module is a pure read
-against that tree, with no box, no network, and no probe.
+`read_registered_persona` reads PG's public `AgentStore` through `config_io` before
+target selection. `RegisteredPersona` carries independent `AgentIdentity`, native
+configuration, and keyless state; PG owns credential lookup by registered name.
+Resolved persona/harness names follow kanibako spelling/reservation rules. The target
+is the harness node, not the registered name. Nothing persists.
 
-The design SOT is `~/canon/workbook/designs/persona-grata-autoimport-DESIGN.md`; the sections cited
-below (§1 through §5a) are its sections. The procedure that governs any change here is
-`~/canon/notebook/procedures/persona-resolution-model.md`, and it outranks this document.
+`project_registered_persona` returns a live `PersonaBundle` through the matching target
+without I/O, mutation, re-read, or credential fetch. Names match case-insensitively;
+ambiguity refuses. Paths come from PG, including renamed entries and symlinks, never
+names. Codex keyless accepts empty native `env_key`; Claude's placeholder stays environment data.
 
-## The one invariant: persona values are LIVE, never persisted
+Selection and delivery still use the legacy reader below. Registered-name activation
+waits for identity consumers and manager pipe delivery. `persona-resolution-model.md`
+governs live inputs.
 
-A `<pid>+<hid>` agent ref whose store entry exists is a *persona agent*. Its endpoint, model,
-token pointer and env are re-read from the store at EVERY launch, as a LIVE cascade level spliced
-in BELOW the agent settings file and above `agent.default`. They are never copied into any settings
-file. A launch that reads the store leaves `agents/<node>/agent.yaml` byte-identical.
-
-⚑ **There is deliberately NO import/sync half any more.** The store used to be copied into
-`agents/<node>/agent.yaml` by a verified swap — `build_candidate` / `persist_candidate` /
-`import_persona_entry`. That route is GONE and must not be reintroduced, in any spelling: an
-import, an adopt, a "cache the resolved persona", or a write-back all rebuild the retired design.
-Two reasons, and both are structural rather than stylistic:
-
-* the agent settings file holds USER-INTENT values ONLY (the file-purity invariant). A
-  kanibako-written default or synced value in it is an error case. That invariant is exactly what
-  makes file-beats-persona semantically forced — a key present in the file can only have got there
-  by a user edit;
-* a persisted copy of a live source can only go stale.
-
-A broken store config is a HARD launch error naming the cause. There is no last-known-good.
-
-## The layout kanibako reads (DESIGN §1)
+## Legacy launch layout (DESIGN §1)
 
 ```
 $XDG_CONFIG_HOME/personas/          <- discovery root (FIXED, not configurable)
@@ -52,7 +37,7 @@ rather than having to distinguish a miss from a failure.
 
 ## What lives here and what does not
 
-Two parts live in this module:
+The legacy path owns:
 
 * **discovery and resolve** — pure reads: locate an entry (`locate_entry`), and resolve its
   `.secret_path` token pointer (`resolve_secret_path`). Extracting the harness-native config itself

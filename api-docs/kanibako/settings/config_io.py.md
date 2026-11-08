@@ -19,6 +19,10 @@ _ABSENT = object()
 ## Functions
 ```
 def read_packaged_bytes(ref: Traversable) -> bytes
+def persona_store_location() -> Path
+def persona_store_agents(*, root: Path | None=None) -> dict[str, Path]
+def load_persona_agent(name: str, *, root: Path | None=None) -> tuple[Path, dict[str, Any]]
+def fetch_persona_secret(name: str, *, root: Path | None=None) -> str
 def parse_native_yaml(text: str | bytes) -> Any
 def parse_packaged(text: str) -> object
 def load_packaged_mapping(ref: Traversable, filename: str) -> dict[str, Any]

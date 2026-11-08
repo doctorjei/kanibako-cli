@@ -121,9 +121,9 @@ class KeyJudgment(NamedTuple):
     reason: str
 
 class ConcedingLeafMap(Mapping[str, 'Collection[str]']):
-    __slots__ = ('_declared', 'conceded')
+    __slots__ = ('_declared', 'conceded', 'agent_harnesses')
 
-    def __init__(self, declared: 'AgentLeafMap', conceded: 'Container[str]') -> None
+    def __init__(self, declared: 'AgentLeafMap', conceded: 'Container[str]', *, agent_harnesses: Mapping[str, str] | None=None) -> None
 
     def __getitem__(self, key: str) -> 'Collection[str]'
     def __iter__(self) -> Iterator[str]

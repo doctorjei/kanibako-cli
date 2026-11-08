@@ -541,47 +541,52 @@ def test_identity_view_preserves_legacy_errors(monkeypatch, explicit, requested)
   assert str(rich.value) == str(legacy.value)
 
 
-def test_identity_view_delegates_once_without_extra_discovery_or_store_access(monkeypatch):
+def test_scalar_delegates_once_without_extra_discovery_or_store_access(monkeypatch):
   from kanibako import persona_store, targets
+  from kanibako.agent_ref import AgentIdentity
   from kanibako.settings import config
 
   calls = []
+  identity = AgentIdentity(
+    node="Navigator℘Claude",
+    registered_name=None,
+    persona="Navigator",
+    harness="Claude",
+    target_name="Claude",
+    entry_path=None,
+  )
 
-  def legacy(*, explicit_agent, requested):
+  def rich(*, explicit_agent, requested):
     calls.append((explicit_agent, requested))
-    return "Navigator℘Claude"
+    return identity
 
   def unexpected(*args, **kwargs):
-    raise AssertionError("the identity view must not discover targets or read a store")
+    raise AssertionError("the scalar view must not discover targets or read a store")
 
-  monkeypatch.setattr(config, "resolve_agent", legacy)
+  monkeypatch.setattr(config, "resolve_agent_identity", rich)
   monkeypatch.setattr(targets, "discover_targets", unexpected)
   monkeypatch.setattr(targets, "get_target", unexpected)
   monkeypatch.setattr(targets, "resolve_target", unexpected)
-  monkeypatch.setattr(persona_store, "locate_entry", unexpected)
+  monkeypatch.setattr(persona_store, "read_registered_persona", unexpected)
   monkeypatch.setattr(persona_store, "read_persona_bundle", unexpected)
-  identity = config.resolve_agent_identity(explicit_agent="  ", requested="unchanged")
+  assert config.resolve_agent(explicit_agent="  ", requested="unchanged") == identity.node
   assert calls == [("  ", "unchanged")]
-  assert identity.node == "Navigator℘Claude"
-  assert identity.designation == ("Navigator", "Claude")
-  assert identity.target_name == "Claude"
-  assert identity.entry_path is None
 
 
-def test_identity_view_propagates_the_original_resolver_error(monkeypatch):
+def test_scalar_propagates_the_original_identity_resolver_error(monkeypatch):
   from kanibako.errors import ConfigError
   from kanibako.settings import config
 
-  error = ConfigError("legacy resolution failed")
+  error = ConfigError("identity resolution failed")
   calls = []
 
-  def legacy(**kwargs):
+  def rich(**kwargs):
     calls.append(kwargs)
     raise error
 
-  monkeypatch.setattr(config, "resolve_agent", legacy)
+  monkeypatch.setattr(config, "resolve_agent_identity", rich)
   with pytest.raises(ConfigError) as raised:
-    config.resolve_agent_identity(explicit_agent=None, requested=None)
+    config.resolve_agent(explicit_agent=None, requested=None)
   assert raised.value is error
   assert calls == [{"explicit_agent": None, "requested": None}]
 
@@ -604,3 +609,17 @@ def test_identity_view_keeps_the_legacy_discovery_warning_and_call_count(monkeyp
   assert len(emitted) == 1
   assert calls == ["discover"]
   assert identity.node == "claude"
+
+
+def test_identity_facade_stays_legacy_only_until_consumer_cutover(monkeypatch):
+  from kanibako.settings.config import resolve_agent_identity
+
+  _patch_targets(monkeypatch, ["claude"])
+
+  def unexpected(*args, **kwargs):
+    pytest.fail("PG selection is not active yet")
+
+  monkeypatch.setattr("kanibako.persona_store.read_registered_persona", unexpected)
+  assert resolve_agent_identity(explicit_agent="Claude").target_name == "claude"
+  with pytest.raises(AgentNotInstalledError):
+    resolve_agent_identity(explicit_agent="scout")

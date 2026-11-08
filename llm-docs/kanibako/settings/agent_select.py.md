@@ -2,7 +2,7 @@
 
 `agent_select` is the ONE seam every command uses to answer *"which agent is this box's?"*. It
 resolves the settings side of the question with a narrow pre-pass, applies `--agent` on top, and
-hands the winner to `kanibako.settings.config.resolve_agent`, which owns everything that is NOT a
+hands the winner to `kanibako.settings.config.resolve_agent_identity`, which owns everything that is NOT a
 key: name validation against the installed set and persona-ref canonicalization.
 
 🛑 **IF NOTHING NAMES AN AGENT, NOTHING LAUNCHES** (keyspec §2b). The installed-agent COUNT decides
@@ -85,11 +85,11 @@ the CLI level (§1A's locator caveat): an AGENT file may not carry prefs, so a r
 cannot introduce new requests, and the selection level is an initial-value overlay that triggers no
 re-read. See `settings_prefs.LOCATOR_CLOSURE`.
 
-## `AgentSelection` — the two field vocabularies
+## `AgentSelection` — identity and choosing tier
 
-*node* is the canonical agent NODE-name (`persona℘harness`; a bare agent is byte-identical to its
-harness). `select_agent` never returns `""` (see `has_agent`); a plain-shell box is the node `shell`
-(keyspec §2b, §2d).
+*identity* carries the resolved node, persona/harness designation, and target name.
+*node* is a read-only view, never reparsed. `select_agent` never returns `""`;
+a plain-shell identity names `shell` and has no persona/harness.
 
 *source* answers *"why did system.agent resolve to that?"* without reading files:
 
@@ -183,7 +183,7 @@ selection expands LENIENTLY; see `kanibako.settings.settings_launch.resolve_sele
 
 It raises `kanibako.errors.AgentNoDefaultError` for a present-`None` selection — its OWN raise, the
 one `resolve_agent` cannot make because it cannot see the difference — plus the typed
-`AgentResolutionError` subclasses `config.resolve_agent` raises (`AgentUnsetError` when nothing set
+`AgentResolutionError` subclasses `config.resolve_agent_identity` raises (`AgentUnsetError` when nothing set
 the key, `AgentNotInstalledError` when the name resolved but its adapter is missing), the ref-grammar
 `ConfigError` for an *explicit_agent* that is malformed or blank, a
 `kanibako.settings.settings_resolve.SettingsError` when the selection key itself does not resolve,

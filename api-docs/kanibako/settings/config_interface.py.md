@@ -34,7 +34,7 @@ def _yaml_skeleton(target: str) -> list[str]
 def _host_xdg_map(data_home: 'Path | None'=None) -> dict[str, str]
 def _set_time_ctx(config: 'dict[str, str] | None'=None) -> 'Any'
 def _path_tier_split() -> 'tuple[dict[str, str], dict[str, str]]'
-def _set_time_target(*, std, proj, ws, agent_name: str, system_path: 'Path | None') -> 'LaunchInputs | None'
+def _set_time_target(*, std, proj, ws, agent_name: str, system_path: 'Path | None', agent_identity: AgentIdentity | None=None) -> 'LaunchInputs | None'
 def _target_scope_anchors(target: 'LaunchInputs | None', *, agent_path: 'Path | None', agent_name: str) -> dict[str, object]
 def _set_time_anchor(anchor_ref: str, *, scope_anchors: 'dict[str, object]', agents_root: 'Path | None') -> 'str | None'
 def _bare_relative_path_error(canonical: str, value: 'str | None', *, display_key: str, route_key: str, config_path: Path, system_settings_path: 'Path | None', command_scope: 'ConfigLevel | None', target: 'LaunchInputs | None', agent_path: 'Path | None', agent_name: str, agents_root: 'Path | None') -> 'str | None'
@@ -45,7 +45,7 @@ def _dotted_in(node: object, dotted: str) -> object
 def _cascade_bad_entries(cmd: 'Path | None', command_scope: 'ConfigLevel | None', *, system_path: 'Path | None', workset_path: 'Path | None', box_path: 'Path | None', edited: 'str | None'=None, defects: 'Callable[[], Mapping[str, str]] | None'=None) -> _BadEntries
 def _first_dotted(views: 'list[dict]', dotted: str) -> object
 def _overwritten_by(edited: 'str | None', entry: 'tuple[str, ...]') -> bool
-def _set_time_agent_tier(agent_name: str, agent_path: 'Path | None', *, floor_only: bool=False) -> 'tuple[Path | None, dict[str, str | None] | None, dict[str, str | None] | None]'
+def _set_time_agent_tier(agent_name: str, agent_path: 'Path | None', *, floor_only: bool=False, identity: AgentIdentity | None=None) -> 'tuple[Path | None, dict[str, str | None] | None, dict[str, str | None] | None]'
 def _set_time_snapshot(*, target: 'LaunchInputs | None', agent_name: str, agent_path: 'Path | None', config_path: 'Path | None'=None, command_scope: 'ConfigLevel | None'=None, system_settings_path: 'Path | None'=None, system_path: 'Path | None'=None, workset_path: 'Path | None'=None, box_path: 'Path | None'=None) -> 'tuple[Any, Any]'
 def _floor_blind_referents(key: str, value: str, candidate: 'Any', command_scope: 'ConfigLevel | None') -> list[str]
 def _category_set_lookups(config_path: Path, *, canonical: str, command_scope: 'ConfigLevel | None'=None, system_settings_path: Path | None=None, system_path: Path | None=None, agent_path: Path | None=None, workset_path: Path | None=None, box_path: Path | None=None, agent_name: str='', target: 'LaunchInputs | None'=None)

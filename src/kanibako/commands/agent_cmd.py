@@ -1167,21 +1167,7 @@ def run_reauth(args: argparse.Namespace) -> int:
     explicit_agent=getattr(args, "agent", None),  # Phase D seam (--agent)
   )
   agent_name = selection.node
-  # ``agent_name`` is the NODE-name (persona identity); the target/plugin is keyed
-  # by the HARNESS. ⚑ Routed through the ONE translator: a NO-AGENT box has no
-  # node, and handing ``""`` to ``resolve_target`` would AUTO-DETECT an agent and
-  # reauth it — credentials for an agent this box deliberately does not run (the
-  # same two-vocabulary collision the launch seam guards; bifrost E-NULL).
-  # 🛑 ``pref.system.agent: null`` reaches neither line since [Jei:2026-09-19]:
-  # ``select_agent`` REFUSES it above, saying no default agent is set, so no
-  # production path produces a node-less selection and the ``target is None`` arm
-  # below is unreachable today.
-  # ⚑ KEPT anyway, and NOT as a reservation for ``shell``: keyspec §2b makes the
-  # plain-shell box an effective ``{system.agent}`` of ``shell``, a NAMED node, so
-  # a D2 selection has ``has_agent`` TRUE and resolves a target like any other.
-  # The guard stays because the incident is on record (bifrost E-NULL) and the
-  # shape costs one conjunct — a floor under the two-vocabulary seam, not a plan.
-  target = resolve_target(harness_of(selection.node)) if selection.has_agent else None
+  target = resolve_target(selection.identity.target_name) if selection.has_agent else None
   if target is None:
     print(
       "This box runs no agent, so there are no credentials to refresh. "
@@ -1213,6 +1199,7 @@ def run_reauth(args: argparse.Namespace) -> int:
     proj=proj,
     target=target,
     agent_name=agent_name,
+    agent_identity=selection.identity,
     system_settings_path=std.settings,
     agent_cfg_path=agent_cfg_path,
     # The persona store's LIVE tier — the SAME one a launch resolves against.

@@ -1,8 +1,9 @@
 # Credential Writeback Watcher — the trusted host half
 
-`launch/creds_watcher.py` is the per-box HOST daemon that carries an in-box credential refresh back
-to the host credential STORE. Design authority:
-`~/canon/workbook/designs/split-brain-persistence-DESIGN.md` (GAP-1, the always-on instance).
+`launch/creds_watcher.py` returns credentials to the host store.
+`box_writeback_context` resolves the stamped identity: target_name selects the plugin;
+node keys settings and auth paths. Design:
+`~/canon/workbook/designs/split-brain-persistence-DESIGN.md` (GAP-1).
 
 ## Why writeback is a correctness need
 

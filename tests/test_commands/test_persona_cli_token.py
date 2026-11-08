@@ -49,7 +49,7 @@ def _authorizations(srv) -> set:
 def _launch(start_mocks, secrets, cli_env, endpoint):
   """Run ``_run_container`` to its persona pre-flight with a REAL claude probe."""
   from kanibako.commands.start import _run_container
-  from kanibako.settings.agent_select import AgentSelection
+  from tests.support.agent_selection import agent_selection
   from kanibako.settings.settings_launch import AuthSource
 
   auth = AuthSource(
@@ -68,7 +68,7 @@ def _launch(start_mocks, secrets, cli_env, endpoint):
     ),
   ):
     m.proj.is_new = False
-    m.resolve_agent.return_value = AgentSelection(node=NODE_ID, source="settings")
+    m.resolve_agent.return_value = agent_selection(node=NODE_ID, source="settings")
     m.target.name = "claude"
     m.target.descriptor = real.descriptor
     m.target.verify_persona = real.verify_persona

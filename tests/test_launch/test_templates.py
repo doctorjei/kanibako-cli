@@ -11,7 +11,7 @@ import pytest
 import yaml
 
 from kanibako.settings.agent_config import agent_settings_path
-from kanibako.settings.agent_select import AgentSelection
+from tests.support.agent_selection import agent_selection
 from kanibako.settings.paths import (
   WorksetSpec,
   resolve_project,
@@ -467,7 +467,7 @@ def _seed(std, proj, *, agent="claude", deliver_creds=True, agent_cfg_path=None)
     ),
     logger=logging.getLogger("test-seed"),
     deliver_creds=deliver_creds,
-    selection_level=AgentSelection(node=agent, source="settings").selection_level,
+    selection_level=agent_selection(node=agent, source="settings").selection_level,
   )
 
 
@@ -755,7 +755,7 @@ class TestLayeredHomeSeed:
       global_config_path=std.settings,
       agent_config_path=agent_settings_path(std.agents, "shell"),
       logger=logging.getLogger("test-seed"),
-      selection_level=AgentSelection(node="shell", source="settings").selection_level,
+      selection_level=agent_selection(node="shell", source="settings").selection_level,
     )
     srcs = [seed.src for seed in _launch_seed_list(snapshot)]
     assert "/box/home" not in srcs, srcs
@@ -849,7 +849,7 @@ class TestLayeredHomeSeed:
       global_config_path=std.settings,
       agent_config_path=agent_file,
       logger=logging.getLogger("test-seed"),
-      selection_level=AgentSelection(node="shell", source="settings").selection_level,
+      selection_level=agent_selection(node="shell", source="settings").selection_level,
     )
     home = primary_proj.shell_path
     assert (home / "base-only.txt").read_text() == "base"
@@ -916,7 +916,7 @@ class TestLayeredHomeSeed:
       global_config_path=std.settings,
       agent_config_path=agent_file,
       logger=logging.getLogger("test-seed"),
-      selection_level=AgentSelection(node=node, source="settings").selection_level,
+      selection_level=agent_selection(node=node, source="settings").selection_level,
     )
     home = primary_proj.shell_path
     assert (home / "base-only.txt").read_text() == "base"
@@ -971,7 +971,7 @@ class TestLayeredHomeSeed:
       global_config_path=std.settings,
       agent_config_path=agent_settings_path(std.agents, "claude"),
       logger=logging.getLogger("test-seed"),
-      selection_level=AgentSelection(node="claude", source="settings").selection_level,
+      selection_level=agent_selection(node="claude", source="settings").selection_level,
     )
     home = primary_proj.shell_path
     assert not (home / "store-only.txt").exists()
@@ -1153,7 +1153,7 @@ class TestLayeredHomeSeed:
       global_config_path=std.settings,
       agent_config_path=agent_settings_path(std.agents, "shell"),
       logger=logging.getLogger("test-seed"),
-      selection_level=AgentSelection(node="shell", source="settings").selection_level,
+      selection_level=agent_selection(node="shell", source="settings").selection_level,
     )
     srcs = [seed.src for seed in _launch_seed_list(snapshot)]
     assert str(user_home) in srcs, srcs
@@ -1191,7 +1191,7 @@ class TestLayeredHomeSeed:
       global_config_path=std.settings,
       agent_config_path=agent_settings_path(std.agents, "shell"),
       logger=logging.getLogger("test-seed"),
-      selection_level=AgentSelection(node="shell", source="settings").selection_level,
+      selection_level=agent_selection(node="shell", source="settings").selection_level,
     )
     dests = [seed.dest for seed in _launch_seed_list(snapshot)]
     assert not any(dest.rstrip("/").endswith("/x") for dest in dests), dests
@@ -1288,7 +1288,7 @@ def _seed_snapshot(std, proj, *, agent="claude"):
     # (``+`` store dirname included); an agent-less call falls back to ``claude``.
     agent_config_path=agent_settings_path(std.agents, agent or "claude"),
     logger=logging.getLogger("test-seed"),
-    selection_level=AgentSelection(node=agent, source="settings").selection_level,
+    selection_level=agent_selection(node=agent, source="settings").selection_level,
   )
 
 
@@ -1324,7 +1324,7 @@ def _seed_box(std, proj, *, agent="claude", deliver_creds=True):
     system_settings_path=std.settings,
     auth_src=SimpleNamespace(creds_shared=deliver_creds),
     logger=logging.getLogger("test-seed"),
-    selection_level=AgentSelection(node=agent, source="settings").selection_level,
+    selection_level=agent_selection(node=agent, source="settings").selection_level,
   )
 
 

@@ -257,10 +257,10 @@ into one would be a behavior change on one of them, and which one is correct is 
 not a refactor's call.
 
 
-```_set_time_target(*, std, proj, ws, agent_name, system_path) -> LaunchInputs | None```
-The COMMAND's target as `settings_launch.resolve_inputs` builds it (spec §2a, "Build the full
-cascade snapshot for the COMMAND's target"): *proj* ⇒ `BOX`, *ws* ⇒ `WORKSET`, neither ⇒
-`SYSTEM`. The caller passes the objects it holds; nothing is re-loaded here. `None` without *std*.
+```_set_time_target(*, std, proj, ws, agent_name, system_path, agent_identity=None) -> LaunchInputs | None```
+The command's target: *proj* ⇒ `BOX`, *ws* ⇒ `WORKSET`, neither ⇒ `SYSTEM`; `None`
+without *std*. Supplied identity travels through `resolve_inputs` into set-time descriptor
+lookup: `target_name` selects the plugin, the node selects the settings file. No PG read.
 
 ```_set_time_snapshot(*, target, agent_name, agent_path, config_path=None, command_scope=None, system_settings_path=None, system_path=None, workset_path=None, box_path=None) -> tuple[Any, Any]```
 The set-time cascade, merged and not expanded, with the `ResolveCtx` to expand it:

@@ -324,7 +324,7 @@ class ClaudeTarget(Target):
     return self.project_persona_settings(data, source=str(settings))
 
   def project_persona_settings(
-    self, config: Mapping[str, object], *, source: str
+    self, config: Mapping[str, object], *, source: str, keyless: bool = False
   ) -> PersonaReadOutcome:
     """Project Claude's env and model without I/O or mutation.
 

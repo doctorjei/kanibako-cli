@@ -17,6 +17,8 @@ _ENDPOINT_SCHEMES = frozenset({'http', 'https'})
 def persona_store_root() -> Path
 def locate_entry(ref: str) -> PersonaEntry | None
 def resolve_secret_path(entry: PersonaEntry) -> SecretPathResult
+def read_registered_persona(name: str) -> RegisteredPersona | None
+def project_registered_persona(persona: RegisteredPersona, target: Target) -> PersonaBundle
 def validate_endpoint(endpoint: str) -> None
 def read_persona_bundle(ref: str, target: Target) -> PersonaBundle | None
 ```
@@ -50,4 +52,11 @@ class PersonaBundle(NamedTuple):
     @property
     def request_model(self) -> str | None
     def to_persona_values(self) -> dict[str, str | None]
+
+@dataclass(frozen=True)
+class RegisteredPersona:
+    identity: AgentIdentity
+    config: dict[str, object] = field(repr=False)
+    auth_env: str | None
+    keyless: bool
 ```

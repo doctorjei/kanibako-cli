@@ -617,7 +617,7 @@ class TestDisplayAnswersLikeTheLaunch:
       _effective_behavior_for_display,
       _resolve_launch_snapshot,
     )
-    from kanibako.settings.agent_select import AgentSelection
+    from tests.support.agent_selection import agent_selection
     from kanibako.settings.config_io import dump_doc
     from kanibako.settings.paths import resolve_project
     from kanibako.settings.settings_launch import snapshot_leaf
@@ -630,7 +630,7 @@ class TestDisplayAnswersLikeTheLaunch:
         "agent": {"claude": {"template": "{meta.workset.path}/tpl"}},
       },
     )
-    selection = AgentSelection(node="claude", source="settings").selection_level
+    selection = agent_selection(node="claude", source="settings").selection_level
     target = MagicMock()
     target.name = "claude"
     target.setting_descriptors.return_value = [

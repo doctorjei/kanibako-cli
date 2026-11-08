@@ -223,10 +223,10 @@ no selector, is a reject.
 A codex config carries NO env block, so `env`/`env_dropped` stay at their (empty) defaults — unlike
 claude, whose persona env rides the config.
 
-FAIL-SOFT, per the base-class contract: absent or unreadable, malformed TOML, no usable provider
-table, a selected entry that is not a table, or a missing/empty `base_url`/`env_key` (a codex
-persona is meaningless without both) each return an outcome NAMING that cause and the file. It is a
-pure read via stdlib `tomllib`, and never touches the token.
+The reader names absent/unreadable files, malformed TOML, invalid provider tables, and
+missing/empty endpoint or auth env. It uses `tomllib` without reading tokens. Its pure
+`project_persona_settings` counterpart accepts an empty `env_key` only for explicit PG
+`keyless=True`; ordinary reads still reject it.
 
 ### `verify_persona`
 

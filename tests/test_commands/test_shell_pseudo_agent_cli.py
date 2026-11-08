@@ -326,17 +326,19 @@ class TestAShellBoxStampIsReadBackAsTheShellAgent:
     assert _tree(tmp_home) == before
 
   def test_code_resolves_the_live_box_s_agent_as_shell(self, shell_box):
-    """The node is the answer — not ``None`` from a swallowed error — and the
-    shell target seeds no VS Code extension."""
-    from kanibako.commands.code_cmd import (
-      _resolve_box_agent_node,
-      _resolve_box_vscode_extension,
-    )
+    """Shell reaches the descriptor lookup and seeds no editor extension."""
+    from unittest.mock import patch
+
+    import kanibako.commands.code_cmd as code_cmd
 
     std, _config, proj, cname, _ = shell_box
-    node = _resolve_box_agent_node(_FakeRuntime(), std, proj, cname)
-    assert node == "shell"
-    assert _resolve_box_vscode_extension(node) is None
+    with patch.object(
+      code_cmd,
+      "_extension_for_agent",
+      wraps=code_cmd._extension_for_agent,
+    ) as m_ext:
+      assert code_cmd._resolve_box_vscode_extension(_FakeRuntime(), std, proj, cname) is None
+    m_ext.assert_called_once_with("shell")
 
   def test_code_remote_seed_asks_the_shell_target_for_its_extension(self, shell_box):
     """The remote leg reaches the extension lookup with the ``shell`` node, and

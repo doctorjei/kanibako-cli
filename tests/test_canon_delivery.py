@@ -37,7 +37,7 @@ import pytest
 
 from kanibako.errors import PackagingError
 from kanibako.settings.agent_config import agent_settings_path
-from kanibako.settings.agent_select import AgentSelection
+from tests.support.agent_selection import agent_selection
 from kanibako.settings import core_defaults
 from kanibako.launch import templates
 from kanibako.settings.core_defaults import (
@@ -1917,7 +1917,7 @@ class TestBaseTemplateSeedsTheNotebook:
       agent_config_path=agent_settings_path(std.agents, "claude"),
       logger=logging.getLogger("test-canon-seed"),
       deliver_creds=True,
-      selection_level=AgentSelection(node="claude", source="settings").selection_level,
+      selection_level=agent_selection(node="claude", source="settings").selection_level,
     )
     assert (proj.shell_path / "canon" / "notebook" / "LOCAL_CONTENTS.md").is_file()
     assert (proj.shell_path / "canon" / "workbook" / "state" / "devnotes.md").is_file()

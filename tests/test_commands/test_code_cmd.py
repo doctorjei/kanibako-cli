@@ -455,7 +455,7 @@ def test_image_resolution_failure_still_launches(mock_runtime):
 
 def test_stamp_first_wins_over_cascade(mock_runtime, _isolate_seed_path):
   """The RUNNING box's KANIBAKO_AGENT stamp resolves the extension — the
-  create-time resolve_agent cascade is NOT consulted (and would raise here)."""
+  create-time selection cascade is NOT consulted (and would raise here)."""
   tmp_path = _isolate_seed_path
   seed_path = tmp_path / "imageConfigs" / "box.json"
 
@@ -482,7 +482,7 @@ def test_stamp_first_wins_over_cascade(mock_runtime, _isolate_seed_path):
     # If the code ever fell through to the cascade, this would blow up →
     # extension None → extensions=[].  Asserting the ext proves stamp-first.
     patch(
-      "kanibako.settings.config.resolve_agent",
+      "kanibako.settings.agent_select.select_agent",
       side_effect=AssertionError("cascade must not run when a stamp exists"),
     ),
     patch("kanibako.commands.code_cmd.shutil.which", return_value="/usr/bin/code"),
@@ -968,46 +968,27 @@ def test_remote_unforeseen_seed_failure_stays_silent(
   "stamp",
   ["navigator+claude", "navigator℘claude", "navigator+Claude"],
 )
-def test_box_agent_node_canonicalizes_the_stamp(stamp):
-  """🛑 The stamp re-enters code as a NODE, in ONE spelling.
-
-  ``KANIBAKO_AGENT`` is stamped in the OUTSIDE spelling (``+``) because an
-  agent reads it inside the box.  This function's contract is a node-name —
-  its ``select_agent`` fallback returns one, and its consumer
-  ``_extension_for_agent`` derives the harness with ``harness_of``, which
-  splits on ``℘`` ALONE.  Hand the raw ``+`` form on and ``resolve_target``
-  hunts a plugin called ``navigator+claude``, the seed quietly yields no
-  extension, and the user's editor simply opens without it.
-
-  ⚑ BOTH SPELLINGS: ``+`` is what this version stamps, ``℘`` what an
-  already-running older box carries — the back-compat guarantee, pinned.
-  ⚑ AND A NODE IS LOWERCASE (keyspec §0 "An agent's canonical case is carried by
-  its _name_"): a capitalized harness in the stamp folds, the persona segment keeps
-  its case.
-  """
-  from kanibako.commands.code_cmd import _resolve_box_agent_node
+def test_box_extension_resolves_the_stamped_identity(stamp):
+  """Legacy stamp spellings reach the same installed target without selection."""
+  from kanibako.commands.code_cmd import _resolve_box_vscode_extension
 
   runtime = MagicMock()
   runtime.inspect_env.return_value = stamp
-  node = _resolve_box_agent_node(
-    runtime,
-    MagicMock(),
-    MagicMock(),
-    "kanibako-foo",
-  )
-  assert node == "navigator℘claude"
+  with (
+    patch("kanibako.commands.code_cmd._extension_for_agent", return_value="ext") as m_ext,
+    patch("kanibako.settings.agent_select.select_agent", side_effect=AssertionError),
+  ):
+    assert _resolve_box_vscode_extension(runtime, MagicMock(), MagicMock(), "box") == "ext"
+  m_ext.assert_called_once_with("claude")
+  runtime.inspect_env.assert_called_once_with("box", "KANIBAKO_AGENT")
 
 
 @pytest.mark.parametrize(
   "stamp",
   ["navigator+claude", "navigator℘claude", "navigator+Claude"],
 )
-def test_remote_seed_hands_the_canonical_node_to_the_extension_lookup(stamp):
-  """The REMOTE leg's half of the same rule (twin of the local one above).
-
-  There is no local box to fall back on, so the stamp is the only input; it
-  must reach ``_extension_for_agent`` as a node.
-  """
+def test_remote_seed_hands_the_legacy_harness_to_the_extension_lookup(stamp):
+  """Remote legacy stamps resolve syntactically, never through the local PG store."""
   from kanibako.commands.code_cmd import _seed_remote_attached_config
 
   engine = MagicMock()
@@ -1019,7 +1000,84 @@ def test_remote_seed_hands_the_canonical_node_to_the_extension_lookup(stamp):
       return_value="anthropic.claude-code",
     ) as m_ext,
     patch("kanibako.commands.code_cmd._write_attached_config"),
+    patch(
+      "kanibako.settings.config.resolve_agent_identity", side_effect=AssertionError
+    ) as m_local,
   ):
     _seed_remote_attached_config(engine, "kanibako-mybox")
 
-  assert m_ext.call_args.args[0] == "navigator℘claude"
+  m_ext.assert_called_once_with("claude")
+  m_local.assert_not_called()
+  engine.inspect_env.assert_called_once_with("kanibako-mybox", "KANIBAKO_AGENT")
+
+
+@pytest.mark.parametrize("stamped", [True, False])
+def test_box_extension_uses_resolved_identity_target(stamped, tmp_path):
+  """A registered node need not contain its harness designation."""
+  from kanibako.agent_ref import AgentIdentity
+  from kanibako.commands.code_cmd import _resolve_box_vscode_extension
+  from kanibako.settings.agent_select import AgentSelection
+
+  identity = AgentIdentity(
+    node="navigator",
+    registered_name="Navigator",
+    persona="Guide",
+    harness="Claude",
+    target_name="claude",
+    entry_path=tmp_path / "PG" / "Navigator",
+  )
+  runtime, std, proj = MagicMock(), MagicMock(), MagicMock()
+  runtime.inspect_env.return_value = "navigator" if stamped else None
+  with (
+    patch("kanibako.settings.config.resolve_agent_identity", return_value=identity) as m_identity,
+    patch(
+      "kanibako.settings.agent_select.select_agent",
+      return_value=AgentSelection(identity=identity, source="settings"),
+    ) as m_selection,
+    patch("kanibako.commands.code_cmd._extension_for_agent", return_value="ext") as m_ext,
+  ):
+    assert _resolve_box_vscode_extension(runtime, std, proj, "box") == "ext"
+  m_ext.assert_called_once_with("claude")
+  runtime.inspect_env.assert_called_once_with("box", "KANIBAKO_AGENT")
+  if stamped:
+    m_identity.assert_called_once_with(explicit_agent="navigator")
+    m_selection.assert_not_called()
+  else:
+    m_identity.assert_not_called()
+    m_selection.assert_called_once_with(std=std, proj=proj)
+
+
+@pytest.mark.parametrize("stamp", ["bad+stamp+shape", "unknown"])
+def test_bad_stamped_identity_never_falls_back_to_selection(stamp):
+  from kanibako.commands.code_cmd import _resolve_box_vscode_extension
+  from kanibako.errors import ConfigError
+
+  runtime = MagicMock()
+  runtime.inspect_env.return_value = stamp
+  with (
+    patch(
+      "kanibako.settings.config.resolve_agent_identity", side_effect=ConfigError("bad identity")
+    ),
+    patch("kanibako.settings.agent_select.select_agent") as m_selection,
+    patch("kanibako.commands.code_cmd._extension_for_agent") as m_ext,
+  ):
+    assert _resolve_box_vscode_extension(runtime, MagicMock(), MagicMock(), "box") is None
+  m_selection.assert_not_called()
+  m_ext.assert_not_called()
+
+
+def test_box_extension_never_autodetects_for_nodeless_selection():
+  from kanibako.commands.code_cmd import _resolve_box_vscode_extension
+  from tests.support.agent_selection import agent_selection
+
+  runtime = MagicMock()
+  runtime.inspect_env.return_value = None
+  with (
+    patch(
+      "kanibako.settings.agent_select.select_agent",
+      return_value=agent_selection(node="", source="suppressed"),
+    ),
+    patch("kanibako.commands.code_cmd._extension_for_agent") as m_extension,
+  ):
+    assert _resolve_box_vscode_extension(runtime, MagicMock(), MagicMock(), "box") is None
+  m_extension.assert_not_called()

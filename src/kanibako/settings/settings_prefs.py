@@ -676,29 +676,13 @@ def reset_discovery_cache() -> None:
 
 
 class AgentNames(Collection[str]):
-  """The ``valid_agents`` collection: discovered HARNESSES + any persona NODE
-  built on one.
+  """Valid discovered harnesses, legacy composites, and injected registered nodes.
 
-  A ``Collection[str]`` rather than a bare ``frozenset`` because the valid set is
-  not enumerable: the agent tier is discriminated by NODE (``navigator℘claude``)
-  and persona nodes are user-created, so membership is a PREDICATE while
-  iteration yields the finite harness list an error message should name.
-
-  ⚑ Membership is deliberately a VALIDITY test, not an EXISTENCE test: §2h lets
-  a pref pre-configure an agent you may switch to, so requiring the persona's
-  store dir to already exist would be the same existence error the spec rejects
-  for keys.
-
-  ⚑⚑ :attr:`leaf_map` IS THE VOCABULARY AND *unreadable* IS THE CONCESSION, AND
-  BOTH DEFAULT TO THE STRICT ANSWER. An instance that says nothing about an agent
-  judges it by core's universal table; it does NOT concede it. The default ran the
-  other way until 2026-08-30 — an omitted map turned §2h filter 1 into a pass for
-  every ``agent.<name>.<anything>``, a closed keyspace opened by saying nothing.
-  An agent that declares nothing is ``{name: frozenset()}``; an agent whose plugin
-  cannot be READ here (uninstalled, or its descriptors raise —
-  keyspec §0 "The leaf VOCABULARY is partitioned by TIER") belongs in
-  *unreadable*, and :func:`default_valid_agents` puts every harness discovery
-  could not read there.
+  Membership accepts legacy persona refs without requiring a store entry. Iteration
+  lists only finite discovered and injected names. ``leaf_map`` carries each node's
+  harness facts with plugin leaves and explicit unreadable-harness concessions;
+  an omitted declaration alone never concedes a leaf. Per-resolve overlays must
+  not modify the memoized discovery result.
   """
 
   def __init__(
@@ -708,6 +692,7 @@ class AgentNames(Collection[str]):
     leaf_map: "Mapping[str, Collection[str]] | None" = None,
     unreadable: "Container[str]" = frozenset(),
     discovery_failed: bool = False,
+    agent_harnesses: Mapping[str, str] | None = None,
   ) -> None:
     self._discovered = frozenset(discovered)
     #: harness → the leaves that PLUGIN declares (§0 "Agent specifics are
@@ -721,6 +706,7 @@ class AgentNames(Collection[str]):
     self.leaf_map: ConcedingLeafMap = ConcedingLeafMap(
       {name: frozenset(declared) for name, declared in (leaf_map or {}).items()},
       unreadable,
+      agent_harnesses=agent_harnesses,
     )
     #: ⚑ Discovery FAILED (an environment fault), as distinct from "no agents
     #: are installed". Without this a broken plugin reports *"'claude'
@@ -730,7 +716,7 @@ class AgentNames(Collection[str]):
   def __contains__(self, item: object) -> bool:
     if not isinstance(item, str):
       return False
-    if item in self._discovered:
+    if item in self._discovered or item in self.leaf_map.agent_harnesses:
       return True
     from kanibako.agent_ref import canonicalize_agent_ref, harness_of
     from kanibako.errors import ConfigError
@@ -742,13 +728,23 @@ class AgentNames(Collection[str]):
     return harness_of(node) in self._discovered
 
   def __iter__(self):
-    return iter(sorted(self._discovered))
+    return iter(sorted(self._discovered | self.leaf_map.agent_harnesses.keys()))
 
   def __len__(self) -> int:
-    return len(self._discovered)
+    return len(self._discovered | self.leaf_map.agent_harnesses.keys())
 
   def __repr__(self) -> str:  # pragma: no cover - debug aid
-    return f"AgentNames({sorted(self._discovered)!r})"
+    return f"AgentNames({list(self)!r})"
+
+  def with_harnesses(self, agent_harnesses: Mapping[str, str]) -> AgentNames:
+    """Return per-resolve name/harness facts without modifying cached discovery."""
+    return AgentNames(
+      self._discovered,
+      leaf_map=self.leaf_map,
+      unreadable=self.leaf_map.conceded,
+      discovery_failed=self.discovery_failed,
+      agent_harnesses={**self.leaf_map.agent_harnesses, **agent_harnesses},
+    )
 
 
 def default_valid_agents() -> AgentNames:

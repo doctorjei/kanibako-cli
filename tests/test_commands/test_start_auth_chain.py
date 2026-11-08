@@ -20,7 +20,7 @@ import pytest
 from kanibako.agent_ref import GENERAL_SLOT
 from kanibako.commands import start as start_cmd
 from kanibako.project.workset import add_project, create_workset
-from kanibako.settings.agent_select import AgentSelection
+from tests.support.agent_selection import agent_selection
 from kanibako.settings.kb_store import __MISSING__
 from kanibako.settings.paths import (
   WorksetSpec,
@@ -64,7 +64,7 @@ def standalone_proj(std, config, project_dir, credentials_dir):
 
 def _selection():
   """The §1A selection level a launch installs, off the production dataclass."""
-  return AgentSelection(node=NODE, source="settings").selection_level
+  return agent_selection(node=NODE, source="settings").selection_level
 
 
 def _main_snapshot(std, proj):
@@ -229,7 +229,7 @@ class TestANoAgentLaunchRunsTheShell:
     assert start_cmd._launch_selection_level(None) == {"system.agent": GENERAL_SLOT}
     assert (
       start_cmd._launch_selection_level(
-        AgentSelection(node=NODE, source="settings"),
+        agent_selection(node=NODE, source="settings"),
       )
       == _selection()
     )
@@ -251,3 +251,68 @@ class TestANoAgentLaunchRunsTheShell:
     )
     ws_auth = snapshot_leaf(snapshot, WS_AUTH_PATH)
     assert snapshot_leaf(snapshot, BOX_AUTH_PATH) == f"{ws_auth}/{GENERAL_SLOT}"
+
+
+@pytest.mark.parametrize("mode", MODES)
+@pytest.mark.parametrize("reader", ["auth", "decisions"])
+def test_auth_snapshot_uses_registered_identity_without_store_lookup(
+  mode,
+  reader,
+  request,
+  std,
+  tmp_path,
+  monkeypatch,
+):
+  from kanibako.agent_ref import AgentIdentity
+  from kanibako.settings import settings_launch
+  from kanibako.settings.settings_prefs import default_valid_agents
+
+  proj = request.getfixturevalue(f"{mode}_proj")
+  identity = AgentIdentity(
+    node="navigator",
+    registered_name="Navigator",
+    persona="Guide",
+    harness="Claude",
+    target_name="claude",
+    entry_path=tmp_path / "PG" / "Navigator",
+  )
+  discovered = default_valid_agents()
+  assert "navigator" not in discovered
+  snapshots = []
+  build = settings_launch.build_launch_snapshot
+
+  def capture(**kwargs):
+    assert kwargs["valid_agents"].leaf_map.agent_harnesses == {"navigator": "claude"}
+    snapshot = build(**kwargs)
+    snapshots.append(snapshot)
+    return snapshot
+
+  def no_legacy_read(*args, **kwargs):
+    raise AssertionError("registered names must not read legacy persona files")
+
+  monkeypatch.setattr(settings_launch, "build_launch_snapshot", capture)
+  monkeypatch.setattr(start_cmd, "_persona_values_for", no_legacy_read)
+  kwargs = dict(
+    std=std,
+    proj=proj,
+    agent_name=identity.node,
+    agent_identity=identity,
+    system_settings_path=None,
+    agent_cfg_path=None,
+    selection_level={"system.agent": identity.node},
+  )
+  if reader == "auth":
+    start_cmd._resolve_box_auth_source(**kwargs)
+  else:
+    from kanibako.targets import resolve_target
+
+    start_cmd._resolve_box_launch_decisions(**kwargs, target=resolve_target("claude"))
+  assert len(snapshots) == 1
+  snapshot = snapshots[0]
+  assert snapshot_leaf(snapshot, "meta.agent.navigator.name") == "Navigator"
+  assert snapshot_leaf(snapshot, "meta.agent.navigator.path") == str(std.agents / "navigator")
+  assert snapshot_leaf(snapshot, "meta.agent.navigator.settings").startswith(
+    str(std.agents / "navigator")
+  )
+  assert "navigator" not in discovered
+  assert default_valid_agents() is discovered

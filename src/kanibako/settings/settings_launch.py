@@ -55,6 +55,7 @@ if TYPE_CHECKING:
 from kanibako import kuid
 from kanibako.agent_ref import (
   ADDRESSABLE_PSEUDO_AGENTS,
+  AgentIdentity,
   GENERAL_SLOT,
   display_agent_ref,
   harness_of,
@@ -426,47 +427,19 @@ def meta_runtime_floor(
 # expands to the byte-identical host_src the proj-attr injection produced.
 
 
-def meta_agent_path_floor(agent_name: str) -> dict[str, object]:
-  """The agent STORE-ROOT anchors ``meta.agent.<a>.path`` for *agent_name*.
+def meta_agent_path_floor(
+  agent_name: str, *, identity: AgentIdentity | None = None
+) -> dict[str, object]:
+  """Kanibako settings roots for the active node and its harness.
 
-  ⚑ THE single builder for this key, shared by the launch floor
-  (:func:`meta_identity_floor`) and the ``config set`` SET-TIME validation
-  snapshot. That sharing is load-bearing: an abstract-category source is ROOTED AT
-  ASSEMBLY into ``{meta.agent.<agent>.path}/<category>/<name>``
-  (``settings_assemble._declaration_root_ref`` → ``parse_bind_map``, spec §2a), so
-  that spelling is what the walk PRODUCES and what the set-time snapshot then has to
-  resolve — without the key, the bare leaf a user just wrote is refused as a
-  dangling ``{key}``-reference.
-
-  ⚑ NODE **and** HARNESS are both materialized — but NOT for the plugin's own
-  commons: ``agent_categories_for_node`` re-keys AND re-roots those to the NODE before
-  the ref ever reaches ``expand``, so removing the harness anchor leaves them
-  BYTE-IDENTICAL (mutation-proved). What needs it is a HARNESS-KEYED ref
-  the USER wrote: at SET time the snapshot above must carry it or the value is
-  refused as a dangling dependency, and at LAUNCH a missing anchor does not raise at
-  all — §2a's embedded-ref rule renders the dangling ``{key}``-ref as ``""``, so the box
-  binds a garbage host source and NOTHING reports an error. The harness entry is
-  INTENTIONALLY PARTIAL (a ``path``, no ``name`` / ``auth.share_support``); the
-  llm-doc says why that asymmetry is inert and must not be "fixed".
+  *identity* must describe *agent_name*. PG's entry_path is a separate store,
+  never the source of a kanibako settings or category path. String-only callers
+  retain legacy ref grammar until they carry resolved identity.
   """
-  # ⚑ THE TWO HALVES ARE SPELLED DIFFERENTLY ON PURPOSE: the KEY is a key path, so
-  # its node segment stays CANONICAL (``℘``); the VALUE is a DIRECTORY, so it takes
-  # the ``+`` store spelling (``agent_config.store_dirname``).
-  #
-  # ⚑ WHERE §2d's ``%tolower(…)%`` IS: in the NODE this composes from, not in a
-  # fold applied here. The node's harness segment IS the declared name lowercased
-  # — ``targets._register`` derives it, ``config.resolve_agent`` substitutes it —
-  # so a path built from the node has already had the fold applied, and
-  # ``agent_settings_path`` / the persona shim build the SAME string from the SAME
-  # node. 🛑 Folding again HERE would not be a no-op: a node's PERSONA segment
-  # keeps the user's case (neither keyspec §0 "CASE INSENSITIVE for collision purposes"
-  # nor "An agent's canonical case is carried by its _name_" reaches it, and ``Q35`` is
-  # open), so a ``tolower`` over the whole value would name ``agents/nav+claude/`` while
-  # every other composer named ``agents/Nav+claude/``. The node is what holds this key
-  # and the rest of the tree in agreement.
+  target_name = identity.target_name if identity is not None else harness_of(agent_name)
   return {
     f"meta.agent.{store_agent}.path": f"{{config.agents}}/{store_dirname(store_agent)}"
-    for store_agent in {agent_name, harness_of(agent_name)}
+    for store_agent in {agent_name, target_name}
   }
 
 
@@ -617,6 +590,8 @@ def meta_agent_identity_floor(
   agent_name: str,
   agent_real_name: str | None,
   agent_auth_share_support: bool,
+  *,
+  identity: AgentIdentity | None = None,
 ) -> dict[str, object]:
   """The ``meta.agent.<agent_name>.*`` half of :func:`meta_identity_floor`.
 
@@ -625,38 +600,16 @@ def meta_agent_identity_floor(
   gets only the leaves its §2d fence declares (``default``: ``name``, ``path``).
   """
   floor: dict[str, object] = {}
-  # ⚑ THE KEY DISCRIMINATOR AND THE VALUE ARE SPELLED DIFFERENTLY, and §2d's
-  # own formula is why: ``meta.agent.<a>.path`` IS
-  # ``{config.agents}/%tolower({meta.agent.<a>.name})%``, so this VALUE is what
-  # the store DIRECTORY is spelled FROM and must be the ``+`` spelling
-  # ``store_dirname`` produces. The discriminator segment stays CANONICAL
-  # (``℘``) because it is a key path. Spell the value with ``℘`` and the
-  # spec's formula stops composing.
-  # ⚑ A BARE AGENT IS UNAFFECTED BY CONSTRUCTION — ``store_dirname`` is
-  # identity on a name with no separator, so only personas move.
-  #
-  # 🛑🛑 THE HARNESS SEGMENT CARRIES THE PLUGIN'S DECLARED CASE, AND THAT IS
-  # THE WHOLE POINT OF THE KEY
-  # (keyspec §0 "An agent's canonical case is carried by its _name_";
-  # keyspec §2d meta.agent.<agent>.path). An agent's canonical case lives in its
-  # NAME; the node is the fold OF that name. Substituting the already-folded
-  # discriminator here would leave the declared spelling in no stored carrier at
-  # all, and would satisfy §2d's ``%tolower(…)%`` — the spec's own adjustment,
-  # written precisely to keep the name case-carrying — with a NO-OP. That is the
-  # retired fold-to-store cure, re-spelled.
-  # ⚑ ``with_harness``, so only the HARNESS moves: a persona segment is the
-  # user's and neither rule reaches it.
-  # ⚑ ``harness_of`` on the real name too, so the splice is IDEMPOTENT: a
-  # caller handing over a whole ref (the node, or ``persona℘Kirobo``) gets the
-  # same answer as one handing over the bare declared name. Without it,
-  # ``with_harness(nav℘claude, nav℘claude)`` would compose ``nav℘nav℘claude``.
-  floor[f"meta.agent.{agent_name}.name"] = store_dirname(
-    with_harness(agent_name, harness_of(agent_real_name))
-    if agent_real_name is not None
-    else agent_name
+  floor[f"meta.agent.{agent_name}.name"] = (
+    identity.registered_name
+    if identity is not None and identity.registered_name is not None
+    else store_dirname(
+      with_harness(agent_name, harness_of(agent_real_name))
+      if agent_real_name is not None
+      else agent_name
+    )
   )
-  # The agent's STORE ROOT — see :func:`meta_agent_path_floor`.
-  floor.update(meta_agent_path_floor(agent_name))
+  floor.update(meta_agent_path_floor(agent_name, identity=identity))
   # The agent-tier SETTINGS cascade FILE anchor (spec §2d): the spec's own
   # formula, resolved transitively through the sibling ``path`` anchor — the
   # SAME file ``agent_settings_path`` composes.
@@ -1883,8 +1836,9 @@ class LaunchInputs:
   (``paths.system_path_floor``); it is not a :func:`build_launch_snapshot`
   keyword, so each caller folds it into its own ``default_categories``.
 
-  *box_ref* is the box's shell-quoted cure reference (``paths.project_cure_ref``),
-  ``None`` for a resolve with no named box; a retired spelling's cure names it.
+  *box_ref* names the box in cures; ``None`` without a named box.
+  *agent_identity* carries resolved selection facts for set-time floors; it is not
+  forwarded to :func:`build_launch_snapshot`.
   """
 
   subject: ResolveSubject
@@ -1899,6 +1853,7 @@ class LaunchInputs:
   cascade_workset_path: Path | None
   prefs: tuple[PrefRequest, ...]
   box_ref: str | None = None
+  agent_identity: AgentIdentity | None = None
 
   def as_kwargs(self) -> _LaunchInputKwargs:
     """The :func:`build_launch_snapshot` keywords these inputs supply."""
@@ -2010,50 +1965,33 @@ def _omit_derived(
           changed = True
 
 
-def _agent_identity(agent_name: str) -> dict[str, object]:
-  """The active agent's ``meta.agent.<a>.*`` identity + launch-grammar floor, off
-  its plugin descriptor; EMPTY for a no-agent resolve.
-
-  The credential-SHARING capability comes off the same descriptor: absent / no
-  agent → non-capable.
-  """
+def _agent_identity(agent_name: str, identity: AgentIdentity | None = None) -> dict[str, object]:
+  """Metadata and grammar from resolved identity and its plugin; no PG lookup."""
   if not agent_name:
     return {}
   from kanibako.log import get_logger
   from kanibako.targets import resolve_target
 
   agent_desc = None
-  # The plugin's DECLARED harness name, in its own case
-  # (keyspec §0 "An agent's canonical case is carried by its _name_");
-  # *agent_name* is the NODE, already folded, so it cannot supply this.
   agent_declared_name: str | None = None
-  agent_auth_support = False
+  target_name = identity.target_name if identity is not None else harness_of(agent_name)
   try:
-    agent_target = resolve_target(harness_of(agent_name))
+    agent_target = resolve_target(target_name)
     agent_declared_name = agent_target.name
     agent_desc = agent_target.descriptor
-    agent_auth_support = bool(agent_desc.auth_share_support if agent_desc is not None else False)
   except (KeyError, ValueError):
-    # GENUINELY ABSENT: no matching target (KeyError) or one lacking a
-    # ``meta.agent.<agent>.name`` (ValueError) — non-capable. Nothing else is
-    # swallowed: a transient error must not silently disable sharing.
+    agent_desc = None
+    agent_declared_name = None
     get_logger("start").debug(
       "auth capability: no descriptor for agent %r → non-capable",
       agent_name,
     )
-    agent_desc = None
-    agent_declared_name = None
-    agent_auth_support = False
-  # ⚑ THE DISCRIMINATOR AND THE VALUE ARE TWO SPELLINGS OF ONE AGENT
-  # (keyspec §0 "An agent's canonical case is carried by its _name_"): the key's
-  # segment is the NODE, the value keeps the DECLARED case.
   floor = meta_agent_identity_floor(
     agent_name,
     agent_declared_name,
-    agent_auth_support,
+    bool(agent_desc.auth_share_support if agent_desc is not None else False),
+    identity=identity,
   )
-  # B5: the plugin-set LAUNCH GRAMMAR ``meta.agent.<a>.{mode,exec}`` (spec §2d),
-  # from the SAME descriptor — the single descriptor→keyspace seam.
   floor.update(meta_agent_grammar_floor(agent_name, agent_desc))
   return floor
 
@@ -2065,6 +2003,7 @@ def resolve_inputs(
   std,
   agent_name: str,
   system_path: Path | None,
+  agent_identity: AgentIdentity | None = None,
   proj,
   ws: None = None,
 ) -> LaunchInputs: ...
@@ -2075,6 +2014,7 @@ def resolve_inputs(
   std,
   agent_name: str,
   system_path: Path | None,
+  agent_identity: AgentIdentity | None = None,
   proj: None = None,
   ws: Workset,
 ) -> LaunchInputs: ...
@@ -2085,6 +2025,7 @@ def resolve_inputs(
   std,
   agent_name: str,
   system_path: Path | None,
+  agent_identity: AgentIdentity | None = None,
   proj: None = None,
   ws: None = None,
 ) -> LaunchInputs: ...
@@ -2094,6 +2035,7 @@ def resolve_inputs(
   std,
   agent_name: str,
   system_path: Path | None,
+  agent_identity: AgentIdentity | None = None,
   proj=None,
   ws: Workset | None = None,
 ) -> LaunchInputs:
@@ -2111,6 +2053,9 @@ def resolve_inputs(
   for what each floor carries and why it is built here.
   """
   from kanibako.settings.agent_select import host_resolve_ctx
+
+  if agent_identity is not None and agent_identity.node != agent_name:
+    raise ValueError("resolve_inputs: agent identity does not match agent_name")
 
   takes = {
     ResolveSubject.BOX: (True, False),
@@ -2133,12 +2078,13 @@ def resolve_inputs(
       std=std,
       proj=proj,
       agent_name=agent_name,
+      agent_identity=agent_identity,
       system_path=system_path,
     )
 
   # ONE ctx builder (P7), the box-less arm of the one the BOX subject uses.
   ctx = host_resolve_ctx(std, ws, agent_name)
-  meta_identity = _agent_identity(agent_name)
+  meta_identity = _agent_identity(agent_name, agent_identity)
   meta_runtime = meta_runtime_host_floor()
   workset_anchor: dict[str, object] = {}
   cascade_workset_path: Path | None = None
@@ -2169,6 +2115,7 @@ def resolve_inputs(
   )
   return LaunchInputs(
     subject=subject,
+    agent_identity=agent_identity,
     ctx=ctx,
     system_path=system_path,
     system_floor=system_path_floor(std),
@@ -2256,7 +2203,9 @@ def _box_workset_floors(
   )
 
 
-def _box_inputs(*, std, proj, agent_name: str, system_path: Path | None) -> LaunchInputs:
+def _box_inputs(
+  *, std, proj, agent_name: str, system_path: Path | None, agent_identity: AgentIdentity | None
+) -> LaunchInputs:
   """:func:`resolve_inputs` for the ``BOX`` subject: the box *proj*."""
   from kanibako.channels import channels as _channels
   from kanibako.settings.agent_select import launch_resolve_ctx
@@ -2283,8 +2232,7 @@ def _box_inputs(*, std, proj, agent_name: str, system_path: Path | None) -> Laun
 
   # ``meta.*`` IDENTITY anchors (spec §2c/§2d): the resolved literals the launch
   # already computes, so a {meta.box.workspace} / {meta.box.inbox} bind expands
-  # byte-identically. The agent's credential-SHARING capability and its declared
-  # name come off the ACTIVE agent's descriptor; absent / no agent → non-capable.
+  # byte-identically.
   # ⚑ A box whose name is not decided yet (the ``run_start`` pre-flight, before
   # create) has no channel addresses; the blanks below are dropped with every
   # name-derived key before anything reads them (:func:`_omit_derived`).
@@ -2304,7 +2252,7 @@ def _box_inputs(*, std, proj, agent_name: str, system_path: Path | None) -> Laun
     box_settings=str(cascade_box_path),
   )
   # The agent half (identity + launch grammar); omitted for a NO-AGENT box.
-  meta_identity.update(_agent_identity(agent_name))
+  meta_identity.update(_agent_identity(agent_name, agent_identity))
 
   if not proj.name:
     # Primary / named ``meta.box.settings`` is ``{meta.box.path}/box.yaml`` (§2c): name-derived,
@@ -2322,6 +2270,7 @@ def _box_inputs(*, std, proj, agent_name: str, system_path: Path | None) -> Laun
     )
   return LaunchInputs(
     subject=ResolveSubject.BOX,
+    agent_identity=agent_identity,
     ctx=ctx,
     system_path=system_path,
     system_floor=system_floor,

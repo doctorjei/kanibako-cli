@@ -56,7 +56,9 @@ class PrefRequest:
     def where(self) -> str
 
 class AgentNames(Collection[str]):
-    def __init__(self, discovered: Collection[str], *, leaf_map: 'Mapping[str, Collection[str]] | None'=None, unreadable: 'Container[str]'=frozenset(), discovery_failed: bool=False) -> None
+    def __init__(self, discovered: Collection[str], *, leaf_map: 'Mapping[str, Collection[str]] | None'=None, unreadable: 'Container[str]'=frozenset(), discovery_failed: bool=False, agent_harnesses: Mapping[str, str] | None=None) -> None
+
+    def with_harnesses(self, agent_harnesses: Mapping[str, str]) -> AgentNames
 
     def __contains__(self, item: object) -> bool
     def __iter__(self)

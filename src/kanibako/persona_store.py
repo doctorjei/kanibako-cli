@@ -1,32 +1,15 @@
-"""persona-grata store discovery and resolve (no box).
+"""Live persona inputs, never persisted.
 
-kanibako CONSUMES the persona-grata store at
-``$XDG_CONFIG_HOME/personas/<pid>/<hid>/``: a ``<pid>+<hid>`` agent ref whose
-store entry exists is a *persona agent*, and its endpoint/model/token-pointer/env
-are re-read from the store at EVERY launch as a LIVE cascade level — never
-copied into any settings file, so a launch leaves ``agents/<node>/agent.yaml``
-byte-identical.  Store PRESENCE decides persona-vs-plain, so everything here
-returns a clean "not a persona" ``None`` on a miss.
-
-⚑ There is deliberately NO import/sync half any more.  The old copy-into-
-``agents/<node>/agent.yaml`` route (``build_candidate`` /
-``persist_candidate`` / ``import_persona_entry``) is GONE: that file holds
-USER-INTENT values only, and a persisted copy of a live source can only go
-stale.  Do not reintroduce one.
-
-Nothing here reads the TOKEN file itself — only its pointer, arm's-length,
-exactly like the ``secret_path`` keyspace category it feeds.
-
-Design SOT ``designs/persona-grata-autoimport-DESIGN.md``; the layout, the two
-parts of the module and the field-by-field notes are in
-``llm-docs/kanibako/persona_store.py.md``.
+Registered-agent reads return identity, native config, and keyless state
+through the configuration facade. Legacy readers resolve native files
+and token pointers without opening credentials. Projections perform no I/O.
 """
 
 from __future__ import annotations
 
 import os
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING, NamedTuple
@@ -34,12 +17,15 @@ from typing import TYPE_CHECKING, NamedTuple
 from urllib.parse import urlsplit
 
 from kanibako.agent_ref import (
+  AgentIdentity,
   agent_address_node,
+  reserved_pseudo_agent_reason,
   display_agent_ref,
   harness_of,
   persona_of,
 )
 from kanibako.errors import ConfigError
+from kanibako.identifiers import agent_node_case, find_identifier, name_flaw
 from kanibako.settings.config_io import read_doc_text_capped
 from kanibako.utils.xdg import user_config_home
 from kanibako.targets.base import (
@@ -285,6 +271,109 @@ class PersonaBundle(NamedTuple):
 
 #: Schemes the delivered HTTP clients (urllib probe, Node harness runtimes) can act on.
 _ENDPOINT_SCHEMES = frozenset({"http", "https"})
+
+
+@dataclass(frozen=True)
+class RegisteredPersona:
+  """One live PG read; native config stays out of settings."""
+
+  identity: AgentIdentity
+  config: dict[str, object] = field(repr=False)
+  auth_env: str | None
+  keyless: bool
+
+
+def read_registered_persona(name: str) -> RegisteredPersona | None:
+  """Read identity before choosing a target, without fetching credentials or writing files."""
+  from kanibako.settings.config_io import (
+    load_persona_agent,
+    persona_store_agents,
+    persona_store_location,
+  )
+
+  root = persona_store_location()
+  try:
+    agents = persona_store_agents(root=root)
+    found = find_identifier(name, agents)
+    if found is None:
+      return None
+    if find_identifier(name, (other for other in agents if other != found)) is not None:
+      raise ConfigError(f"persona store at {root}: agent name '{name}' is ambiguous by case")
+    if (reason := reserved_pseudo_agent_reason(found)) is not None:
+      raise ConfigError(reason)
+    path, resolved = load_persona_agent(found, root=root)
+    agent = resolved["agent"]
+    persona = agent["persona"]["name"]
+    harness = agent["harness"]
+    harness_name = harness["name"]
+    for component, spelling in (("persona", persona), ("harness", harness_name)):
+      flaw = name_flaw(spelling) if isinstance(spelling, str) else "must be a string"
+      if flaw is not None:
+        from kanibako.launch.box_identity import name_spelling
+
+        offer = name_spelling(spelling) if isinstance(spelling, str) else None
+        cure = f"; try '{offer[0]}'" if offer is not None else ""
+        raise ConfigError(f"PG agent '{found}' {component} name {spelling!r} {flaw}{cure}")
+      if (reason := reserved_pseudo_agent_reason(spelling)) is not None:
+        raise ConfigError(f"PG agent '{found}' {component}: {reason}")
+    keyless = agent["secret"] is None
+    config = harness["config_store"]
+    if not isinstance(config, dict):
+      raise ConfigError(f"PG agent '{found}' has no native harness configuration mapping")
+    auth_env = harness["auth_var"]
+    if not keyless and (not isinstance(auth_env, str) or not auth_env):
+      raise ConfigError(f"PG agent '{found}' has no authentication variable")
+    identity = AgentIdentity(
+      node=agent_node_case(found),
+      registered_name=found,
+      persona=persona,
+      harness=harness_name,
+      target_name=agent_node_case(harness_name),
+      entry_path=path,
+    )
+    return RegisteredPersona(
+      identity=identity,
+      config=config,
+      auth_env=None if keyless else auth_env,
+      keyless=keyless,
+    )
+  except ConfigError:
+    raise
+  except (OSError, ValueError, KeyError, TypeError) as exc:
+    raise ConfigError(f"persona store at {root}: cannot read agent '{name}': {exc}") from exc
+
+
+def project_registered_persona(persona: RegisteredPersona, target: Target) -> PersonaBundle:
+  """Project one already-read value without store reads, credential fetches, or mutation."""
+  identity = persona.identity
+  if find_identifier(target.name, (identity.target_name,)) is None:
+    raise ConfigError(
+      f"PG agent '{identity.registered_name}' uses harness '{identity.harness}', not '{target.name}'"
+    )
+  outcome = target.project_persona_settings(
+    persona.config, source=f"{identity.entry_path}/agent.cfg", keyless=persona.keyless
+  )
+  if outcome.reject_reason is not None:
+    raise ConfigError(outcome.reject_reason)
+  if outcome.settings is None:
+    raise ConfigError(f"the {target.name} harness has no native persona projection")
+  settings = outcome.settings
+  if settings.endpoint is not None:
+    validate_endpoint(settings.endpoint)
+  env = dict(settings.env)
+  if persona.keyless:
+    native_env = persona.config.get("env")
+    if isinstance(native_env, dict) and settings.auth_env:
+      placeholder = native_env.get(settings.auth_env)
+      if isinstance(placeholder, str):
+        env[settings.auth_env] = placeholder
+  return PersonaBundle(
+    endpoint=settings.endpoint,
+    model=settings.model,
+    auth_env=persona.auth_env,
+    env=MappingProxyType(env),
+    env_dropped=settings.env_dropped,
+  )
 
 
 def validate_endpoint(endpoint: str) -> None:

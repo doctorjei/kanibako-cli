@@ -506,11 +506,10 @@ Persona-specific values extracted from a rendered harness config.
 falsy singleton, so a core that predates it drops it as absent; test it with `is`. A plugin takes it
 with `getattr(kanibako.targets.base, "PERSONA_DEFAULT_MODEL", None)` to stay loadable on such a core.
 
-The persona-grata store (`$XDG_CONFIG_HOME/personas/<pid>/<hid>/`) lays down a harness-native
-config file (codex `config.toml`, claude `settings.json`); `Target.read_persona_settings` parses
-the one it understands into this harness-neutral record, which the auto-import maps onto the agent
-keyspace (`self.endpoint` / `self.model` / `self.secret_path.<auth_env>`) and whose `env` rides the
-launch as plain passthrough.
+`Target.read_persona_settings` reads legacy native files; `project_persona_settings` accepts
+PG's native mapping without I/O. Both return this harness-neutral record. The registered-agent
+adapter passes explicit `keyless=True`; ordinary readers retain their validation. Live values
+enter the cascade without persistence; manager delivery remains pending.
 
 **`PersonaSpec` declares HOW a harness delivers these values INTO a box; this is the values
 themselves, read back OUT of a rendered config.**
@@ -533,7 +532,7 @@ class PersonaReadOutcome(NamedTuple):
     settings: PersonaSettings | None
     reject_reason: str | None
 ```
-The tri-state result of `Target.read_persona_settings`.
+The tri-state native read/projection result.
 
 * *settings* non-`None`, *reject_reason* `None` — a usable persona config was read;
 * *settings* `None`, *reject_reason* a specific human-readable cause naming the offending file and

@@ -62,22 +62,22 @@ def validate_socket_path(socket_path: Path) -> None
 def _agent_critical_dests() -> list[tuple[str, str]]
 def _link_persona_share(node_link: Path, harness_dir: Path, *, what: str, logger) -> None
 def _add_launch_args(p: argparse.ArgumentParser) -> None
-def _bootstrap_choice(proj, system_settings_path: 'Path | None', agent_id: str, *, std, selection_level: 'Mapping[str, object] | None', agent_path: 'Path | None'=None) -> BootstrapChoice
+def _bootstrap_choice(proj, system_settings_path: 'Path | None', agent_id: str, *, std, selection_level: 'Mapping[str, object] | None', agent_path: 'Path | None'=None, agent_identity: AgentIdentity | None=None) -> BootstrapChoice
 def _bootstrap_setting(choice: BootstrapChoice) -> str | None
 def _no_bootstrap_reason(choice: BootstrapChoice) -> str
 def _access_null(setting_key: str) -> _NullRefused
 def _declared_floor(key: str, agent_id: str) -> str | None
 def _refuse_null_behavior(snapshot, agent_id: str, rule: _NullRefused, *, written=(), prefs=(), floors: 'tuple[str | None, Mapping[str, str | None] | None] | None'=None) -> str | None
-def _null_behavior_refusal(proj, system_settings_path: 'Path | None', agent_id: str, target, *, std, level: 'Mapping[str, object] | None', rules: 'list[_NullRefused]', agent_path: 'Path | None'=None) -> str | None
+def _null_behavior_refusal(proj, system_settings_path: 'Path | None', agent_id: str, target, *, std, level: 'Mapping[str, object] | None', rules: 'list[_NullRefused]', agent_path: 'Path | None'=None, agent_identity: AgentIdentity | None=None) -> str | None
 def _plugin_floor(target, key: str) -> 'dict[str, str | None]'
 def _declared_behavior(key: str) -> str
 def _declared_behavior_bool(key: str, agent_id: str) -> bool
 def _bootstrap_default() -> str
 def _is_no_bootstrap(program: str | None) -> bool
-def _agent_scalar_pick(proj, system_settings_path: 'Path | None', agent_id: str, *, std, selection_level: 'Mapping[str, object] | None', key: str, floor: str | None, agent_floor: 'Mapping[str, str | None] | None'=None, agent_path: 'Path | None'=None, refuse: '_NullRefused | None'=None) -> 'tuple[str | None, str | None]'
-def _focused_agent_snapshot(proj, system_settings_path: 'Path | None', agent_id: str, *, std, selection_level: 'Mapping[str, object] | None', key: str, floor: str | None, agent_floor: 'Mapping[str, str | None] | None'=None, agent_path: 'Path | None'=None, written_out: 'list | None'=None) -> 'KeyStore'
-def _effective_transform(proj, system_settings_path: 'Path | None', agent_id: str, target, *, std, selection_level: 'Mapping[str, object] | None', agent_cfg_path: 'Path | None'=None) -> 'str | None'
-def _effective_transform_settings(proj, system_settings_path: 'Path | None', agent_id: str, *, std, selection_level: 'Mapping[str, object] | None', agent_cfg_path: 'Path | None'=None) -> dict
+def _agent_scalar_pick(proj, system_settings_path: 'Path | None', agent_id: str, *, std, selection_level: 'Mapping[str, object] | None', key: str, floor: str | None, agent_floor: 'Mapping[str, str | None] | None'=None, agent_path: 'Path | None'=None, refuse: '_NullRefused | None'=None, agent_identity: AgentIdentity | None=None) -> 'tuple[str | None, str | None]'
+def _focused_agent_snapshot(proj, system_settings_path: 'Path | None', agent_id: str, *, std, selection_level: 'Mapping[str, object] | None', key: str, floor: str | None, agent_floor: 'Mapping[str, str | None] | None'=None, agent_path: 'Path | None'=None, written_out: 'list | None'=None, agent_identity: AgentIdentity | None=None) -> 'KeyStore'
+def _effective_transform(proj, system_settings_path: 'Path | None', agent_id: str, target, *, std, selection_level: 'Mapping[str, object] | None', agent_cfg_path: 'Path | None'=None, agent_identity: AgentIdentity | None=None) -> 'str | None'
+def _effective_transform_settings(proj, system_settings_path: 'Path | None', agent_id: str, *, std, selection_level: 'Mapping[str, object] | None', agent_cfg_path: 'Path | None'=None, agent_identity: AgentIdentity | None=None) -> dict
 def _plain_table(table: dict) -> dict
 def _resolve_bootstrap_program(project_dir: str | None=None, explicit_agent: str | None=None) -> BootstrapChoice
 def _check_box_components(proj) -> str | None
@@ -149,8 +149,8 @@ def _preflight_config_file_persona(agent_id: str, secret_paths, endpoint: str, k
 def _provider_model(target, model: str | None) -> str | None
 def _codex_persona_token_error(secret_paths, wiring, endpoint: str, display: str, *, cli_env: 'Mapping[str, str] | None'=None) -> 'str | None'
 def _effective_behavior_for_display(target, agent_cfg, *, std, proj, system_settings_path, selection_level: 'Mapping[str, object] | None', node_name=None, agent_cfg_path=None) -> dict[str, str]
-def _resolve_box_auth_source(*, std, proj, agent_name: str, system_settings_path, agent_cfg_path, selection_level: 'Mapping[str, object] | None')
-def _resolve_box_launch_decisions(*, std, proj, target, agent_name: str, system_settings_path, agent_cfg_path, selection_level: 'Mapping[str, object] | None', persona_values: 'Mapping[str, str | None] | None'=None, cli_env: 'Mapping[str, str] | None'=None) -> 'tuple[AuthSource, str | None, str | None, dict[str, object]]'
+def _resolve_box_auth_source(*, std, proj, agent_name: str, system_settings_path, agent_cfg_path, selection_level: 'Mapping[str, object] | None', agent_identity: AgentIdentity | None=None)
+def _resolve_box_launch_decisions(*, std, proj, target, agent_name: str, system_settings_path, agent_cfg_path, selection_level: 'Mapping[str, object] | None', agent_identity: AgentIdentity | None=None, persona_values: 'Mapping[str, str | None] | None'=None, cli_env: 'Mapping[str, str] | None'=None) -> 'tuple[AuthSource, str | None, str | None, dict[str, object]]'
 def _persona_secret_table(snapshot, active_agent: str, box_ctx, *, cli_env: 'Mapping[str, str] | None'=None) -> PersonaSecretTable
 def _merge_default_categories(table: dict[str, object], incoming: 'Mapping[str, object]', *, family: str, origins: dict[tuple[str, str], str]) -> None
 def _box_scalars(std, proj, agent_id: str, system_path, cli_overrides) -> KanibakoConfig

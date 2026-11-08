@@ -18,9 +18,8 @@ def run_code(args: argparse.Namespace) -> int
 def _attach_uri(container_name: str, context: str | None=None) -> str
 def _resolve_code_cli() -> str | None
 def _no_container_name(name: str) -> str
-def _extension_for_agent(agent_name: str) -> str | None
-def _resolve_box_agent_node(runtime, std, proj, container_name: str) -> str | None
-def _resolve_box_vscode_extension(agent_name: str | None) -> str | None
+def _extension_for_agent(target_name: str) -> str | None
+def _resolve_box_vscode_extension(runtime, std, proj, container_name: str) -> str | None
 def _resolve_box_image(runtime, proj, container_name: str) -> str | None
 def _write_attached_config(path, extension: str | None) -> None
 def _seed_attached_config(runtime, std, proj, container_name: str) -> None

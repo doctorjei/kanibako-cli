@@ -23,9 +23,11 @@ def select_agent(*, std, proj, explicit_agent: 'str | None'=None) -> AgentSelect
 ```
 @dataclass(frozen=True)
 class AgentSelection:
-    node: str
+    identity: AgentIdentity
     source: str
 
+    @property
+    def node(self) -> str
     @property
     def has_agent(self) -> bool
     @property

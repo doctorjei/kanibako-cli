@@ -705,7 +705,7 @@ string is a NON-BLOCKING advisory the caller prints to stderr before continuing.
 
 
 ```resolve_agent(*, explicit_agent: str | None, requested: str | None = None) -> str```
-Validate the effective agent name against the installed set, or REFUSE.
+Return the node from `resolve_agent_identity`, which owns validation.
 
 ⮕ **The CASCADE is not here.** `system.agent` and the `pref.system.agent` requests of the
 workset/box files are resolved off the launch snapshot by
@@ -764,9 +764,9 @@ use elsewhere.
 
 
 ```resolve_agent_identity(*, explicit_agent: str | None, requested: str | None = None) -> AgentIdentity```
-Legacy selection view: calls `resolve_agent` once and packages its node, keeping its errors
-and case. Shell carries no persona/harness; registered name and entry path stay None. No PG
-lookup, extra discovery, or validation.
+Primary legacy resolver: validates once and returns node, designation, and target. Shell
+carries no persona/harness; registered name and entry path stay None. No PG lookup. The
+scalar wrapper returns this identity’s node without another discovery pass.
 
 
 ```_flatten_leaves(data: dict, prefix: str = "", *, with_nodes: bool = False) -> dict[str, object]```

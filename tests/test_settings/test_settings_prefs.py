@@ -1329,3 +1329,48 @@ class TestPrefShapeVerdictFollowsTheAgentVerdict:
     with pytest.raises(SettingsError) as exc:
       file_partial({"agent": {"claude": {"seeded": {"somebox": "some-scalar"}}}})
     assert "must be a structured entry" in str(exc.value)
+
+
+class TestRegisteredAgentNames:
+  def test_membership_listing_and_vocab_use_injected_names(self):
+    agents = AgentNames(
+      {"claude", "goose"},
+      leaf_map={"claude": frozenset(), "goose": {"provider"}},
+      agent_harnesses={"scout": "goose"},
+    )
+    assert "scout" in agents
+    assert "Scout" not in agents
+    assert "nav℘claude" in agents
+    assert "nav℘scout" not in agents
+    assert list(agents) == ["claude", "goose", "scout"]
+    assert len(agents) == 3
+    assert validate_pref(req("agent.scout.provider", level="box"), valid_agents=agents) is None
+    assert (
+      validate_pref(req("agent.claude.provider", level="box"), valid_agents=agents) is not None
+    )
+
+  def test_overlay_does_not_mutate_memoized_discovery(self, monkeypatch):
+    import kanibako.settings.settings_prefs as sp
+
+    sp.reset_discovery_cache()
+    monkeypatch.setattr("kanibako.targets.discover_targets", lambda: {})
+    try:
+      base = sp.default_valid_agents()
+      overlay = base.with_harnesses({"scout": "goose"})
+      assert overlay is not base
+      assert sp.default_valid_agents() is base
+      assert list(base) == []
+      assert dict(base.leaf_map.agent_harnesses) == {}
+      assert list(overlay) == ["scout"]
+      assert key_reason("agent.scout.provider", valid_agents=overlay) is None
+      assert overlay.leaf_map.conceded is base.leaf_map.conceded
+    finally:
+      sp.reset_discovery_cache()
+
+  def test_overlay_preserves_existing_facts_and_failure_state(self):
+    base = AgentNames((), discovery_failed=True, agent_harnesses={"scout": "claude"})
+    overlay = base.with_harnesses({"pilot": "goose"})
+    assert dict(overlay.leaf_map.agent_harnesses) == {"scout": "claude", "pilot": "goose"}
+    assert overlay.discovery_failed
+    assert list(base) == ["scout"]
+    assert list(overlay) == ["pilot", "scout"]

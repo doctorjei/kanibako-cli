@@ -592,7 +592,7 @@ class TestCodexModelProjection:
     start_mocks,
   ):
     """Not creating: ``-M`` rides the launch snapshot only, never the projected model."""
-    from kanibako.settings.agent_select import AgentSelection
+    from tests.support.agent_selection import agent_selection
     from kanibako.settings.settings_launch import AuthSource
 
     auth = AuthSource(
@@ -617,7 +617,7 @@ class TestCodexModelProjection:
       ) as m_persist,
     ):
       m.proj.is_new = False
-      m.resolve_agent.return_value = AgentSelection(node=self._NODE, source="settings")
+      m.resolve_agent.return_value = agent_selection(node=self._NODE, source="settings")
       m.target.name = "codex"
       _run_container(
         project_dir=None,

@@ -86,10 +86,10 @@ def test_a_refused_fold_leaves_no_env_and_the_probe_falls_back_to_the_store():
 def _probe_wire_model(std, proj, system_file, agent_file, *, cli_env=None):
   """Run the LAUNCH pre-flight with a real ClaudeTarget; return the model it sent."""
   from kanibako.commands import start as start_cmd
-  from kanibako.settings.agent_select import AgentSelection
+  from tests.support.agent_selection import agent_selection
 
   target = ClaudeTarget()
-  selection = AgentSelection(node=NODE_ID, source="settings").selection_level
+  selection = agent_selection(node=NODE_ID, source="settings").selection_level
   _auth, endpoint, model, secrets = start_cmd._resolve_box_launch_decisions(
     std=std,
     proj=proj,
@@ -173,7 +173,7 @@ def test_the_probe_env_equals_the_boxs_collapsed_env(
 ):
   """ONE TRUTH: the pre-flight's value is the whole-box resolve's ``meta.assembly.env``."""
   from kanibako.commands import start as start_cmd
-  from kanibako.settings.agent_select import AgentSelection
+  from tests.support.agent_selection import agent_selection
   from kanibako.settings.paths import resolve_project
 
   proj = resolve_project(std, config, str(project_dir), initialize=True)
@@ -186,7 +186,7 @@ def test_the_probe_env_equals_the_boxs_collapsed_env(
     agent_file,
     cli_env=cli_env,
   )
-  selection = AgentSelection(node=NODE_ID, source="settings").selection_level
+  selection = agent_selection(node=NODE_ID, source="settings").selection_level
   snapshot, _deliveries = start_cmd._resolve_launch_snapshot(
     std=std,
     proj=proj,

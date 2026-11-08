@@ -379,6 +379,8 @@ class TestRunInfo:
     mock_target = MagicMock()
     mock_target.name = "claude"  # the node the image row resolves under
     mock_target.credential_check_path.return_value = creds
+    from tests.support.agent_selection import agent_selection
+
     args = argparse.Namespace(path=initialized_project.project_dir)
     with (
       patch(
@@ -386,8 +388,8 @@ class TestRunInfo:
         return_value=(False, "not running (kanibako-abcdef12)"),
       ),
       patch(
-        "kanibako.settings.config.resolve_agent",
-        return_value="claude",
+        "kanibako.settings.config.resolve_agent_identity",
+        return_value=agent_selection(node="claude", source="settings").identity,
       ),
       patch(
         "kanibako.commands.box._parser.resolve_target",
@@ -407,6 +409,8 @@ class TestRunInfo:
     mock_target = MagicMock()
     mock_target.name = "claude"
     mock_target.credential_check_path.return_value = creds
+    from tests.support.agent_selection import agent_selection
+
     args = argparse.Namespace(path=initialized_project.project_dir)
     with (
       patch(
@@ -414,8 +418,8 @@ class TestRunInfo:
         return_value=(False, "not running (kanibako-abcdef12)"),
       ),
       patch(
-        "kanibako.settings.config.resolve_agent",
-        return_value="claude",
+        "kanibako.settings.config.resolve_agent_identity",
+        return_value=agent_selection(node="claude", source="settings").identity,
       ),
       patch(
         "kanibako.commands.box._parser.resolve_target",

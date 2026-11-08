@@ -466,22 +466,15 @@ binds route through the `{workset.*}` anchors below.
 
 ### The agent identity keys
 
-When an agent exists, `meta.agent.<a>.name` NAMES THE STORE DIR (spec §2d, REQUIRED), under the
-agent's discriminated slot; a NO-AGENT box omits it. `agent_name` is the cascade discriminator
-(`install.name`); `agent_real_name` is the value it is built from (the plugin's own — normally the
-same string). Both `None` for a NO-AGENT box.
+`meta_agent_identity_floor` keys metadata by the active node. With resolved identity,
+`meta.agent.<a>.name` carries PG's registered name; plugin lookup and the extra harness
+path anchor use `identity.target_name`, never a parsed registered node. The kanibako
+settings root stays `{config.agents}/<store_dirname(node)>`; PG's `entry_path` is
+separate and supplies no settings path. These builders never read PG.
 
-⚑ **The value passes through `agent_config.store_dirname`, so it is the `+` spelling.** §2d makes
-this key the store dirname by formula — `meta.agent.<a>.path = {config.agents}/{meta.agent.<a>.name}`
-— so a `℘` here would compose a directory that is not there. The DISCRIMINATOR keeps `℘` (it is a
-key path); only the VALUE swaps, and only for a persona, since `store_dirname` is identity on a
-name with no separator.
-
-⚑ The STORE-ROOT anchor `meta.agent.<a>.path` is keyed on the DISCRIMINATOR (*agent_name*), not on
-*agent_real_name* — the store dir is `agents/<store_dirname(discriminator)>/`, which is what
-`agent_settings_path` and the persona shim use. The two are the same string for every shipped
-plugin; if a plugin ever returned a different `name`, the path anchor would still (rightly) follow
-the store, while `meta.agent.<a>.name` reported the plugin's value.
+String-only callers retain legacy grammar: the name keeps the plugin's declared harness
+case and the persona's case, with `+` replacing `℘` in the directory spelling. The node
+remains the settings-path discriminator. A no-agent resolve omits agent metadata.
 
 `meta.agent.<a>.settings` is the agent-tier SETTINGS cascade FILE anchor (spec §2d): the spec's own
 formula `{meta.agent.<a>.path}/agent.yaml`, resolved
@@ -513,16 +506,10 @@ the root and `parse_bind_map` joins a bare-relative leaf under it (spec §2a). T
 what the set-time snapshot must resolve: without the key, the bare leaf a user just wrote is refused
 as a dangling `@`-reference.
 
-It is spelled `{config.agents}/<store dirname>` rather than the spec's
-`{config.agents}/{meta.agent.<a>.name}` chain (§2d); the flat form avoids a floor entry that
-references its own sibling. The two compose to the SAME string for every node — verified for a
-persona, a bare agent and `shell` — because BOTH halves take the store dirname.
-
-⚑ **THAT IS WHY `meta.agent.<a>.name` CARRIES THE `+` SPELLING.** The key's
-DISCRIMINATOR stays canonical (`navigator℘claude`) because a key path needs `℘`; its VALUE is
-`navigator+claude`, because §2d's formula makes that value NAME A DIRECTORY. Spell the value `℘`
-and `{config.agents}/{meta.agent.<a>.name}` composes a directory that does not exist. Only personas
-move — `store_dirname` is identity on a name with no separator.
+The path uses `{config.agents}/<store dirname>` directly. Registered names use their
+resolved node; legacy composites use `store_dirname`'s `+` spelling. Neither path uses
+PG's entry directory. The active and harness anchors are both materialized; supplied
+identity names the harness through `target_name`, not the node's spelling.
 
 ⚑ **NODE and HARNESS — and the plugin's own commons are NOT the reason.** `load_common` keys its
 entries on the plugin's `Target.name` (the HARNESS, e.g. `claude`) while callers pass the ACTIVE
@@ -862,8 +849,9 @@ snapshot cannot acquire a second spelling with its own idea of what absence look
 
 ## `resolve_inputs` — the ONE input builder (`LaunchInputs`)
 
-`resolve_inputs(*, subject, std, agent_name, system_path, proj=None, ws=None)` builds everything a
-resolve hands `build_launch_snapshot` besides its own extras, as a frozen `LaunchInputs`. The
+`resolve_inputs(*, subject, std, agent_name, system_path, agent_identity=None, proj=None, ws=None)`
+builds frozen `LaunchInputs`. A supplied identity must match `agent_name`; the inputs carry
+it for set-time behavior floors. `as_kwargs` passes snapshot fields, not identity. The
 *subject* is the resolve's TARGET: `BOX` takes the box *proj*, `WORKSET` a working set *ws* and no
 box, `SYSTEM` neither; any other pairing raises `ValueError` (the overloads say the same to mypy).
 For a box it holds the resolve's subject, the ctx

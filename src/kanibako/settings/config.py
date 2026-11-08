@@ -934,6 +934,15 @@ def resolve_agent(
   explicit_agent: str | None,
   requested: str | None = None,
 ) -> str:
+  """Return the node from the identity resolver without another lookup."""
+  return resolve_agent_identity(explicit_agent=explicit_agent, requested=requested).node
+
+
+def resolve_agent_identity(
+  *,
+  explicit_agent: str | None,
+  requested: str | None = None,
+) -> AgentIdentity:
   """Validate the effective agent name against the installed set, or REFUSE (spec §2b).
 
   ⮕ **P7: the CASCADE moved out** — what stays here is what is NOT a key.
@@ -948,6 +957,8 @@ def resolve_agent(
   # ⚑ Lazy: kanibako.targets imports paths/config indirectly (cycle risk).
   from kanibako.agent_ref import (
     ADDRESSABLE_PSEUDO_AGENTS,
+    AgentIdentity,
+    persona_of,
     parse_agent_address,
     with_harness,
   )
@@ -984,7 +995,14 @@ def resolve_agent(
     # refusal: the any-agent tier is not a launchable agent.
     node, harness = parse_agent_address(raw_resolved)
     if node in ADDRESSABLE_PSEUDO_AGENTS:
-      return node
+      return AgentIdentity(
+        node=node,
+        registered_name=None,
+        persona=None,
+        harness=None,
+        target_name=node,
+        entry_path=None,
+      )
     # ⚑⚑ THE INSTALLED SET IS READ *ONLY INSIDE THIS BRANCH*, AND THAT IS THE
     # POINT (P3/P4): it answers "is this NAME installed?" and is not in scope on
     # the refusal path below, so the installed-agent count rule cannot be
@@ -1001,7 +1019,15 @@ def resolve_agent(
     # segment is the user's and is not this ruling's to touch.
     found = find_identifier(harness, installed)
     if found is not None:
-      return with_harness(node, found)
+      node = with_harness(node, found)
+      return AgentIdentity(
+        node=node,
+        registered_name=None,
+        persona=persona_of(node),
+        harness=found,
+        target_name=found,
+        entry_path=None,
+      )
     raise AgentNotInstalledError(
       f"Agent '{harness}' is not installed. Install it with:\n"
       f"  {install_command(f'kanibako-agent-{harness}')}\n"
@@ -1018,40 +1044,6 @@ def resolve_agent(
     "  kanibako setup\n"
     "Or name one for a single run with '--agent <name>'.\n"
     "'kanibako shell' reaches the box's container without an agent."
-  )
-
-
-def resolve_agent_identity(
-  *,
-  explicit_agent: str | None,
-  requested: str | None = None,
-) -> AgentIdentity:
-  """Describe one legacy selection without a PG lookup or additional validation."""
-  from kanibako.agent_ref import (
-    ADDRESSABLE_PSEUDO_AGENTS,
-    AgentIdentity,
-    harness_of,
-    persona_of,
-  )
-
-  node = resolve_agent(explicit_agent=explicit_agent, requested=requested)
-  if node in ADDRESSABLE_PSEUDO_AGENTS:
-    return AgentIdentity(
-      node=node,
-      registered_name=None,
-      persona=None,
-      harness=None,
-      target_name=node,
-      entry_path=None,
-    )
-  harness = harness_of(node)
-  return AgentIdentity(
-    node=node,
-    registered_name=None,
-    persona=persona_of(node),
-    harness=harness,
-    target_name=harness,
-    entry_path=None,
   )
 
 

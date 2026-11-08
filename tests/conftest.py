@@ -20,7 +20,7 @@ from unittest.mock import DEFAULT, MagicMock, patch
 
 import pytest
 
-from kanibako.settings.agent_select import AgentSelection as _AgentSelection
+from tests.support.agent_selection import agent_selection as _agent_selection
 from kanibako.settings.config import KanibakoConfig, load_config, write_global_config
 
 # The REAL launch-snapshot orchestrator, captured at import time (before any
@@ -407,7 +407,7 @@ def start_mocks():
       # ``kanibako.settings.config.resolve_agent``, whose cascade P7 moved out.)
       patch(
         "kanibako.settings.agent_select.select_agent",
-        return_value=_AgentSelection(node="claude", source="settings"),
+        return_value=_agent_selection(node="claude", source="settings"),
       ) as m_resolve_agent,
       patch("kanibako.commands.start._upgrade_shell"),
       # The layered template seed now flows through the keystore-routed
@@ -589,7 +589,7 @@ def start_mocks():
 
       m_bootstrap_program = MagicMock(return_value="tmux")
       m_launch_mount_stubs["_bootstrap_choice"].side_effect = (
-        lambda proj, system_settings_path, agent_id, *, std, selection_level, agent_path=None: (
+        lambda proj, system_settings_path, agent_id, *, std, selection_level, agent_path=None, agent_identity=None: (
           BootstrapChoice(m_bootstrap_program(), agent_id)
         )
       )

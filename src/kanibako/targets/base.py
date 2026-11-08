@@ -1458,12 +1458,12 @@ class Target(ABC):
     return PersonaReadOutcome(settings=None, reject_reason=None)
 
   def project_persona_settings(
-    self, config: Mapping[str, object], *, source: str
+    self, config: Mapping[str, object], *, source: str, keyless: bool = False
   ) -> PersonaReadOutcome:
     """Extract persona values from native configuration without I/O or mutation.
 
-    *source* labels rejection diagnostics. Unsupported harnesses return both fields
-    ``None``; unusable configurations return a specific reason, never a bare ``None``.
+    *source* labels rejections; *keyless* is PG's explicit credential-free state.
+    Unsupported harnesses return both fields ``None``; unusable configs name the cause.
     """
     return PersonaReadOutcome(settings=None, reject_reason=None)
 

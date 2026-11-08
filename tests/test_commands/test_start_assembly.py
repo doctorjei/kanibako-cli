@@ -31,7 +31,7 @@ import pytest
 
 from kanibako.log import get_logger
 from kanibako.settings.agent_config import agent_settings_path
-from kanibako.settings.agent_select import AgentSelection
+from tests.support.agent_selection import agent_selection
 from kanibako.commands.start import (
   _bind_map_from_mounts,
   _bind_map_masks,
@@ -2175,7 +2175,7 @@ class TestTheSeedApplierConsumesTheLeaf:
       agent_config_path=agent_settings_path(std.agents, "claude"),
       logger=logging.getLogger("seed-consumer"),
       deliver_creds=True,
-      selection_level=AgentSelection(node="claude", source="settings").selection_level,
+      selection_level=agent_selection(node="claude", source="settings").selection_level,
     )
 
   def _two_layers_at_one_dest(self, tmp_path):
@@ -2376,7 +2376,7 @@ class TestTheSeedApplierConsumesTheLeaf:
       agent_config_path=agent_settings_path(std.agents, "claude"),
       logger=logger,
       deliver_creds=True,
-      selection_level=AgentSelection(
+      selection_level=agent_selection(
         node="claude",
         source="settings",
       ).selection_level,

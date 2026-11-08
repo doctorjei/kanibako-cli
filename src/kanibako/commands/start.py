@@ -112,6 +112,7 @@ from kanibako.settings.paths import (
 from kanibako.agent_ref import (
   ENV_VAR_NAME,
   ADDRESSABLE_PSEUDO_AGENTS,
+  AgentIdentity,
   GENERAL_SLOT,
   agent_address_node,
   display_agent_ref,
@@ -944,6 +945,7 @@ def _bootstrap_choice(
   std,
   selection_level: "Mapping[str, object] | None",
   agent_path: "Path | None" = None,
+  agent_identity: AgentIdentity | None = None,
 ) -> BootstrapChoice:
   """Resolve the AGENT-scope ``bootstrap`` for *agent_id*, with where it came from.
 
@@ -983,6 +985,7 @@ def _bootstrap_choice(
     key="bootstrap",
     floor=_bootstrap_default(),
     agent_path=agent_path,
+    agent_identity=agent_identity,
     refuse=_BOOTSTRAP_NULL,
   )
   from_default = slot == "default"
@@ -1156,6 +1159,7 @@ def _null_behavior_refusal(
   level: "Mapping[str, object] | None",
   rules: "list[_NullRefused]",
   agent_path: "Path | None" = None,
+  agent_identity: AgentIdentity | None = None,
 ) -> str | None:
   """The launch's EARLY refusal of a stored ``null`` at any of *rules*' keys, or ``None``.
 
@@ -1185,6 +1189,7 @@ def _null_behavior_refusal(
       floor=floors[0],
       agent_floor=floors[1],
       agent_path=agent_path,
+      agent_identity=agent_identity,
       written_out=written,
     )
     refusal = _refuse_null_behavior(
@@ -1288,6 +1293,7 @@ def _agent_scalar_pick(
   agent_floor: "Mapping[str, str | None] | None" = None,
   agent_path: "Path | None" = None,
   refuse: "_NullRefused | None" = None,
+  agent_identity: AgentIdentity | None = None,
 ) -> "tuple[str | None, str | None]":
   """Resolve ONE agent-scope behavior scalar off a focused launch snapshot.
 
@@ -1342,6 +1348,7 @@ def _agent_scalar_pick(
     floor=floor,
     agent_floor=agent_floor,
     agent_path=agent_path,
+    agent_identity=agent_identity,
     written_out=written,
   )
   if refuse is not None:
@@ -1383,13 +1390,14 @@ def _focused_agent_snapshot(
   agent_floor: "Mapping[str, str | None] | None" = None,
   agent_path: "Path | None" = None,
   written_out: "list | None" = None,
+  agent_identity: AgentIdentity | None = None,
 ) -> "KeyStore":
   """The focused launch snapshot :func:`_agent_scalar_pick` reads *key* off (see there).
 
-  *agent_path* is read as the main snapshot reads it: its root values, its categories, and
-  its ``agent:`` table (``agent: default:`` included) all reach this snapshot.
-  *written_out* receives the cascade's labeled levels (``build_launch_snapshot``'s), so a
-  caller can name the file whose value won.
+  *agent_path* supplies root values, categories, and its ``agent:`` table, including
+  ``agent.default``. *agent_identity* supplies floors and plugin vocabulary without a
+  store read; omission retains legacy node parsing. *written_out* receives labeled
+  cascade levels so refusals name the winning file.
   """
   from kanibako.settings import settings_launch
 
@@ -1398,12 +1406,21 @@ def _focused_agent_snapshot(
     std=std,
     proj=proj,
     agent_name=agent_id,
+    agent_identity=agent_identity,
     system_path=system_settings_path,
   )
+  valid_agents = None
+  if agent_identity is not None and agent_identity.registered_name is not None:
+    from kanibako.settings.settings_prefs import default_valid_agents
+
+    valid_agents = default_valid_agents().with_harnesses(
+      {agent_identity.node: agent_identity.target_name}
+    )
   return settings_launch.build_launch_snapshot(
     **inputs.as_kwargs(),
     agent_name=agent_id,
     agent_path=agent_path,
+    valid_agents=valid_agents,
     written_out=written_out,
     # Seed the behavior FLOOR with just *key* (→ agent.default.<key>) so the
     # snapshot's ``agent`` node ALWAYS exists.  Without it, a box whose SOLE
@@ -1427,17 +1444,7 @@ def _focused_agent_snapshot(
       **core_defaults.pseudo_tier_defaults(),
       **inputs.system_floor,
     },
-    # ⚑ NO PERSONA TIER, deliberately (the six-call-site audit). Not an
-    # oversight and not an ordering accident: this resolve extracts EXACTLY
-    # ONE key (``keys=[key]`` below), and a persona bundle can only ever carry
-    # ``endpoint`` / ``model`` / ``secret_path.<VAR>`` / ``env.<VAR>``. Neither
-    # caller asks for one of those — ``bootstrap`` is a user's
-    # terminal-multiplexer choice and ``transform`` names a kanibako-side patch
-    # pipeline, nothing a harness config renders — so no persona value can reach
-    # this read, and adding the tier would buy a store read per launch (bootstrap
-    # runs ahead of the baseline probe, and again from the host-side persistence
-    # heuristic in ``_resolve_bootstrap_program``, which holds no target) for a
-    # value that could not change.
+    # Bootstrap/transform reads no persona-projected key; no PG tier or store read.
     # The caller's level: the SELECTION (P8), plus, for the stored-``null``
     # check alone (:func:`_null_behavior_refusal`), the typed flags that shadow it.
     cli_level=selection_level,
@@ -1453,6 +1460,7 @@ def _effective_transform(
   std,
   selection_level: "Mapping[str, object] | None",
   agent_cfg_path: "Path | None" = None,
+  agent_identity: AgentIdentity | None = None,
 ) -> "str | None":
   """Resolve the AGENT-scope ``transform`` key — WHICH binary transform this launch runs.
 
@@ -1478,6 +1486,7 @@ def _effective_transform(
     floor=core_defaults.behavior_defaults()["transform"],
     agent_floor=_plugin_floor(target, "transform"),
     agent_path=agent_cfg_path,
+    agent_identity=agent_identity,
     refuse=_TRANSFORM_NULL,
   )[0]
 
@@ -1490,6 +1499,7 @@ def _effective_transform_settings(
   std,
   selection_level: "Mapping[str, object] | None",
   agent_cfg_path: "Path | None" = None,
+  agent_identity: AgentIdentity | None = None,
 ) -> dict:
   """Resolve ``agent.<active>.transform_settings`` (§2d, active over default) — the transform's
   CONFIG INPUT — off the cascade, as :func:`_effective_transform` resolves the transform.
@@ -1508,6 +1518,7 @@ def _effective_transform_settings(
     key="transform_settings",
     floor=None,
     agent_path=agent_cfg_path,
+    agent_identity=agent_identity,
   )
   _slot, value = settings_launch.behavior_pick(
     snapshot,
@@ -1570,14 +1581,9 @@ def _resolve_bootstrap_program(
       proj=proj,
       explicit_agent=explicit_agent,
     )
-    agent_name = _sel.node
-    # NODE-name (persona identity); the harness keys the target/plugin.  The
-    # ``has_agent`` guard is REQUIRED here too (see the two-vocabulary seam note
-    # in _run_container): a SUPPRESSED box has no node, and handing "" to
-    # resolve_target would auto-detect an agent and read ITS bootstrap for a
-    # plain-shell box.
-    target = resolve_target(harness_of(agent_name)) if _sel.has_agent else None
-    agent_id = with_harness(agent_name, agent_node_case(target.name)) if target else GENERAL_SLOT
+    target = resolve_target(_sel.identity.target_name) if _sel.has_agent else None
+    agent_identity = _sel.identity if target is not None else None
+    agent_id = agent_identity.node if agent_identity is not None else GENERAL_SLOT
     agent_path = agent_settings_path(std.agents, agent_id)
   except Exception:
     return BootstrapChoice(_bootstrap_default(), None)
@@ -1588,6 +1594,7 @@ def _resolve_bootstrap_program(
     std=std,
     selection_level=_sel.selection_level,
     agent_path=agent_path,
+    agent_identity=agent_identity,
   )
 
 
@@ -3798,30 +3805,10 @@ def _run_container(
       proj=proj,
       explicit_agent=explicit_agent,
     )
-    agent_name = agent_selection.node
-    # ⚑⚑ THE TWO-VOCABULARY SEAM — the D-M6 guard (bifrost E-NULL, 2026-07-31).
-    # ``agent_name`` is the NODE-name (persona identity) and the TARGET/plugin is
-    # keyed by the HARNESS — BUT a NO-AGENT box has NO node, and ``""`` means
-    # opposite things on the two sides of this line: "no agent" to selection,
-    # "no name given → AUTO-DETECT" to ``resolve_target``. Passing it straight
-    # through LAUNDERED a no-agent box into auto-detection — measured on bifrost:
-    # it launched claude, with claude's binary, commons and CREDENTIALS. The
-    # ``agent_selection.has_agent`` guard below IS the translator between the two
-    # vocabularies: a node-less selection never reaches ``resolve_target`` at all
-    # and gets ``target = None``, the shipped plain-shell shape (identical to
-    # ``kanibako shell``). Every downstream gate keys on ``target is None``, so no
-    # agent binds, no agent config, no cred delivery, no ``KANIBAKO_AGENT`` stamp,
-    # and ``agent_id`` = ``"shell"``.
-    # 🛑 ``pref.system.agent: null`` NO LONGER ARRIVES HERE — since
-    # [Jei:2026-09-19] it is a REFUSAL (no default set), not a silent plain
-    # shell, so NO production path reaches the ``else None`` arm today.
-    # ⚑ The guard is KEPT, and NOT as a reservation for ``shell``: keyspec §2b
-    # makes the plain-shell box an effective ``{system.agent}`` of ``shell``, a
-    # NAMED node, so a D2 selection has ``has_agent`` TRUE and comes down the
-    # ``resolve_target`` side like any other agent. It is kept because the
-    # incident is on record (bifrost E-NULL) and the shape costs one conjunct —
-    # a floor, not a plan.
-    target = resolve_target(harness_of(agent_name)) if agent_selection.has_agent else None
+    # A node-less selection must not reach resolve_target's auto-detection path.
+    target = (
+      resolve_target(agent_selection.identity.target_name) if agent_selection.has_agent else None
+    )
     if target is None:
       logger.debug(
         "No agent for this box (selection source=%s) — plain shell.",
@@ -3841,24 +3828,9 @@ def _run_container(
         )
         logger.debug("target.detect() returned None for %s", target.name)
 
-  # ``agent_id`` is the NODE-name (persona identity), NOT the bare harness: it keys
-  # the on-disk ``agents/<node>/`` dir, the ``agent.<node>.*`` keyspace slot, and
-  # the active-agent snapshot discriminator.  ``with_harness`` puts the harness
-  # segment into the RESOLVED target's NODE spelling and leaves the persona
-  # segment as typed.  It is not a fallback: a NAMED target never falls back
-  # (``resolve_target`` raises ``KeyError``), so the harness it swaps in is the one
-  # that was asked for, re-cased; for a bare agent, node == harness == the
-  # target's NODE.  ⚑ ``agent_node_case`` is what
-  # makes that the node and not the plugin's declared NAME (keyspec §0):
-  # the name keeps its case, the node — and the ``agents/<node>/`` dir and
-  # ``agent.<node>.*`` slot spelled from it — is lowercase.  A plugin calling
-  # itself ``Shell`` must not write ``agents/Shell/``.
-  # Hoisted HERE (ahead of the baseline
-  # probe) so the agent-scope ``bootstrap`` value can be resolved before the probe
-  # consumes it.  ``shell`` for a launch that resolved NO target (``kanibako shell``,
-  # an explicit entrypoint); a plain-shell BOX resolves ``ShellTarget`` and reaches
-  # ``shell`` through the swap like any other agent.
-  agent_id = with_harness(agent_name, agent_node_case(target.name)) if target else GENERAL_SLOT
+  # Selection already canonicalized the node; a registered name is not a designation.
+  agent_identity = agent_selection.identity if target is not None and agent_selection else None
+  agent_id = agent_identity.node if agent_identity is not None else GENERAL_SLOT
 
   # The ONE conversion of ``-- <words>`` into the box shell's ``-lc S`` (keyspec
   # §2d ``shell``).  It applies when this launch's program is the box shell:
@@ -3944,6 +3916,7 @@ def _run_container(
       std=std,
       selection_level=selection_level,
       agent_path=agent_cfg_path,
+      agent_identity=agent_identity,
     )
   elif persistent:
     bootstrap = _resolve_bootstrap_program(project_dir, explicit_agent)
@@ -3991,6 +3964,7 @@ def _run_container(
       level=_cli_level,
       rules=_rules,
       agent_path=agent_cfg_path,
+      agent_identity=agent_identity,
     )
     if _null_refusal is not None:
       print(f"Error: {_null_refusal}", file=sys.stderr)
@@ -4863,6 +4837,7 @@ def _run_container(
         std=std,
         selection_level=selection_level,
         agent_cfg_path=agent_cfg_path,
+        agent_identity=agent_identity,
       )
       if target and install
       else None
@@ -4875,6 +4850,7 @@ def _run_container(
         std=std,
         selection_level=selection_level,
         agent_cfg_path=agent_cfg_path,
+        agent_identity=agent_identity,
       )
       if target and install and active_transform in (_TWEAKCC_TRANSFORM, None)
       else {}
@@ -7894,45 +7870,18 @@ def _resolve_box_auth_source(
   system_settings_path,
   agent_cfg_path,
   selection_level: "Mapping[str, object] | None",
+  agent_identity: AgentIdentity | None = None,
 ):
-  """Resolve the box's credential-SHARING SOURCE through the auth 3-tier chain.
+  """Resolve credential sharing through the launch snapshot's auth chain.
 
-  The SINGLE source of the launch's sharing decision (auth-level redesign):
-  builds a FOCUSED launch snapshot — the scope settings files and the four floor
-  fragments of :func:`~kanibako.settings.settings_launch.resolve_inputs` (the auth
-  chain, ``meta.runtime.*``, the meta identity floor carrying the agent capability
-  ``meta.agent.<agent>.auth.share_support`` the mirror views up, and the workset
-  anchors), but NO category family — expands it
-  ONCE, and reads the :class:`~kanibako.settings.settings_launch.AuthSource` off it
-  (``resolve_auth_source`` — the per-box tier/source resolver, precedence
-  workset>global). Same ``build_launch_snapshot`` → ``expand`` pipeline the
-  launch uses (single-route).
+  Resolved identity supplies plugin metadata, node paths, and vocabulary without a
+  PG lookup. Omission retains legacy node-derived floors. Stored settings override
+  the floors; workset sharing outranks global sharing.
 
-  Computed ONCE per launch and threaded to every credsync/gate consumer (the
-  early reattach / seed / refresh sites, the main launch resolve's feed,
-  and the auto-auth / writeback gates) so the decision is consistent everywhere.
-  Private/no-share = ``box.auth.{global,workset}_enabled=false`` (settable via
-  config); there is no flag to plumb.
-
-  A scope settings FILE that overrides a settable chain key
-  (``box.auth.global_enabled`` / ``workset.auth.share_allowed`` / …) wins by name
-  through the cascade; the floor is the backstop.
-
-  ⚑ *selection_level* is a REQUIRED keyword — deliberately NOT defaulted (P7).
-  ``meta.box.auth.workset_path`` resolves ``{workset.auth.path}/{system.agent}``
-  (spec §2c), so a caller that omits it silently points the per-agent credential
-  dir at the agent the STORED settings select — or the workset auth ROOT when none
-  is stored: the launch would deliver from ``<auth>/<agent>`` while
-  stop/watch/reauth read and WRITE another directory, and two agents in one
-  workset could share one. Pass ``None`` ONLY for a
-  genuinely agent-less box; for a running box the ``KANIBAKO_AGENT`` stamp IS the
-  resolved selection.
-
-  ⚑ It is the SELECTION only — deliberately NOT the full §1A CLI level (P8). This
-  resolve feeds the CREDENTIAL lifecycle, which creates and syncs directories on
-  disk, and an ephemeral flag may never reach a resolve whose output is WRITTEN
-  (spec §1A *"EPHEMERAL, always … NEVER mutates a stored value"*). The parameter
-  keeps the narrow name so the seam says what may travel through it.
+  *selection_level* is required: credential paths include {system.agent}, so use the
+  launch's selection (the stamp for a running box), never today's stored default.
+  Pass None only without an agent. Full CLI flags must not enter this resolve:
+  its output drives credential writes, which ephemeral flags cannot mutate.
   """
   from kanibako.settings import settings_launch
 
@@ -7941,53 +7890,39 @@ def _resolve_box_auth_source(
     std=std,
     proj=proj,
     agent_name=agent_name,
+    agent_identity=agent_identity,
     system_path=system_settings_path,
   )
-  # The persona store's LIVE tier (:func:`_persona_values_for`). This resolve
-  # takes no *target* and its callers (``stop`` writeback, the creds watcher)
-  # hold no bundle, so the plugin is resolved HERE off the node-name — the same
-  # ``resolve_target(harness_of(...))`` step both callers already run for their
-  # own use — rather than reshaping their signatures. EVERY failure is
-  # tolerated: an uninstalled plugin or an unreadable store must never break a
-  # stop or a watch cycle, neither of which is even about the persona.
-  #
-  # ⚑ HONEST SCOPE: this cannot change what this function RETURNS.
-  # ``resolve_auth_source`` reads only ``auth.*`` / ``meta.*`` keys, and a
-  # persona bundle carries only ``endpoint`` / ``model`` / ``secret_path.<VAR>``
-  # / ``env.<VAR>`` — disjoint sets, so the tier is inert on this output today
-  # and stays inert after the persist is retired. It is carried anyway so this
-  # resolve and its sibling ``_resolve_box_launch_decisions`` (the SAME snapshot
-  # plus behavior) cannot be built from different levels: two nearly-identical
-  # resolves that disagree about the cascade is the drift this build exists to
-  # end, and "inert here" is a fact about today's readers, not a guarantee.
+  # Registered names never address the legacy persona layout.
   _auth_persona_values = None
   try:
-    if harness_of(agent_name) != agent_name:
+    if (agent_identity is None or agent_identity.registered_name is None) and (
+      harness_of(agent_name) != agent_name
+    ):
       from kanibako.targets import resolve_target
 
       _auth_persona_values = _persona_values_for(
         agent_name,
-        resolve_target(harness_of(agent_name)),
+        resolve_target(
+          agent_identity.target_name if agent_identity is not None else harness_of(agent_name)
+        ),
       )
   except Exception:
-    # Includes the ref parse itself: this resolve is reached with a
-    # ``KANIBAKO_AGENT`` stamp read off a live container, not with a
-    # freshly-validated ref, so nothing here may be assumed well-formed.
     _auth_persona_values = None
-  # The resolved system.* tier is folded into the floor (default_categories
-  # here carries ONLY system.* — no category families) so any {key}-ref in the
-  # chain that reaches system.* resolves; this keeps the focused snapshot
-  # consistent with the main one. The cascade box/workset tier file paths are the
-  # mode-aware single source (P6c) — standalone reads <root>/workset.yaml as the
-  # WORKSET tier, box tier empty.
+  valid_agents = None
+  if agent_identity is not None and agent_identity.registered_name is not None:
+    from kanibako.settings.settings_prefs import default_valid_agents
+
+    valid_agents = default_valid_agents().with_harnesses(
+      {agent_identity.node: agent_identity.target_name}
+    )
   snapshot = settings_launch.build_launch_snapshot(
     **inputs.as_kwargs(),
     agent_name=agent_name,
     agent_path=agent_cfg_path,
     default_categories=dict(inputs.system_floor),
     persona_values=_auth_persona_values,
-    # ⚑ REQUIRED (P7) — see the *selection_level* note in the docstring for what
-    # omitting it silently collapses.
+    valid_agents=valid_agents,
     cli_level=selection_level,
   )
   return settings_launch.resolve_auth_source(snapshot, mode=proj.mode.value)
@@ -8002,6 +7937,7 @@ def _resolve_box_launch_decisions(
   system_settings_path,
   agent_cfg_path,
   selection_level: "Mapping[str, object] | None",
+  agent_identity: AgentIdentity | None = None,
   persona_values: "Mapping[str, str | None] | None" = None,
   cli_env: "Mapping[str, str] | None" = None,
 ) -> "tuple[AuthSource, str | None, str | None, dict[str, object]]":
@@ -8035,6 +7971,7 @@ def _resolve_box_launch_decisions(
     std=std,
     proj=proj,
     agent_name=agent_name,
+    agent_identity=agent_identity,
     system_path=system_settings_path,
   )
   descriptors = target.setting_descriptors() if target is not None else []
@@ -8054,6 +7991,13 @@ def _resolve_box_launch_decisions(
     if target is not None and isinstance(descriptors, list)
     else {}
   )
+  valid_agents = None
+  if agent_identity is not None and agent_identity.registered_name is not None:
+    from kanibako.settings.settings_prefs import default_valid_agents
+
+    valid_agents = default_valid_agents().with_harnesses(
+      {agent_identity.node: agent_identity.target_name}
+    )
   snapshot = settings_launch.build_launch_snapshot(
     **inputs.as_kwargs(),
     agent_name=agent_name,
@@ -8063,6 +8007,7 @@ def _resolve_box_launch_decisions(
     # omits exactly as it omits an absent key).
     agent_behavior_floor=plugin_floor or None,
     persona_values=persona_values,
+    valid_agents=valid_agents,
     default_categories=dict(inputs.system_floor),
     # ⚑ REQUIRED here (P7): ``meta.box.auth.workset_path`` is now spelled
     # ``{workset.auth.path}/{system.agent}`` (spec §2c), so this snapshot

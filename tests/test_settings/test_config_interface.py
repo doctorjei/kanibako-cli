@@ -9015,3 +9015,67 @@ class TestRestoredOnFailure:
     with _restored_on_failure(path):
       path.write_bytes(b"a: 2\n")
     assert path.read_bytes() == b"a: 2\n"
+
+
+class TestResolvedSetTimeIdentity:
+  @pytest.fixture
+  def identity(self, tmp_path):
+    from kanibako.agent_ref import AgentIdentity
+
+    return AgentIdentity(
+      node="scout",
+      registered_name="Scout",
+      persona="navigator",
+      harness="Claude",
+      target_name="claude",
+      entry_path=tmp_path / "pg" / "Scout",
+    )
+
+  def test_snapshot_uses_resolved_harness_defaults_and_settings_file(
+    self, identity, std, tmp_path
+  ):
+    from kanibako.settings import config_interface as ci
+    from kanibako.settings.settings_launch import snapshot_leaf
+
+    path = agent_settings_path(tmp_path / "agents", "scout")
+    path.parent.mkdir(parents=True)
+    dump_doc(path, {"self": {"model": "file-model"}})
+    target = ci._set_time_target(
+      std=std,
+      proj=None,
+      ws=None,
+      agent_name=identity.node,
+      agent_identity=identity,
+      system_path=std.settings,
+    )
+    snapshot, _ = ci._set_time_snapshot(
+      target=target,
+      agent_name=identity.node,
+      agent_path=path,
+    )
+    assert snapshot_leaf(snapshot, "agent.scout.transform") == "tweakcc"
+    assert snapshot_leaf(snapshot, "agent.scout.model") == "file-model"
+    assert snapshot_leaf(snapshot, "meta.agent.scout.name") == "Scout"
+    assert snapshot_leaf(snapshot, "meta.agent.scout.path") == "{config.agents}/scout"
+    assert not identity.entry_path.exists()
+
+  @pytest.mark.parametrize("failure", [KeyError("missing"), ValueError("nameless")])
+  def test_missing_plugin_keeps_the_settings_file(self, identity, tmp_path, monkeypatch, failure):
+    from kanibako.settings.config_interface import _set_time_agent_tier
+
+    path = tmp_path / "agent.yaml"
+    dump_doc(path, {"self": {"model": "local"}})
+
+    def missing(name):
+      assert name == "claude"
+      raise failure
+
+    monkeypatch.setattr("kanibako.targets.resolve_target", missing)
+    assert _set_time_agent_tier("scout", path, identity=identity) == (path, None, None)
+
+  def test_floor_only_uses_the_resolved_harness(self, identity):
+    from kanibako.settings.config_interface import _set_time_agent_tier
+
+    path, _, floor = _set_time_agent_tier("scout", None, floor_only=True, identity=identity)
+    assert path is None
+    assert floor["transform"] == "tweakcc"

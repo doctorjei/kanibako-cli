@@ -10,7 +10,7 @@ The first three are settled INSIDE the settings cascade; this module resolves th
 much with a NARROW pre-pass
 (:func:`kanibako.settings.settings_launch.resolve_selected_agent`), applies
 ``--agent`` on top, and hands the winner to
-:func:`kanibako.settings.config.resolve_agent`, which owns everything that is NOT
+:func:`kanibako.settings.config.resolve_agent_identity`, which owns everything that is NOT
 a key.
 
 ⚑ Whatever wins is INSTALLED at ``system.agent`` as the §1A top-most level,
@@ -42,6 +42,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
+from kanibako.agent_ref import AgentIdentity
 from kanibako.settings.kb_store import __MISSING__
 
 #: The key naming the agent a box runs (spec §2g). Re-exported so callers spell it once.
@@ -50,31 +51,15 @@ SELECTION_KEY = "system.agent"
 
 @dataclass(frozen=True)
 class AgentSelection:
-  """The resolved agent node, plus the *source* that chose it.
+  """One resolved identity and its choosing tier; node is a view, never reparsed."""
 
-  *node* is the canonical agent NODE-name; :func:`select_agent` never returns ``""``,
-  and a plain-shell box is the node ``shell`` (spec §2b, §2d); *source* is ``"cli"``
-  or ``"settings"``. Both
-  vocabularies are spelled out in the llm-doc.
-
-  🛑 **TWO SOURCES ARE RETIRED AND NEITHER IS PRODUCED ANY MORE.** ``"autopick"``
-  was the installed-agent count rule, deleted 2026-09-19 — nothing auto-selects,
-  not even with exactly one agent installed. ``"suppressed"`` was
-  ``pref.system.agent: null`` yielding the plain-shell box; that state is now a
-  REFUSAL (:class:`~kanibako.errors.AgentNoDefaultError`).
-
-  ⚑ **The ``has_agent`` / ``target is None`` guards below are KEPT, and NOT
-  because ``shell`` is coming.** Keyspec §2b makes the plain-shell box an
-  effective ``{system.agent}`` of ``shell`` — a NAMED node (``meta.agent.shell.name
-  = "shell"``, §2d) — so a D2 selection is ``node="shell"`` and ``has_agent`` is
-  TRUE for it. The guards stay because ``""`` still means opposite things on the
-  two sides of the target seam, holding that shape costs one conjunct, and the
-  incident that proved it is on record (bifrost E-NULL, 2026-07-31). **Do not
-  read them as evidence that a null selection still launches anything.**
-  """
-
-  node: str
+  identity: AgentIdentity
   source: str
+
+  @property
+  def node(self) -> str:
+    """The canonical node carried by the resolved identity."""
+    return self.identity.node
 
   @property
   def has_agent(self) -> bool:
@@ -88,7 +73,7 @@ class AgentSelection:
     measured incident, not a theory. ⚑ There is no helper; the guard IS the
     translation, spelled at each seam:
 
-    ``target = resolve_target(harness_of(sel.node), path) if sel.has_agent else None``
+    ``target = resolve_target(sel.identity.target_name) if sel.has_agent else None``
 
     ⚑ ``None``, deliberately NOT ``ShellTarget()`` — the llm-doc says why,
     and carries the downstream gates that key on ``target is None``.
@@ -103,7 +88,7 @@ class AgentSelection:
 
   @property
   def selection_level(self) -> "dict[str, object] | None":
-    """The §1A top-most level to install; a launch with no selection pins ``shell`` itself."""
+    """The selected node's §1A level; a node-less selection installs nothing."""
     return {SELECTION_KEY: self.node} if self.node else None
 
 
@@ -167,7 +152,7 @@ def select_agent(
 
   Raises :class:`~kanibako.errors.AgentNoDefaultError` for a present-``None``
   selection, the typed :class:`~kanibako.errors.AgentResolutionError` subclasses
-  ``config.resolve_agent`` raises (including
+  ``config.resolve_agent_identity`` raises (including
   :class:`~kanibako.errors.AgentUnsetError` when nothing set the key), a
   :class:`~kanibako.settings.settings_resolve.SettingsError` when the selection
   key itself does not resolve, the ref-grammar ``ConfigError`` for an
@@ -177,7 +162,7 @@ def select_agent(
   ``try/except`` — see the llm-doc.
   """
   from kanibako.errors import AgentNoDefaultError
-  from kanibako.settings.config import resolve_agent, settings_base_path
+  from kanibako.settings.config import resolve_agent_identity, settings_base_path
   from kanibako.settings.paths import box_workset_settings_paths, project_cure_ref
   from kanibako.settings.settings_assemble import ReadPurpose, read_settings_files
   from kanibako.settings.settings_launch import resolve_selected_agent
@@ -203,10 +188,10 @@ def select_agent(
   requested: object = __MISSING__
   # ⚑⚑ "GIVEN" IS ``is not None``, NOT TRUTHINESS.  This gate can answer the
   # whole question by itself (the no-default REFUSAL below never reaches
-  # ``resolve_agent``), so a truthy test let a GIVEN-but-blank ref be answered
+  # ``resolve_agent_identity``), so a truthy test let a GIVEN-but-blank ref be answered
   # by the cascade — ``--agent ""`` came back as a no-agent box, or as whatever
   # the files said, with nothing printed.  A blank ref is a value: it goes
-  # through to ``resolve_agent``, which refuses it by the ref grammar's own
+  # through to ``resolve_agent_identity``, which refuses it by the ref grammar's own
   # message.  ``None`` keeps its one meaning — no ref was given at all.
   if explicit_agent is None:
     # Only the cascade can decline or supply; ``--agent`` short-circuits it.
@@ -233,11 +218,11 @@ def select_agent(
         "'kanibako shell' reaches the box's container without an agent."
       )
 
-  node = resolve_agent(
+  identity = resolve_agent_identity(
     explicit_agent=explicit_agent,
     requested=None if requested is __MISSING__ else str(requested),
   )
-  # ⚑ TWO SOURCES, not four: ``resolve_agent`` REFUSES an unset key rather than
+  # ⚑ TWO SOURCES, not four: ``resolve_agent_identity`` REFUSES an unset key rather than
   # picking for the user, so a returning call always has a name somebody wrote.
   source = "cli" if explicit_agent is not None else "settings"
-  return AgentSelection(node=node, source=source)
+  return AgentSelection(identity=identity, source=source)

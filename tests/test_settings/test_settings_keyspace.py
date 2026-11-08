@@ -2411,3 +2411,78 @@ def test_a_pref_target_is_judged_exactly_as_the_bare_key(parameter, probe):
       f"{parameter}: '{key}' is {bare.cls.name} but 'pref.{key}' is "
       f"{pref.cls.name} — one key, two answers by spelling"
     )
+
+
+class TestRegisteredAgentVocabulary:
+  @pytest.mark.parametrize("name", ["scout", "claude"])
+  def test_registered_name_uses_its_resolved_harness(self, name):
+    from kanibako.settings.settings_keyspace import ConcedingLeafMap, agent_declared_leaves
+
+    leaves = ConcedingLeafMap(
+      {"claude": {"transform"}, "goose": {"provider"}},
+      frozenset(),
+      agent_harnesses={name: "goose"},
+    )
+    assert agent_declared_leaves(name, leaves) == {"provider"}
+    assert (
+      key_validity(f"agent.{name}.provider", valid_agents={name}, agent_leaf_map=leaves) is None
+    )
+    assert (
+      key_validity(f"pref.agent.{name}.provider", valid_agents={name}, agent_leaf_map=leaves)
+      is None
+    )
+
+  def test_registered_name_does_not_concede_a_readable_harness(self):
+    from kanibako.settings.settings_keyspace import ConcedingLeafMap, unread_harnesses
+
+    declared = {"claude": frozenset(), "goose": {"provider"}}
+    leaves = ConcedingLeafMap(
+      declared,
+      unread_harnesses(declared),
+      agent_harnesses={"scout": "claude"},
+    )
+    assert (
+      key_validity("agent.scout.provider", valid_agents={"scout"}, agent_leaf_map=leaves)
+      is not None
+    )
+    assert (
+      key_validity("pref.agent.scout.provider", valid_agents={"scout"}, agent_leaf_map=leaves)
+      is not None
+    )
+
+  def test_registered_missing_harness_uses_explicit_concession(self):
+    from kanibako.settings.settings_keyspace import ConcedingLeafMap, agent_declared_leaves
+
+    assert (
+      agent_declared_leaves(
+        "scout",
+        ConcedingLeafMap({}, {"goose"}, agent_harnesses={"scout": "goose"}),
+      )
+      is None
+    )
+    assert (
+      agent_declared_leaves(
+        "scout",
+        ConcedingLeafMap({}, frozenset(), agent_harnesses={"scout": "goose"}),
+      )
+      == frozenset()
+    )
+
+  @pytest.mark.parametrize("name", ["default", "shell"])
+  def test_pseudo_agent_never_inherits_an_injected_harness(self, name):
+    from kanibako.settings.settings_keyspace import ConcedingLeafMap, agent_declared_leaves
+
+    leaves = ConcedingLeafMap(
+      {"goose": {"provider"}}, {"missing"}, agent_harnesses={name: "goose"}
+    )
+    assert agent_declared_leaves(name, leaves) == frozenset()
+
+  def test_mapping_is_copied_and_read_only(self):
+    from kanibako.settings.settings_keyspace import ConcedingLeafMap
+
+    mapping = {"scout": "claude"}
+    leaves = ConcedingLeafMap({}, frozenset(), agent_harnesses=mapping)
+    mapping["scout"] = "goose"
+    assert leaves.agent_harnesses["scout"] == "claude"
+    with pytest.raises(TypeError):
+      leaves.agent_harnesses["scout"] = "codex"

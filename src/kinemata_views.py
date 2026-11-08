@@ -565,6 +565,7 @@ def existing_box_termini(
   """
   from kanibako.commands import start as start_cmd
   from kanibako.settings.agent_select import AgentSelection
+  from kanibako.settings.config import resolve_agent_identity
   from kanibako.settings.settings_launch import load_merged_config
   from kanibako.settings.paths import box_workset_settings_paths
 
@@ -572,7 +573,9 @@ def existing_box_termini(
   # The §1A selection level a launch installs, built from the PRODUCTION dataclass
   # rather than hand-spelled — ``AgentSelection.selection_level`` is the only thing
   # that knows the shape (``{system.agent: node}``) and the no-agent ``None``.
-  selection = AgentSelection(node=node, source="settings").selection_level
+  selection = AgentSelection(
+    identity=resolve_agent_identity(explicit_agent=node), source="settings"
+  ).selection_level
 
   collected: list[tuple[str, Any, Any]] = []
   with recording_launch_snapshots() as built:

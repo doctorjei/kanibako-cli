@@ -8707,3 +8707,111 @@ def test_a_behavior_bool_is_stringified_by_the_reader_that_declares_the_dict():
   from_bool = effective_behavior(_snap(True), active_agent="claude")
   assert from_str == from_bool == {"model": "True"}
   assert effective_behavior(_snap("false"), active_agent="claude") == {"model": "false"}
+
+
+class TestResolvedAgentIdentityFloors:
+  @pytest.fixture
+  def identity(self, tmp_path):
+    from kanibako.agent_ref import AgentIdentity
+
+    return AgentIdentity(
+      node="scout",
+      registered_name="Scout",
+      persona="navigator",
+      harness="Claude",
+      target_name="claude",
+      entry_path=tmp_path / "pg" / "Scout",
+    )
+
+  @pytest.mark.parametrize("subject", ["SYSTEM", "WORKSET", "BOX"])
+  def test_inputs_keep_registered_name_target_and_settings_root_separate(
+    self, identity, subject, std, config, project_dir, tmp_path, monkeypatch
+  ):
+    from kanibako import persona_store
+    from kanibako.project.workset import Workset
+    from kanibako.settings.paths import resolve_project
+    from kanibako.settings.settings_launch import ResolveSubject, resolve_inputs
+    from kanibako.targets import resolve_target
+
+    def no_store(*args, **kwargs):
+      pytest.fail("a floor must not read PG")
+
+    monkeypatch.setattr(persona_store, "read_registered_persona", no_store)
+    targets = []
+
+    def target(name):
+      targets.append(name)
+      return resolve_target(name)
+
+    monkeypatch.setattr("kanibako.targets.resolve_target", target)
+    scope = {}
+    if subject == "BOX":
+      scope["proj"] = resolve_project(std, config, str(project_dir), initialize=True)
+    elif subject == "WORKSET":
+      scope["ws"] = Workset(name="crew", root=tmp_path, early_system=std.early_system)
+    inputs = resolve_inputs(
+      subject=ResolveSubject[subject],
+      std=std,
+      agent_name=identity.node,
+      agent_identity=identity,
+      system_path=std.settings,
+      **scope,
+    )
+    assert inputs.agent_identity is identity
+    assert targets == ["claude"]
+    floor = inputs.meta_identity
+    assert floor["meta.agent.scout.name"] == "Scout"
+    assert floor["meta.agent.scout.path"] == "{config.agents}/scout"
+    assert floor["meta.agent.claude.path"] == "{config.agents}/claude"
+    assert floor["meta.agent.scout.settings"] == "{meta.agent.scout.path}/agent.yaml"
+    assert floor["meta.agent.scout.auth.share_support"] is True
+    assert floor["meta.agent.scout.exec"] == ["-p"]
+    assert str(identity.entry_path) not in str(inputs.as_kwargs())
+
+  def test_inputs_reject_a_mismatched_identity(self, identity, std):
+    from kanibako.settings.settings_launch import ResolveSubject, resolve_inputs
+
+    with pytest.raises(ValueError, match="identity does not match"):
+      resolve_inputs(
+        subject=ResolveSubject.SYSTEM,
+        std=std,
+        agent_name="other",
+        agent_identity=identity,
+        system_path=std.settings,
+      )
+
+  @pytest.mark.parametrize("failure", [KeyError("missing"), ValueError("nameless")])
+  def test_missing_plugin_keeps_registered_identity(self, identity, monkeypatch, failure):
+    from kanibako.settings.settings_launch import _agent_identity
+
+    def missing(name):
+      assert name == "claude"
+      raise failure
+
+    monkeypatch.setattr("kanibako.targets.resolve_target", missing)
+    floor = _agent_identity(identity.node, identity)
+    assert floor["meta.agent.scout.name"] == "Scout"
+    assert floor["meta.agent.claude.path"] == "{config.agents}/claude"
+    assert floor["meta.agent.scout.auth.share_support"] is False
+    assert "meta.agent.scout.exec" not in floor
+
+  def test_unexpected_plugin_failure_propagates(self, identity, monkeypatch):
+    from kanibako.settings.settings_launch import _agent_identity
+
+    failure = RuntimeError("descriptor broke")
+
+    def broken(name):
+      raise failure
+
+    monkeypatch.setattr("kanibako.targets.resolve_target", broken)
+    with pytest.raises(RuntimeError) as exc:
+      _agent_identity(identity.node, identity)
+    assert exc.value is failure
+
+  @pytest.mark.parametrize("node", ["shell", "default", "Nav℘claude"])
+  def test_legacy_identity_does_not_change_floors(self, node):
+    from kanibako.settings.settings_launch import _agent_identity
+    from tests.support.agent_selection import agent_selection
+
+    identity = agent_selection(node=node, source="test").identity
+    assert _agent_identity(node, identity) == _agent_identity(node)

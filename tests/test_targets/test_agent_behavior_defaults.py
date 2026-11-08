@@ -367,14 +367,14 @@ def test_the_inherited_endpoint_keeps_suppress_and_delivery_in_step(
   """
   from kanibako.commands import start as start_cmd
   from kanibako.settings.paths import resolve_project
-  from kanibako.settings.agent_select import AgentSelection
+  from tests.support.agent_selection import agent_selection
 
   node = "default" if scope == "default" else agent
   system_file = tmp_path / "settings.yaml"
   system_file.write_text(f"agent:\n  {node}:\n    endpoint: https://elsewhere.example\n")
   proj = resolve_project(std, config, str(project_dir), initialize=True)
   target = _TARGETS[agent]()
-  selection = AgentSelection(node=agent, source="settings").selection_level
+  selection = agent_selection(node=agent, source="settings").selection_level
   _auth, suppressing, _model, _secrets = start_cmd._resolve_box_launch_decisions(
     std=std,
     proj=proj,

@@ -22,6 +22,7 @@ import pytest
 import yaml
 
 from kanibako.settings.agent_select import AgentSelection, SELECTION_KEY
+from tests.support.agent_selection import agent_selection
 from kanibako.settings.kb_store import __MISSING__
 from kanibako.settings.settings_assemble import refuse_retired_keys
 from kanibako.settings.settings_launch import build_launch_snapshot, resolve_selected_agent
@@ -271,8 +272,8 @@ class TestSelectionLevel:
     E-NULL), it costs one assertion, and an untested branch is how the empty
     node reached ``resolve_target`` the first time.
     """
-    assert AgentSelection(node="", source="suppressed").selection_level is None
-    assert AgentSelection(node="claude", source="cli").selection_level == {
+    assert agent_selection(node="", source="suppressed").selection_level is None
+    assert agent_selection(node="claude", source="cli").selection_level == {
       "system.agent": "claude",
     }
 
@@ -1051,3 +1052,42 @@ class TestSuppressedAuthPathIsUnreachable:
     )
     assert auth.workset_source == "/ws/auth/claude"
     assert auth.creds_shared is True
+
+
+def test_selection_retains_identity_without_reparsing_name(tmp_path, monkeypatch):
+  from kanibako.agent_ref import AgentIdentity
+  from kanibako.settings.agent_select import select_agent
+
+  identity = AgentIdentity(
+    node="scout",
+    registered_name="Scout",
+    persona="ollama",
+    harness="codex",
+    target_name="codex",
+    entry_path=tmp_path / "unrelated-path",
+  )
+  calls = []
+
+  def resolve(**kwargs):
+    calls.append(kwargs)
+    return identity
+
+  monkeypatch.setattr("kanibako.settings.config.resolve_agent_identity", resolve)
+  selected = select_agent(std=_std(tmp_path), proj=_proj(tmp_path), explicit_agent="Scout")
+  assert isinstance(selected, AgentSelection)
+  assert selected.identity is identity
+  assert selected.node == "scout"
+  assert selected.identity.target_name == "codex"
+  assert selected.selection_level == {SELECTION_KEY: "scout"}
+  assert calls == [{"explicit_agent": "Scout", "requested": None}]
+
+
+def test_selection_node_has_no_independent_mutable_carrier():
+  from dataclasses import FrozenInstanceError, fields
+
+  selected = agent_selection(node="shell", source="cli")
+  assert "node" not in {field.name for field in fields(selected)}
+  assert selected.identity.harness is None
+  assert selected.identity.target_name == "shell"
+  with pytest.raises(FrozenInstanceError):
+    selected.node = "claude"

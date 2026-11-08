@@ -471,13 +471,13 @@ class CodexTarget(Target):
     return self.project_persona_settings(data, source=str(cfg))
 
   def project_persona_settings(
-    self, config: Mapping[str, object], *, source: str
+    self, config: Mapping[str, object], *, source: str, keyless: bool = False
   ) -> PersonaReadOutcome:
     """Project Codex's selected provider and model without I/O or mutation.
 
     Select the named provider when present, otherwise the sole provider. Endpoint
-    and auth env must be nonempty strings. Absent/non-string models mean absent;
-    strings, including empty, stay literal. Rejections name *source*.
+    must be nonempty; auth env may be empty only for explicit *keyless*.
+    Absent/non-string models mean absent; strings stay literal. Rejections name *source*.
     """
     providers = config.get("model_providers")
     if not isinstance(providers, dict) or not providers:
@@ -509,7 +509,7 @@ class CodexTarget(Target):
         None,
         (f"codex persona config {source}: the selected model_providers table names no 'base_url'"),
       )
-    if not isinstance(env_key, str) or not env_key:
+    if not isinstance(env_key, str) or (not env_key and not keyless):
       return PersonaReadOutcome(
         None,
         (f"codex persona config {source}: the selected model_providers table names no 'env_key'"),

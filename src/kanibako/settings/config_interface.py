@@ -181,6 +181,7 @@ from kanibako.utils.files import stat_unless_gone
 _log = get_logger(__name__)
 
 if TYPE_CHECKING:
+  from kanibako.agent_ref import AgentIdentity
   from kanibako.settings.settings_launch import LaunchInputs
 
 #: The SET doors whose files ``workset_dirkeys.early_repoint`` reads, so the doors that run
@@ -431,6 +432,7 @@ def _set_time_target(
   ws,
   agent_name: str,
   system_path: "Path | None",
+  agent_identity: AgentIdentity | None = None,
 ) -> "LaunchInputs | None":
   """The COMMAND's target as ``settings_launch.resolve_inputs`` builds it; ``None`` without *std*.
 
@@ -454,6 +456,7 @@ def _set_time_target(
       std=std,
       proj=proj,
       agent_name=agent_name,
+      agent_identity=agent_identity,
       system_path=system_path,
     )
   if ws is not None:
@@ -462,12 +465,14 @@ def _set_time_target(
       std=std,
       ws=ws,
       agent_name=agent_name,
+      agent_identity=agent_identity,
       system_path=system_path,
     )
   return resolve_inputs(
     subject=ResolveSubject.SYSTEM,
     std=std,
     agent_name=agent_name,
+    agent_identity=agent_identity,
     system_path=system_path,
   )
 
@@ -905,6 +910,7 @@ def _set_time_agent_tier(
   agent_path: "Path | None",
   *,
   floor_only: bool = False,
+  identity: AgentIdentity | None = None,
 ) -> "tuple[Path | None, dict[str, str | None] | None, dict[str, str | None] | None]":
   """The launch's agent tier for *agent_name* whose file is *agent_path*:
   ``(agent_path, behavior_floor, agent_behavior_floor)``, all ``None`` without a file.
@@ -928,8 +934,9 @@ def _set_time_agent_tier(
       agent_record(agent_path, node=agent_name, purpose=ReadPurpose.RESOLVE)
     except KanibakoError:
       agent_path = None
+  target_name = identity.target_name if identity is not None else harness_of(agent_name)
   try:
-    descriptors = resolve_target(harness_of(agent_name)).setting_descriptors()
+    descriptors = resolve_target(target_name).setting_descriptors()
   except (KeyError, ValueError, KanibakoError):
     descriptors = None
   if not descriptors:
@@ -939,7 +946,7 @@ def _set_time_agent_tier(
     behavior_defaults(),
     descriptor_floor(
       descriptors,
-      plugin=harness_of(agent_name),
+      plugin=target_name,
     ),
   )
 
@@ -1024,6 +1031,7 @@ def _set_time_snapshot(
     agent_path, behavior_floor, agent_behavior_floor = _set_time_agent_tier(
       agent_name,
       agent_path,
+      identity=target.agent_identity,
     )
     cascade = assemble_cascade(
       agent_name=agent_name,

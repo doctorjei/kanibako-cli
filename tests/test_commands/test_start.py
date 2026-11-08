@@ -12,7 +12,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from kanibako.settings.agent_config import agent_settings_path
-from kanibako.settings.agent_select import AgentSelection
+from tests.support.agent_selection import agent_selection
 from kanibako.commands.start import (
   _agent_exit_rc,
   _apply_tweakcc,
@@ -58,9 +58,9 @@ def _sel(node: str, source: str = "settings"):
   install the resolved selection at ``system.agent`` (the §1A level) — which is
   what keeps the snapshot equal to the agent that actually runs.
   """
-  from kanibako.settings.agent_select import AgentSelection
+  from tests.support.agent_selection import agent_selection
 
-  return AgentSelection(node=node, source=source)
+  return agent_selection(node=node, source=source)
 
 
 # Auth-level redesign: the boolean ``effective_group_auth`` was replaced by an
@@ -2041,6 +2041,7 @@ class TestAuthGatePosition:
     from kanibako.plugins.goose.target import _GOOSE_DESCRIPTOR
 
     with start_mocks() as m:
+      m.resolve_agent.return_value = _sel("goose")
       m.target.name = "goose"
       m.target.display_name = "Goose"
       m.target.default_entrypoint = "goose"
@@ -2066,6 +2067,7 @@ class TestAuthGatePosition:
   def _goose_setup_only(self, m, order):
     from kanibako.plugins.goose.target import _GOOSE_DESCRIPTOR
 
+    m.resolve_agent.return_value = _sel("goose")
     m.target.name = "goose"
     m.target.display_name = "Goose"
     m.target.default_entrypoint = "goose"
@@ -2668,6 +2670,7 @@ class TestInstructionDeliveryActivation:
   def _drive_goose(self, m):
     from kanibako.plugins.goose.target import _GOOSE_DESCRIPTOR
 
+    m.resolve_agent.return_value = _sel("goose")
     m.target.name = "goose"
     m.target.descriptor = _GOOSE_DESCRIPTOR
     m.target.default_entrypoint = "goose"
@@ -2710,6 +2713,9 @@ class TestInstructionDeliveryActivation:
         extra_args=[],
       )
       kw = m.runtime.run.call_args.kwargs
+      assert kw["env"]["KANIBAKO_AGENT"] == "goose"
+      assert m.resolve_launch_snapshot.call_args.kwargs["agent_name"] == "goose"
+      assert m.load_std_paths.return_value.agents.__truediv__.call_args.args == ("goose",)
       assert kw.get("entrypoint") == "sh"
       cli_args = kw.get("cli_args") or []
       assert cli_args[0] == "-c"
@@ -6533,7 +6539,7 @@ class TestApplyInitSeeds:
       agent_config_path=agent_config_path,
       logger=self._logger(),
       deliver_creds=deliver_creds,
-      selection_level=AgentSelection(node="claude", source="settings").selection_level,
+      selection_level=agent_selection(node="claude", source="settings").selection_level,
     )
 
   def test_empty_no_config_no_target_copies_nothing(self, tmp_path):
@@ -8060,6 +8066,7 @@ class TestInBoxSetupAtAuthProbe:
     """Configure the mock target to need an in-box setup like goose."""
     from kanibako.plugins.goose.target import _GOOSE_DESCRIPTOR
 
+    m.resolve_agent.return_value = _sel("goose")
     m.target.name = "goose"
     m.target.display_name = "Goose"
     m.target.default_entrypoint = "goose"
@@ -8232,6 +8239,7 @@ class TestPostLaunchSetupDetection:
   def _drive_setup_target(self, m, *, check_auth=False):
     from kanibako.plugins.goose.target import _GOOSE_DESCRIPTOR
 
+    m.resolve_agent.return_value = _sel("goose")
     m.target.name = "goose"
     m.target.display_name = "Goose"
     m.target.default_entrypoint = "goose"
@@ -10361,7 +10369,7 @@ class TestPreflightCodexPersona:
     system_file = tmp_path / "settings.yaml"
     system_file.write_text(f"agent:\n  codex:\n    model: {stored}\n")
     proj = resolve_project(std, config, str(project_dir), initialize=True)
-    selection = AgentSelection(node="codex", source="settings").selection_level
+    selection = agent_selection(node="codex", source="settings").selection_level
     _auth, _endpoint, model, _secrets = start_cmd._resolve_box_launch_decisions(
       std=std,
       proj=proj,
@@ -11940,9 +11948,9 @@ class TestSuppressedBoxLaunchesShell:
   """
 
   def _suppressed(self):
-    from kanibako.settings.agent_select import AgentSelection
+    from tests.support.agent_selection import agent_selection
 
-    return AgentSelection(node="", source="suppressed")
+    return agent_selection(node="", source="suppressed")
 
   def _run(self, m):
     m.resolve_agent.return_value = self._suppressed()
@@ -12020,10 +12028,10 @@ class TestSuppressedBoxLaunchesShell:
   def test_an_UNSUPPRESSED_box_still_resolves_its_target(self, start_mocks):
     """The DISCRIMINATOR: the guard must key on the SUPPRESSION, not fire for
     every launch. A normal selection still goes through ``resolve_target``."""
-    from kanibako.settings.agent_select import AgentSelection
+    from tests.support.agent_selection import agent_selection
 
     with start_mocks() as m:
-      m.resolve_agent.return_value = AgentSelection(
+      m.resolve_agent.return_value = agent_selection(
         node="claude",
         source="settings",
       )

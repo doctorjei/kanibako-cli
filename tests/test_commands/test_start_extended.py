@@ -950,8 +950,11 @@ class TestAgentConfigFirstUse:
       assert all(len(call[0][1]) == 3 for call in mock_fn.call_args_list)
 
   def test_shell_target_uses_shell_id(self, start_mocks):
-    """The built-in shell target's name is used as agent_id."""
+    """A shell selection keeps its canonical node as agent_id."""
+    from tests.support.agent_selection import agent_selection
+
     with start_mocks() as m:
+      m.resolve_agent.return_value = agent_selection(node="shell", source="settings")
       m.target.name = "shell"
       # Production's shell target has no descriptor (conftest's note).
       m.target.descriptor = None
@@ -3960,12 +3963,12 @@ class TestReattachAgentSourcing:
   def _refuse_unless_explicit(self):
     """``select_agent`` stand-in: REFUSES unless an explicit agent is
     supplied — i.e. only the container-sourced injection can satisfy it."""
-    from kanibako.settings.agent_select import AgentSelection
+    from tests.support.agent_selection import agent_selection
     from kanibako.errors import AgentUnsetError
 
     def _fn(*, explicit_agent, **kw):
       if explicit_agent:
-        return AgentSelection(node=explicit_agent, source="cli")
+        return agent_selection(node=explicit_agent, source="cli")
       raise AgentUnsetError("run setup")
 
     return _fn
@@ -4527,7 +4530,10 @@ class TestDetachedSupervisor:
     """goose detached agent → the supervised payload runs the directive flatten."""
     from kanibako.plugins.goose.target import GooseTarget
 
+    from tests.support.agent_selection import agent_selection
+
     with start_mocks() as m:
+      m.resolve_agent.return_value = agent_selection(node="goose", source="settings")
       m.target.name = "goose"
       m.target.default_entrypoint = "goose"
       m.target.descriptor = GooseTarget().descriptor
@@ -5239,7 +5245,10 @@ class TestForegroundSupervisor:
     """goose foreground agent → the supervised payload runs the directive flatten."""
     from kanibako.plugins.goose.target import GooseTarget
 
+    from tests.support.agent_selection import agent_selection
+
     with start_mocks() as m:
+      m.resolve_agent.return_value = agent_selection(node="goose", source="settings")
       m.target.name = "goose"
       m.target.default_entrypoint = "goose"
       m.target.descriptor = GooseTarget().descriptor

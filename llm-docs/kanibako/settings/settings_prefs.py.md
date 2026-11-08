@@ -264,21 +264,18 @@ cascade — and adding one would silently merge the two refusals.
 
 ## Agent discovery — `AgentNames` and the memo
 
-`AgentNames` is the `valid_agents` collection: discovered HARNESSES plus any persona NODE built on
-one. It is a `Collection[str]` rather than a bare `frozenset` because the valid set is not
-enumerable — the keyspace agent tier is discriminated by NODE (`navigator℘claude`), and persona
-nodes are user-created, so membership is a PREDICATE (*is this ref built on a discovered harness?*)
-while iteration yields the finite harness list that an error message should name.
+`AgentNames` accepts discovered harnesses, legacy persona refs built on them, and
+injected registered nodes. Iteration lists finite discovered and injected names;
+legacy membership checks grammar and harness availability, not a persona directory's
+existence. A pref can preconfigure an agent before its store exists.
 
-⚑ Membership is deliberately a VALIDITY test, not an EXISTENCE test: §2h rules that a pref may
-pre-configure *"an agent you may switch to"*, so requiring the persona's store dir to already exist
-would be the same existence error the spec rejects for keys.
+`leaf_map` carries plugin declarations, explicit unreadable-harness concessions, and
+copied node-to-harness facts in `ConcedingLeafMap`. Registered nodes take their resolved
+harness's leaves, even if their spelling names another plugin. Pseudo-agents retain
+their core fence. Keyspace evaluation performs no store I/O.
 
-Two fields carry the rest. `leaves` holds the PLUGIN-declared agent keys, unioned over the core §2d
-contract by the validator (§0 *"Agent specifics are PLUGIN-declared"*). `discovery_failed` records
-that discovery FAILED — an environment fault, as distinct from "no agents are installed". Without it
-a broken plugin reports *"'claude' is not a valid agent"*, blaming the user's spelling for
-a broken box.
+`with_harnesses` returns a fresh per-resolve overlay; it never mutates cached discovery.
+`discovery_failed` distinguishes an environment fault from an empty installed set.
 
 `default_valid_agents` is the production supplier: every DISCOVERED agent plus the agent keys those
 plugins DECLARE. It is MEMOIZED in `_DISCOVERY` and reached only when a request actually names

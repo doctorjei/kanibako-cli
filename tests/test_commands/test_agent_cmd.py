@@ -1799,12 +1799,12 @@ class TestRunReauth:
     from kanibako.commands.agent_cmd import run_reauth
 
     args = argparse.Namespace(project=None)
-    from kanibako.settings.agent_select import AgentSelection
+    from tests.support.agent_selection import agent_selection
 
     with (
       patch(
         "kanibako.settings.agent_select.select_agent",
-        return_value=AgentSelection(node="claude", source="settings"),
+        return_value=agent_selection(node="claude", source="settings"),
       ),
       patch("kanibako.targets.resolve_target") as mock_target,
     ):
@@ -1823,12 +1823,15 @@ class TestRunReauth:
     from kanibako.errors import AgentUnsetError
 
     args = argparse.Namespace(project=None)
+    error = AgentUnsetError("run setup")
     with patch(
-      "kanibako.settings.config.resolve_agent",
-      side_effect=AgentUnsetError("run setup"),
-    ):
-      with pytest.raises(AgentUnsetError):
+      "kanibako.settings.config.resolve_agent_identity",
+      side_effect=error,
+    ) as resolver:
+      with pytest.raises(AgentUnsetError) as raised:
         run_reauth(args)
+    assert raised.value is error
+    resolver.assert_called_once()
 
   def test_reauth_descriptorless_skips_refresh(self, config_file, tmp_home, capsys):
     """A descriptor-less target (only the built-in shell) syncs no credentials.
@@ -1838,12 +1841,12 @@ class TestRunReauth:
     from kanibako.commands.agent_cmd import run_reauth
 
     args = argparse.Namespace(project=None)
-    from kanibako.settings.agent_select import AgentSelection
+    from tests.support.agent_selection import agent_selection
 
     with (
       patch(
         "kanibako.settings.agent_select.select_agent",
-        return_value=AgentSelection(node="claude", source="settings"),
+        return_value=agent_selection(node="claude", source="settings"),
       ),
       patch("kanibako.targets.resolve_target") as mock_target,
       patch("kanibako.targets.credsync.refresh_box_credentials") as mock_refresh,
@@ -1888,12 +1891,12 @@ class TestRunReauth:
     from kanibako.commands.agent_cmd import run_reauth
 
     args = argparse.Namespace(project=None)
-    from kanibako.settings.agent_select import AgentSelection
+    from tests.support.agent_selection import agent_selection
 
     with (
       patch(
         "kanibako.settings.agent_select.select_agent",
-        return_value=AgentSelection(node="claude", source="settings"),
+        return_value=agent_selection(node="claude", source="settings"),
       ),
       patch("kanibako.targets.resolve_target") as mock_target,
       patch(
@@ -1926,6 +1929,7 @@ class TestRunReauth:
       "proj",
       "target",
       "agent_name",
+      "agent_identity",
       "system_settings_path",
       "agent_cfg_path",
       # ⚑ P7: REQUIRED, not optional. reauth resolves the SAME per-agent
@@ -1944,6 +1948,7 @@ class TestRunReauth:
       # is pinned is that the kwarg is PASSED.
       "persona_values",
     }
+    assert mock_resolve.call_args.kwargs["agent_identity"].node == "claude"
     assert mock_resolve.call_args.kwargs["persona_values"] is None
     # …and it carries the RESOLVED selection, not a placeholder.
     assert mock_resolve.call_args.kwargs["selection_level"] == {
@@ -1962,12 +1967,12 @@ class TestRunReauth:
     from kanibako.commands.agent_cmd import run_reauth
 
     args = argparse.Namespace(project=None)
-    from kanibako.settings.agent_select import AgentSelection
+    from tests.support.agent_selection import agent_selection
 
     with (
       patch(
         "kanibako.settings.agent_select.select_agent",
-        return_value=AgentSelection(node="claude", source="settings"),
+        return_value=agent_selection(node="claude", source="settings"),
       ),
       patch("kanibako.targets.resolve_target") as mock_target,
       patch("kanibako.targets.credsync.refresh_box_credentials") as mock_refresh,
@@ -2016,12 +2021,12 @@ class TestRunReauth:
     from kanibako.commands.agent_cmd import run_reauth
 
     args = argparse.Namespace(project=None)
-    from kanibako.settings.agent_select import AgentSelection
+    from tests.support.agent_selection import agent_selection
 
     with (
       patch(
         "kanibako.settings.agent_select.select_agent",
-        return_value=AgentSelection(node="claude", source="settings"),
+        return_value=agent_selection(node="claude", source="settings"),
       ),
       patch("kanibako.targets.resolve_target") as mock_target,
       patch("kanibako.targets.credsync.refresh_box_credentials") as mock_refresh,
@@ -2062,7 +2067,7 @@ class TestRunReauth:
     from kanibako.commands.agent_cmd import run_reauth
 
     args = argparse.Namespace(project=None)
-    from kanibako.settings.agent_select import AgentSelection
+    from tests.support.agent_selection import agent_selection
 
     home = tmp_path / "box-home"
     creds = home / ".claude" / ".credentials.json"
@@ -2071,7 +2076,7 @@ class TestRunReauth:
     with (
       patch(
         "kanibako.settings.agent_select.select_agent",
-        return_value=AgentSelection(node="claude", source="settings"),
+        return_value=agent_selection(node="claude", source="settings"),
       ),
       patch("kanibako.targets.resolve_target") as mock_target,
       # Distinct auth = PRIVATE box (tier ``box``, ``.creds_shared`` False); stub a
@@ -2129,9 +2134,14 @@ class TestRunReauth:
     instead of just printing 'authentication failed'."""
     from kanibako.commands.agent_cmd import run_reauth
 
+    from tests.support.agent_selection import agent_selection
+
     args = argparse.Namespace(project=None)
     with (
-      patch("kanibako.settings.config.resolve_agent", return_value="codex"),
+      patch(
+        "kanibako.settings.config.resolve_agent_identity",
+        return_value=agent_selection(node="codex", source="settings").identity,
+      ),
       patch("kanibako.targets.resolve_target") as mock_target,
       patch(
         "kanibako.commands.start._run_container",
@@ -2174,13 +2184,13 @@ class TestRunReauth:
     from kanibako.commands.agent_cmd import run_reauth
 
     args = argparse.Namespace(project=None)
-    from kanibako.settings.agent_select import AgentSelection
+    from tests.support.agent_selection import agent_selection
 
     name = "goose" if checks_box else "codex"
     with (
       patch(
         "kanibako.settings.agent_select.select_agent",
-        return_value=AgentSelection(node=name, source="settings"),
+        return_value=agent_selection(node=name, source="settings"),
       ),
       patch("kanibako.targets.resolve_target") as mock_target,
       patch("kanibako.commands.start._run_container", return_value=0) as m_run,
@@ -2243,12 +2253,12 @@ class TestRunReauth:
     from kanibako.commands.agent_cmd import run_reauth
 
     args = argparse.Namespace(project=None)
-    from kanibako.settings.agent_select import AgentSelection
+    from tests.support.agent_selection import agent_selection
 
     with (
       patch(
         "kanibako.settings.agent_select.select_agent",
-        return_value=AgentSelection(node="claude", source="settings"),
+        return_value=agent_selection(node="claude", source="settings"),
       ),
       patch("kanibako.targets.resolve_target") as mock_target,
       patch(
@@ -3360,3 +3370,44 @@ class TestAgentGetReadsWhatTheFileCarries:
       {"self": {"model": "opus", "transform_settings": "oops"}},
     )
     assert run_info(argparse.Namespace(agent_id="claude")) == 0
+
+
+def test_reauth_carries_registered_identity(config_file, tmp_home, tmp_path):
+  from kanibako.agent_ref import AgentIdentity
+  from kanibako.commands.agent_cmd import run_reauth
+  from kanibako.settings.agent_select import AgentSelection
+
+  identity = AgentIdentity(
+    node="navigator",
+    registered_name="Navigator",
+    persona="Guide",
+    harness="Claude",
+    target_name="claude",
+    entry_path=tmp_path / "PG" / "Navigator",
+  )
+  target = MagicMock()
+  target.has_binary = True
+  target.descriptor = None
+  target.checks_box_login = False
+  target.check_auth.return_value = True
+  with (
+    patch(
+      "kanibako.settings.agent_select.select_agent",
+      return_value=AgentSelection(identity=identity, source="settings"),
+    ) as m_selection,
+    patch("kanibako.targets.resolve_target", return_value=target) as m_target,
+    patch("kanibako.settings.paths.resolve_box_target"),
+    patch("kanibako.commands.start._persona_values_for", return_value=None),
+    patch(
+      "kanibako.commands.start._resolve_box_launch_decisions",
+      autospec=True,
+      return_value=(_SHARED_AUTH, None, None, {}),
+    ) as m_decisions,
+  ):
+    assert run_reauth(argparse.Namespace(project=None)) == 0
+  m_selection.assert_called_once()
+  m_target.assert_called_once_with("claude")
+  assert m_decisions.call_args.kwargs["agent_identity"] is identity
+  assert m_decisions.call_args.kwargs["agent_name"] == "navigator"
+  assert m_decisions.call_args.kwargs["selection_level"] == {"system.agent": "navigator"}
+  assert m_decisions.call_args.kwargs["agent_cfg_path"].parent.name == "navigator"
