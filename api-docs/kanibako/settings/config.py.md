@@ -56,6 +56,7 @@ def system_helpers_leaf_int(leaf: str, value: object, settings_path: Path | None
 def read_setup_completed(settings_path: Path | None) -> str | None
 def setup_compat_gate(settings_path: Path | None, legacy_config: Path | None=None) -> str | None
 def resolve_agent(*, explicit_agent: str | None, requested: str | None=None) -> str
+def resolve_named_agent_identity(name: str) -> AgentIdentity
 def resolve_agent_identity(*, explicit_agent: str | None, requested: str | None=None) -> AgentIdentity
 def null_path_keys_error(path: Path, keys: Iterable[str], *, cure: str=ERR_CONFIG_NULL_PATH_CURE, head: 'str | None'=None, read_head: str=ERR_CONFIG_NULL_PATH_HEAD) -> 'str | None'
 def refuses_null_path_key(canonical: str) -> bool

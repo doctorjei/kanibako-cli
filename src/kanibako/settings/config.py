@@ -938,106 +938,77 @@ def resolve_agent(
   return resolve_agent_identity(explicit_agent=explicit_agent, requested=requested).node
 
 
+def resolve_named_agent_identity(name: str) -> AgentIdentity:
+  """Address a legacy agent without plugin discovery, PG access, or launch eligibility."""
+  from kanibako.agent_ref import (
+    ADDRESSABLE_PSEUDO_AGENTS,
+    AgentIdentity,
+    agent_address_node,
+    parse_agent_address,
+    persona_of,
+  )
+
+  node = agent_address_node(name)
+  if node in ADDRESSABLE_PSEUDO_AGENTS:
+    return AgentIdentity(
+      node=node,
+      registered_name=None,
+      persona=None,
+      harness=None,
+      target_name=node,
+      entry_path=None,
+    )
+  _, harness = parse_agent_address(name)
+  return AgentIdentity(
+    node=node,
+    registered_name=None,
+    persona=persona_of(node),
+    harness=harness,
+    target_name=harness,
+    entry_path=None,
+  )
+
+
 def resolve_agent_identity(
   *,
   explicit_agent: str | None,
   requested: str | None = None,
 ) -> AgentIdentity:
-  """Validate the effective agent name against the installed set, or REFUSE (spec §2b).
+  """Require an installed target for the first present selection; None means unset."""
+  # Target discovery imports paths/config indirectly and must remain lazy.
+  from dataclasses import replace
 
-  ⮕ **P7: the CASCADE moved out** — what stays here is what is NOT a key.
-
-  🛑 **THERE IS NO INSTALLED-AGENT COUNT RULE** (retired [Jei:2026-09-19]). A
-  name that resolved is validated; a name that did NOT resolve is a REFUSAL naming
-  ``kanibako setup``, whatever the count — **one installed agent does not make the
-  choice for the user.** Present-``None`` never reaches here: it is a DIFFERENT
-  refusal, raised at the selection seam (``agent_select.select_agent``), because the
-  two states mean different things and must not print the same sentence.
-  """
-  # ⚑ Lazy: kanibako.targets imports paths/config indirectly (cycle risk).
-  from kanibako.agent_ref import (
-    ADDRESSABLE_PSEUDO_AGENTS,
-    AgentIdentity,
-    persona_of,
-    parse_agent_address,
-    with_harness,
-  )
+  from kanibako.agent_ref import ADDRESSABLE_PSEUDO_AGENTS, persona_of, with_harness
   from kanibako.errors import AgentNotInstalledError, AgentUnsetError
   from kanibako.identifiers import find_identifier
   from kanibako.install_method import install_command
   from kanibako.targets import discover_targets
 
-  # ⚑⚑ THE FIRST *PRESENT* TIER RESOLVES — never the first non-EMPTY one.
-  # ABSENCE already has its own spelling in BOTH arguments: no ``--agent`` at
-  # all, and ``__MISSING__`` at the selection key, each arriving here as
-  # ``None``.  A present ``""`` is therefore a VALUE, not an absence — spec §2h
-  # ("present-``None``, terminal ``""`` (≠ unset), and the COPY-disable
-  # sentinel" are three distinct idioms).  Reading it as absence invented a
-  # FOURTH meaning for the one that already means something, and answered it by
-  # launching whatever the next tier said: a typed ``--agent ""`` took the
-  # cascade's agent, a stored ``system.agent: ""`` took the then-live
-  # installed-count rule's — silently, either way.  Every OTHER illegal ref at
-  # either tier has always refused here; the blank one escaped through an ``or``.
   raw_resolved = explicit_agent if explicit_agent is not None else requested
 
   if raw_resolved is not None:
-    # ⚑ Canonicalize + validate the ref shape; the HARNESS is what must be
-    # installed — NOT the composite node-name (a persona segment is free-form).
-    # ⚑ It also STRIPS, and it OWNS every way a ref can be illegal — charset,
-    # pseudo-agent reservation, empty-after-strip — so a blank is refused by
-    # ITS message rather than by a second predicate spelled here.  The
-    # ``ConfigError`` is a ``KanibakoError``: ``cli.py`` flattens it to one
-    # ``Error:`` line with the offending value first.
-    # ⚑ THE ADDRESS GRAMMAR, so the SHELL PSEUDO-AGENT IS SELECTABLE BY NAME
-    # (spec §2b) though no agent, persona or harness may CLAIM the name (§2d).
-    # It is the built-in occupying its own slot ([R175]), so it resolves
-    # WITHOUT consulting the installed set.  ``default`` stays a reservation
-    # refusal: the any-agent tier is not a launchable agent.
-    node, harness = parse_agent_address(raw_resolved)
-    if node in ADDRESSABLE_PSEUDO_AGENTS:
-      return AgentIdentity(
-        node=node,
-        registered_name=None,
-        persona=None,
-        harness=None,
-        target_name=node,
-        entry_path=None,
-      )
-    # ⚑⚑ THE INSTALLED SET IS READ *ONLY INSIDE THIS BRANCH*, AND THAT IS THE
-    # POINT (P3/P4): it answers "is this NAME installed?" and is not in scope on
-    # the refusal path below, so the installed-agent count rule cannot be
-    # reintroduced there without re-adding this call — which a reader would see.
+    identity = resolve_named_agent_identity(raw_resolved)
+    if identity.node in ADDRESSABLE_PSEUDO_AGENTS:
+      return identity
     installed = set(discover_targets().keys())
-    # ⚑⚑ THIS IS THE HOP WHERE A NAME BECOMES A NODE (keyspec §0
-    # "An agent's canonical case is carried by its _name_").  ``system.agent`` and
-    # ``--agent`` carry a NAME — the plugin's declared case, or whatever the
-    # user typed — while the registry is keyed by NODE, so the match is case-blind
-    # and what comes back is the NODE.  Substituting it is what makes
-    # ``--agent Claude`` reach the ``claude`` plugin AND key ``agents/claude/``:
-    # returning the typed spelling instead would spell one agent's store and
-    # cascade slot two ways.  ⚑ Only the HARNESS segment is replaced — a persona
-    # segment is the user's and is not this ruling's to touch.
-    found = find_identifier(harness, installed)
+    found = find_identifier(identity.target_name, installed)
     if found is not None:
-      node = with_harness(node, found)
-      return AgentIdentity(
+      if identity.registered_name is not None:
+        return replace(identity, harness=found, target_name=found)
+      node = with_harness(identity.node, found)
+      return replace(
+        identity,
         node=node,
-        registered_name=None,
         persona=persona_of(node),
         harness=found,
         target_name=found,
-        entry_path=None,
       )
     raise AgentNotInstalledError(
-      f"Agent '{harness}' is not installed. Install it with:\n"
-      f"  {install_command(f'kanibako-agent-{harness}')}\n"
+      f"Agent '{identity.target_name}' is not installed. Install it with:\n"
+      f"  {install_command(f'kanibako-agent-{identity.target_name}')}\n"
       f"Or run 'kanibako agent list' to see installed agents."
     )
 
-  # Nothing resolved at ANY tier ⇒ {system.agent} is UNSET: setup has never chosen
-  # an agent (spec §2b).  ⚑ ``installed`` is deliberately NOT consulted — the old
-  # count rule launched the single installed agent implicitly, and that is the
-  # behavior this refusal replaces.
   raise AgentUnsetError(
     "No default agent is configured (system.agent is unset).\n"
     "Choose one with:\n"

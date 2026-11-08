@@ -705,68 +705,40 @@ string is a NON-BLOCKING advisory the caller prints to stderr before continuing.
 
 
 ```resolve_agent(*, explicit_agent: str | None, requested: str | None = None) -> str```
-Return the node from `resolve_agent_identity`, which owns validation.
+Return `resolve_agent_identity`'s node without another lookup.
 
-⮕ **The CASCADE is not here.** `system.agent` and the `pref.system.agent` requests of the
-workset/box files are resolved off the launch snapshot by
-:func:`kanibako.settings.agent_select.select_agent`, which passes the winner here as *requested*.
-What stays here is what is NOT a key: name VALIDATION against the installed set and persona-ref
-canonicalization.
+```resolve_named_agent_identity(name: str) -> AgentIdentity```
+Address a legacy name without discovering plugins, reading settings, or consulting PG.
+`agent_address_node` owns node normalization: `+` becomes `℘`, the harness folds, and a
+composite persona keeps its case. The identity retains the raw harness spelling for
+strict diagnostics; registered name and entry path remain None. Addressable pseudo-agents
+carry neither persona nor harness. An unavailable or broken plugin cannot prevent this
+addressing operation, but malformed names still raise `ConfigError`.
 
-Precedence: *explicit_agent* (the §1A CLI level) > *requested* (whatever the settings cascade
-resolved). The FIRST **PRESENT** one resolves a name — never the first non-EMPTY one. `None` is
-the only spelling of absence either argument has (no `--agent` at all; `__MISSING__` at the
-selection key), so a present `""` is a VALUE: spec §2h keeps `present-None`, terminal `""` (**≠
-unset**) and the COPY-disable sentinel apart as three idioms. A blank tier therefore reaches
-`parse_agent_address` and is refused as an empty ref, instead of falling through to the next
-tier (a typed `--agent ""` silently taking the cascade's agent).
-
-A resolved name is validated against the installed set — the keys of `targets.discover_targets`,
-i.e. the DISCOVERED PLUGINS:
-
-* installed → return it;
-* not installed → raise :class:`~kanibako.errors.AgentNotInstalledError` (actionable: names the
-  agent + how to install it).
-
-Nothing resolved → raise :class:`~kanibako.errors.AgentUnsetError`, naming `kanibako setup`.
-
-🛑 **THE INSTALLED COUNT IS NOT CONSULTED HERE, AND THE SET IS NOT EVEN IN SCOPE.** Nothing
-auto-picks an agent; `discover_targets` is called INSIDE the named-ref branch above, so a count
-rule on this path would mean
-re-adding that call where a reader can see it (P3/P4). The sibling state — present-`None`, *no
-default set* — never reaches this function at all: `select_agent` raises
-:class:`~kanibako.errors.AgentNoDefaultError` for it, because the two states must print different
-sentences.
-
-### Canonicalization before validation
-
-Each ref source may be a persona ref (`persona+harness`). The winning tier is canonicalized to its
-node-name (`persona℘harness`; a bare ref stays byte-identical) so callers see a uniform node-name,
-and the same call VALIDATES the ref shape (raises `ConfigError` on a malformed segment).
-
-⚑ The HARNESS — right of `℘`, the whole name when bare — is what must be an installed target, NOT
-the composite node-name: a persona's name segment is free-form.
-
-⚑ The parse is `agent_ref.parse_agent_address`, the ADDRESS grammar: a ref naming the shell
-pseudo-agent (any case) returns the `shell` node WITHOUT consulting the installed set — it is the
-built-in occupying its own slot (`[R175]`), selectable by name (keyspec §2b). `default` still
-refuses as a reserved name. The grammar owns the `shell` fold, so `box create`'s `--agent`
-validation cannot disagree with it.
-
-⚑ A named harness validates against the FULL `installed` set. The keyspec's pseudo-agents
-(`default`, `shell` — `agent_ref.PSEUDO_AGENT_NAMES`, the RESERVED names, spec §2d) are the only
-pseudo-agents. `general` is NOT a target any distribution registers — the agent-less slot is
-`shell` (`GENERAL_SLOT`) — so `--agent general` raises `AgentNotInstalledError`.
-
-⚑ The imports inside the function are lazy on purpose: `kanibako.targets` imports `paths` / this
-module indirectly, so importing it at module scope risks a cycle. This mirrors `discover_targets`'
-use elsewhere.
-
+This is preparation, not registered-selector activation. It neither chooses a PG/native
+collision winner nor treats a PG entry path as a kanibako settings path.
 
 ```resolve_agent_identity(*, explicit_agent: str | None, requested: str | None = None) -> AgentIdentity```
-Primary legacy resolver: validates once and returns node, designation, and target. Shell
-carries no persona/harness; registered name and entry path stay None. No PG lookup. The
-scalar wrapper returns this identity’s node without another discovery pass.
+The strict launch wrapper chooses the first PRESENT argument: *explicit_agent* over
+*requested*. `None` alone means absence; `""` reaches the shared address grammar and
+refuses rather than falling through. `select_agent` supplies the settings winner from
+the launch cascade; no cascade is read here.
+
+The wrapper obtains one addressed identity, then validates its target against the full
+`discover_targets` registry. Legacy harness/node spelling becomes the registry spelling;
+composite persona case stays unchanged. An independent registered identity retains its
+node, persona, registered name, and entry path; only harness/target spelling canonicalizes.
+This branch accepts injected identities but adds no production PG read.
+
+Missing targets raise `AgentNotInstalledError`, preserving the raw harness diagnostic and
+install/list cures. Discovery and identity failures propagate; they never become a
+syntactic fallback. Target imports stay lazy because discovery imports paths/config.
+
+The shell address returns before discovery; `default` remains reserved, and `general`
+is an ordinary name requiring an installed target. If both arguments are absent,
+`AgentUnsetError` names `kanibako setup` without consulting discovery or its count.
+Present-null selection never reaches this wrapper: `select_agent` raises the distinct
+`AgentNoDefaultError` because unset and no-default require different cures.
 
 
 ```_flatten_leaves(data: dict, prefix: str = "", *, with_nodes: bool = False) -> dict[str, object]```
