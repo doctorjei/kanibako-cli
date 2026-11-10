@@ -45,6 +45,7 @@ _REMEDY_WRAP: Final[int] = 80
 ## Types
 ```
 Delivery = Literal['COPY', 'MOUNT', 'ENV']
+CredentialKind = Literal['file', 'pg', 'keyless-null', 'exact-mask-suppressed', 'cli-blank-suppressed', 'cli-value', 'absent']
 
 ```
 
@@ -63,7 +64,7 @@ def refuse_non_scalar_family_value(key: str, category: str, value: object) -> No
 def env_twin_refusal(var: str, claim: str, cure: str) -> str
 def secret_path_names(entries: list[CategoryEntry]) -> dict[str, list[str]]
 def refuse_env_secret_twins(entries: list[CategoryEntry]) -> None
-def launch_deliveries(entries: list[CategoryEntry], *, agent_dests: frozenset[str], narrow_bindings: 'dict[str, object] | None'=None, declared_by: 'dict[str, str] | None'=None, dest_keys: 'dict[tuple[str, ...], str] | None'=None, convenience_sources: 'dict[str, str] | None'=None) -> LaunchDeliveries
+def launch_deliveries(entries: list[CategoryEntry], *, agent_dests: frozenset[str], narrow_bindings: 'dict[str, object] | None'=None, declared_by: 'dict[str, str] | None'=None, dest_keys: 'dict[tuple[str, ...], str] | None'=None, convenience_sources: 'dict[str, str] | None'=None, cli_env: Mapping[str, str] | None=None, required_var: str | None=None, keyless_persona: PersonaCredential | None=None) -> LaunchDeliveries
 def narrow_table_winners(entries: list[CategoryEntry], dests: frozenset[str]) -> list[CategoryEntry]
 def raise_binding_vs_binding(box_dest: str, concrete: list[CategoryEntry]) -> NoReturn
 def raise_extension_onto_occupied(box_dest: str, *, extension: CategoryEntry, base: CategoryEntry) -> NoReturn
@@ -72,6 +73,7 @@ def derive_binding_keys(entries: list[CategoryEntry]) -> dict[tuple[str, ...], '
 def declaration_delivery(decl_key: str) -> Delivery
 def effective_bindings_and_template_sources(snapshot: 'KeyStore') -> 'tuple[Any, ...]'
 def _bind_options(category: str) -> str
+def _arbitrate_credentials(entries: list[CategoryEntry], *, cli_env: Mapping[str, str] | None=None, required_var: str | None=None) -> _CredentialArbitration
 def _value_shape(value: object) -> str
 def _shape_phrase(value: object) -> str
 def _most_specific(entries: list[CategoryEntry]) -> CategoryEntry
@@ -88,6 +90,15 @@ def _assembly_copy_list(snapshot: 'KeyStore', dotted: str) -> list[Any]
 
 ```
 @dataclass(frozen=True)
+class PersonaCredential:
+    registered_name: str
+    store_root: Path
+    var: str | None
+    keyless: bool
+
+    def __post_init__(self) -> None
+
+@dataclass(frozen=True)
 class CategoryEntry:
     category: str
     scope: str
@@ -98,11 +109,16 @@ class CategoryEntry:
     name: str
     key_segments: tuple[str, ...]
     is_credential: bool = False
+    persona_credential: PersonaCredential | None = None
 
+    @property
+    def has_secret_material(self) -> bool
     @property
     def key(self) -> str
     @property
     def label(self) -> str
+
+    def __post_init__(self) -> None
 
 @dataclass(frozen=True)
 class CategoryCollision:
@@ -114,6 +130,12 @@ class CategoryCollision:
     def message(self) -> str
 
 @dataclass(frozen=True)
+class CredentialState:
+    kind: CredentialKind
+    declaration: CategoryEntry | None = None
+    suppressed_by: CategoryEntry | None = None
+
+@dataclass(frozen=True)
 class LaunchDeliveries:
     secrets: list[CategoryEntry]
     agent_dests: frozenset[str]
@@ -122,4 +144,15 @@ class LaunchDeliveries:
     dest_keys: 'dict[tuple[str, ...], str]' = field(default_factory=dict)
     convenience_sources: 'dict[str, str]' = field(default_factory=dict)
     secret_names: 'dict[str, list[str]]' = field(default_factory=dict)
+    credential_states: Mapping[str, CredentialState] = field(default_factory=dict)
+    active_secret_names: 'dict[str, list[str]]' = field(default_factory=dict)
+    keyless_persona: PersonaCredential | None = None
+
+@dataclass(frozen=True)
+class _CredentialArbitration:
+    states: Mapping[str, CredentialState]
+    active_names: dict[str, list[str]]
+
+    @property
+    def secrets(self) -> list[CategoryEntry]
 ```

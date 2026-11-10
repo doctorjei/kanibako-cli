@@ -519,3 +519,49 @@ class TestOutcomeWithoutAccess:
     outcome = PersonaProbeOutcome.rejected(evidence)
     assert outcome.access is None
     assert outcome.refusal_phrase("http://e.example") == "refused the probe with HTTP 401"
+
+
+class TestCredentialSourceAccessEvidence:
+  @pytest.mark.parametrize(
+    ("general", "general_status"),
+    [(state, _GENERAL_STATUS[state]) for state in G] + [(G.NO_ANSWER, None)],
+  )
+  @pytest.mark.parametrize("keyed", [False, True])
+  @pytest.mark.parametrize("model", [M.DENIED, M.UNREACHABLE])
+  def test_source_preserves_both_requests_and_authentication(
+    self, general, general_status, keyed, model
+  ):
+    from dataclasses import replace
+
+    report = _report(general, model, token=False)
+    report = replace(
+      report,
+      general=replace(
+        report.general,
+        evidence=replace(report.general.evidence, token_by_value=keyed, status=general_status),
+      ),
+      model=replace(report.model, evidence=replace(report.model.evidence, token_by_value=keyed)),
+    )
+    outcome = access_outcome(report, model_exact=True)
+    before = outcome.evidence_block(resolved_from="the effective configuration")
+    source = "PG agent nav at /store" if keyed else "intentional keyless agent nav"
+    after = outcome.evidence_block(
+      resolved_from="the effective configuration", credential_source=source
+    )
+    legacy = (
+      "(the value of -e on the command line)"
+      if keyed
+      else "(none — this persona declares the endpoint keyless)"
+    )
+    if model is M.UNREACHABLE and general_status is None:
+      assert before == after == ""
+    else:
+      assert after == before.replace(f"token     {legacy}", f"token     {source}")
+      assert "POST /v1/messages" in after
+      assert "GET /v1/models" in after
+      assert source in after
+      assert after.splitlines()[1] == before.splitlines()[1]
+    assert outcome.access is report
+    assert outcome.evidence_block(credential_source="") == outcome.evidence_block()
+    assert report.model.evidence.token_by_value is keyed
+    assert report.general.evidence.token_by_value is keyed

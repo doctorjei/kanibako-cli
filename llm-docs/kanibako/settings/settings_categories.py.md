@@ -52,21 +52,19 @@ host source, no guest *path* — its `box_dest` field is the VAR name).
 
 ### `secret_path`, the arm's-length SECRET category
 
-`secret_path` (spec §2a SECRET category) is SCALAR-valued like `env` — a host PATH
-to secret material, e.g. a 0600 bearer-token file — but delivered ARM'S-LENGTH as a ro MOUNT.
-At launch the cascade-resolved host path is ro-bind-mounted to a fixed, non-persistent in-box
-location (`SECRET_MOUNT_DIR/{VAR}`) and a box-side shim exports `{VAR}` from that mount, so
-kanibako NEVER reads the secret VALUE — never in process memory, the podman argv, the
-snapshot, keystore or logs. It is keyed per `{VAR}` (same cascade merge and reserved-name floor
-as `env.{VAR}`); its `box_dest` IS a real guest path, so it participates in box_dest
-collisions as a CONCRETE-layer peer of `bindings.{ro,rw}` (see `CONCRETE_CATEGORIES` for the
-per-VAR carve-out), and its `host_src` is the SCALAR path, NOT a Bind tuple.
+`secret_path` carries a scalar host path, delivered through a read-only file mount at
+`SECRET_MOUNT_DIR/{VAR}` (`/run/kanibako/secrets`, outside the home depth-sort). The box
+exports the value. PG entries instead carry plaintext-free `PersonaCredential` metadata,
+exclusive with `host_src`; `host_src=None` alone therefore no longer implies keyless.
+A named keyless PG entry or ordinary null supplies no material.
 
-`SECRET_MOUNT_DIR` is `/run/kanibako/secrets` — the fixed, non-persistent in-box directory
-each host secret file is ro-mounted into as `{SECRET_MOUNT_DIR}/{VAR}`. It is deliberately NOT
-under the box `~` home, so it is disjoint from the home / workspace / vault mounts and stays
-OUT of the `~`-rooted mount depth-sort. The box-side export shim in `start.py` reads each file
-here into `{VAR}` at agent start; kanibako only ever writes the mount PATH.
+`launch_deliveries` returns `credential_states`: file, PG, keyless-null, exact-mask suppression,
+CLI blank/value, or explicit required-slot absence. One arbitration picks scope winners,
+checks exact contests, then applies normalized `cli_env`; `secrets` derives from those states.
+`active_secret_names` includes null declarations; `secret_names` retains nonnull ownership.
+`keyless_persona` carries a registered keyless context without inventing a VAR. No token value
+enters this carrier, snapshot, keystore, argv, or logs. Arbitration performs no material I/O;
+future delivery consumers use its result, never reconstruct winners.
 
 ### Delivery
 
@@ -337,10 +335,9 @@ error message whose OUTCOME changed, and nowhere else.
 One resolved scope-category entry, pre-collision-resolution. *category* is the category token;
 *scope* is the KEY's scope; *box_dest* is the in-box destination (a guest path for path
 categories, INCLUDING `secret_path`'s `SECRET_MOUNT_DIR/{VAR}`; the VAR name for `env`);
-*host_src* is the resolved host source path, or `None` for the value-only categories `masks`
-and `env`. For `secret_path`, *host_src* is the SCALAR host path, *box_dest* is
-`SECRET_MOUNT_DIR/{VAR}` and *name* is the VAR the box-side shim exports. *delivery* is COPY /
-MOUNT / ENV per the category. *options* carries mount flags (`"ro"` / `"Z,U"`) for MOUNT
+*host_src* is a resolved path, or `None` for `masks`, `env`, null secrets, and PG sources.
+For `secret_path`, *persona_credential* is exclusive with *host_src*, *box_dest* is
+`SECRET_MOUNT_DIR/{VAR}`, and *name* is its VAR. *delivery* is COPY / MOUNT / ENV. *options* carries mount flags (`"ro"` / `"Z,U"`) for MOUNT
 entries — and for `env` entries it holds the resolved variable VALUE instead, since env carries
 no path or mount flags and its *box_dest* is the variable NAME. *name* is the `<name>` leaf,
 for diagnostics.
@@ -447,8 +444,8 @@ no VAR is named by both scalar families.
 with its keys. The collapse cannot see those owners, and a creating launch's `-e` needs them
 (`config_interface.persist_creation_env`).
 
-* *secrets* — the `secret_path` mounts the launch delivers (`secret_path_deliveries`: the
-  per-VAR winners, minus what §0 gives to a `masks` at the same dest), in the emitter's order.
+* *secrets* — material from final file/PG states, after exact gates and CLI suppression,
+  in emitter order; the compatibility helper `secret_path_deliveries` uses the same arbitration.
 * *agent_dests* — the normalized dests carrying the agent's delivery binds (the emitter's
   SKIP-IF-ABSENT set). It is a PARAMETER of `launch_deliveries` rather than a filter written
   here: the predicate that decides what an agent delivery IS belongs to the launch emitter that
@@ -535,11 +532,9 @@ precedence between the families is defined, and none may be inferred from delive
 ONE delivery target — a box environment variable — so a VAR named by both is a mistake rather
 than a preference.
 
-⚑⚑ **It is a THIRD question the collapse does not answer, for the same reason as the other
-two.** `store_collapse.collapse_env` arbitrates the env VAR slots, but a secret's VALUE is never
-read into kanibako at all (arm's-length delivery), so no `CollapsedEnv` can ever exist for the
-`secret_path` half and the fold sees only one side of the contest. The whole ENTRY LIST holds
-both, which is why this function reads that and not a product of either half.
+`store_collapse.collapse_env` sees env slots, not credential sources; secret values never
+enter its snapshot. The whole entry list holds both families, so this function checks that
+list rather than a product of either half.
 
 🛑 **WITHOUT IT, DELIVERY ORDER WOULD DECIDE.** podman receives the `env` value through `-e`, and
 the box-side export shim (`commands.start._secret_export_shim`) runs `export <VAR>="$(cat …)"` at
@@ -560,10 +555,8 @@ NAMES alone and needs none of the winners below. It is deliberately NOT inside
 remove one of two keys — would name nothing the user could remove. The same reasoning keeps `-e`
 out of `_refuse_env_twin`.
 
-⚑ **A present-null `secret_path.<VAR>` emits no entry** (§2a's three-valued rule: a path is
-used · present-null means this endpoint needs no token · absent means not configured), so it
-names no VAR and cannot contend for one. The refusal keys on an EMITTED entry, never on a key's
-presence — otherwise the documented way to turn a token off would start refusing launches.
+A present-null `secret_path.<VAR>` retains its keyless state and declaration name, but no
+material ownership. It cannot contend with env. Absence remains a different state.
 
 ### `secret_path_winners` and `secret_path_deliveries`
 
@@ -578,11 +571,9 @@ mount depth-sort's key — one order, one consumer (`commands.start._emit_secret
 pointer wins for each VAR", not "does anything ELSE contend for that dest". That CROSS-CATEGORY
 question is `secret_path_deliveries`', which composes the two.
 
-⚑⚑ **The §0 cross-category gate for secret dests lives in `secret_path_deliveries`**, BECAUSE
-NOTHING ELSE HOLDS THE INPUTS. `secret_path` carries no arm in the disk-store shape (producer
-DESIGN §7.4), so the assembly COLLAPSE never sees a secret and cannot answer "does anything else
-contend for this destination". The rules are applied there, over the full entry list, restricted
-to the destinations a secret claims:
+The shared credential arbitration owns §0's secret-destination gates; `secret_path_deliveries`
+returns its material result. The collapse has no secret arm and cannot decide these contests.
+The full entry list supplies the exact destinations claimed by material winners:
 
 * **a BIND at the dest** — a `bindings.*` row, or an abstraction deriving one, aimed at
   `SECRET_MOUNT_DIR/<VAR>` REFUSES the launch through the same two public raisers, naming BOTH

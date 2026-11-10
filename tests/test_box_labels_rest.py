@@ -396,6 +396,32 @@ class TestHub:
     )
     return hub
 
+  @pytest.mark.parametrize("helper_num", [4, None])
+  def test_discovery_ignores_absent_matching_and_different_targets(self, tmp_path, helper_num):
+    identity = {**self.LABELS, "kanibako.helper": "4"}
+    containers = {
+      "old": identity,
+      "matching": {**identity, "kanibako.target": "Claude"},
+      "different": {**identity, "kanibako.target": "Goose"},
+    }
+    rt = MagicMock()
+    rt.find_labeled.side_effect = lambda wanted, check: [
+      name
+      for name, labels in containers.items()
+      if all(
+        key in labels and (value is None or labels[key] == value) for key, value in wanted.items()
+      )
+    ]
+    hub = self._hub(tmp_path, rt)
+    hub._ctx.target_name = "Claude"
+
+    assert hub._own_helpers(helper_num) == list(containers)
+    rt.find_labeled.assert_called_once_with(
+      {**self.LABELS, "kanibako.helper": None if helper_num is None else str(helper_num)},
+      check=False,
+    )
+    assert hub._ctx.labels == self.LABELS
+
   def test_a_non_held_stop_sees_the_helper_running_under_another_name(self, tmp_path):
     rt = MagicMock()
     rt.find_labeled.return_value = ["kb-primary-myapp-helper-4-old"]

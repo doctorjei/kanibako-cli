@@ -39,6 +39,8 @@ from __future__ import annotations
 import re
 import textwrap
 from dataclasses import dataclass, field
+from pathlib import Path
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Final, Literal, Mapping, NoReturn, Sequence
 
 from kanibako.agent_ref import ENV_VAR_NAME
@@ -274,6 +276,23 @@ _RULE_CHANGE_RELEASE: Final[str] = "1.8.0"
 
 
 @dataclass(frozen=True)
+class PersonaCredential:
+  """Plaintext-free PG source, with its already-captured store root."""
+
+  registered_name: str
+  store_root: Path
+  var: str | None
+  keyless: bool
+
+  def __post_init__(self) -> None:
+    if self.var is None:
+      if not self.keyless:
+        raise ValueError("a keyed PG credential requires an authentication variable")
+    elif SECRET_VAR_RE.fullmatch(self.var) is None:
+      raise ValueError("a PG credential requires a valid authentication variable")
+
+
+@dataclass(frozen=True)
 class CategoryEntry:
   """One resolved scope-category entry (pre-collision-resolution).
 
@@ -311,6 +330,22 @@ class CategoryEntry:
   name: str
   key_segments: tuple[str, ...]
   is_credential: bool = False
+  persona_credential: PersonaCredential | None = None
+
+  def __post_init__(self) -> None:
+    source = self.persona_credential
+    if source is not None and (
+      self.category != "secret_path" or self.host_src is not None or source.var != self.name
+    ):
+      raise ValueError("a PG secret entry requires its own variable and no host source")
+
+  @property
+  def has_secret_material(self) -> bool:
+    """Whether this secret declaration names material rather than intentional null."""
+    return self.category == "secret_path" and (
+      self.host_src is not None
+      or (self.persona_credential is not None and not self.persona_credential.keyless)
+    )
 
   @property
   def key(self) -> str:
@@ -391,6 +426,26 @@ def gate_credential_delivery(
   ]
 
 
+CredentialKind = Literal[
+  "file",
+  "pg",
+  "keyless-null",
+  "exact-mask-suppressed",
+  "cli-blank-suppressed",
+  "cli-value",
+  "absent",
+]
+
+
+@dataclass(frozen=True)
+class CredentialState:
+  """One effective credential decision; never a token or a replacement source."""
+
+  kind: CredentialKind
+  declaration: CategoryEntry | None = None
+  suppressed_by: CategoryEntry | None = None
+
+
 @dataclass(frozen=True)
 class LaunchDeliveries:
   """What the launch entry list delivers BESIDE the collapse's mount set — and WHO DECLARED it.
@@ -440,19 +495,13 @@ class LaunchDeliveries:
   #: :func:`secret_path_names` of the same gated list — the ``secret_path`` owners
   #: of each VAR, which the env collapse cannot see (a creating launch's ``-e``).
   secret_names: "dict[str, list[str]]" = field(default_factory=dict)
+  credential_states: Mapping[str, CredentialState] = field(default_factory=dict)
+  active_secret_names: "dict[str, list[str]]" = field(default_factory=dict)
+  keyless_persona: PersonaCredential | None = None
 
 
 def secret_path_winners(entries: list[CategoryEntry]) -> list[CategoryEntry]:
-  """The per-VAR ``secret_path`` winners — spec §2a's cascade, at the seam.
-
-  Every ``secret_path`` dest is ``SECRET_MOUNT_DIR/{VAR}`` BY CONSTRUCTION, so a
-  group sharing a dest is ONE VAR from several scopes — the per-VAR cascade, picked
-  by :func:`_most_specific`, then depth-sorted.  A winner whose ``host_src`` is
-  ``None`` is a KEYLESS declaration (§2a): it wins its VAR and mounts nothing.
-  ⚑ P7 — WHAT IT DOES *NOT* DECIDE:
-  whether anything ELSE contends for that dest.  That is
-  :func:`secret_path_deliveries`'.
-  """
+  """Pick each VAR's declaration by scope, retaining null; apply no destination gates."""
   by_dest: dict[str, list[CategoryEntry]] = {}
   for e in entries:
     if e.category == "secret_path":
@@ -462,42 +511,46 @@ def secret_path_winners(entries: list[CategoryEntry]) -> list[CategoryEntry]:
   return winners
 
 
-def secret_path_deliveries(entries: list[CategoryEntry]) -> list[CategoryEntry]:
-  """The ``secret_path`` mounts a launch DELIVERS: the per-VAR winners, §0-gated.
+@dataclass(frozen=True)
+class _CredentialArbitration:
+  states: Mapping[str, CredentialState]
+  active_names: dict[str, list[str]]
 
-  ⚑⚑ THE §0 CROSS-CATEGORY GATE FOR SECRET DESTS LIVES HERE (6-R2), BECAUSE NOTHING
-  ELSE HOLDS THE INPUTS: ``secret_path`` carries no arm in the disk-store shape
-  (producer DESIGN §7.4), so the COLLAPSE never sees a secret.  Two rules apply over
-  the SAME entry list in the SAME order, at secret dests only:
+  @property
+  def secrets(self) -> list[CategoryEntry]:
+    return [
+      state.declaration
+      for state in self.states.values()
+      if state.kind in ("file", "pg") and state.declaration is not None
+    ]
 
-  * a BIND at the dest — a ``bindings.*`` row, or an abstraction deriving one, aimed
-    at ``SECRET_MOUNT_DIR/<VAR>`` REFUSES the launch, naming BOTH declarations.
-    ⚑ Several ``secret_path`` rows at one dest are the per-VAR cascade and NOT a
-    collision — the D2 carve-out, the CALLER's test exactly as
-    :func:`raise_binding_vs_binding` says.
-  * a MASK at the dest — it takes the dest and the VAR is not delivered,
-    SILENTLY: the tmpfs lands there anyway.
 
-  ⚑ EXACT DEST ONLY, and that is not a narrowing: a bind or mask over the secrets
-  DIRECTORY never contended with ``SECRET_MOUNT_DIR/<VAR>`` (MEASURED, 6-R2).
-  🛑 But the dest GROUP is the WHOLE mount group, per-VAR LOSERS included, so a
-  refusal names every participant rather than just one.
-  """
+def _arbitrate_credentials(
+  entries: list[CategoryEntry],
+  *,
+  cli_env: Mapping[str, str] | None = None,
+  required_var: str | None = None,
+) -> _CredentialArbitration:
+  """Decide sources without accessing them; validate exact contests before CLI suppression."""
   winners = secret_path_winners(entries)
-  dests = {w.box_dest for w in winners}
+  dests = {winner.box_dest for winner in winners}
   by_dest: dict[str, list[CategoryEntry]] = {}
-  for e in entries:
-    if e.delivery == MOUNT and e.box_dest in dests:
-      by_dest.setdefault(e.box_dest, []).append(e)
+  active_names: dict[str, list[str]] = {}
+  for entry in entries:
+    if entry.category == "secret_path":
+      active_names.setdefault(entry.name, []).append(entry.key)
+    if entry.delivery == MOUNT and entry.box_dest in dests:
+      by_dest.setdefault(entry.box_dest, []).append(entry)
 
-  delivered: list[CategoryEntry] = []
+  states: dict[str, CredentialState] = {}
   for winner in winners:
-    if winner.host_src is None:
+    if not winner.has_secret_material:
+      states[winner.name] = CredentialState("keyless-null", winner)
       continue
     group = by_dest[winner.box_dest]
-    concrete = [e for e in group if e.category in CONCRETE_CATEGORIES]
-    abstract = [e for e in group if e.category in ABSTRACT_CATEGORIES]
-    if len(concrete) > 1 and not all(e.category == "secret_path" for e in concrete):
+    concrete = [entry for entry in group if entry.category in CONCRETE_CATEGORIES]
+    abstract = [entry for entry in group if entry.category in ABSTRACT_CATEGORIES]
+    if len(concrete) > 1 and not all(entry.category == "secret_path" for entry in concrete):
       raise_binding_vs_binding(winner.box_dest, concrete)
     if concrete and abstract:
       raise_extension_onto_occupied(
@@ -505,10 +558,33 @@ def secret_path_deliveries(entries: list[CategoryEntry]) -> list[CategoryEntry]:
         extension=abstract[-1],
         base=concrete[-1],
       )
-    if any(e.category == "masks" for e in group):
-      continue
-    delivered.append(winner)
-  return delivered
+    mask = next((entry for entry in group if entry.category == "masks"), None)
+    if mask is not None:
+      states[winner.name] = CredentialState("exact-mask-suppressed", winner, mask)
+    else:
+      states[winner.name] = CredentialState(
+        "pg" if winner.persona_credential is not None else "file", winner
+      )
+  if required_var is not None:
+    if SECRET_VAR_RE.fullmatch(required_var) is None:
+      raise ValueError("a required credential slot must be an environment variable")
+    states.setdefault(required_var, CredentialState("absent"))
+  if cli_env is not None:
+    for var, state in tuple(states.items()):
+      if var in cli_env:
+        kind: CredentialKind = "cli-value" if cli_env[var].strip() else "cli-blank-suppressed"
+        states[var] = CredentialState(kind, state.declaration, state.suppressed_by)
+  return _CredentialArbitration(MappingProxyType(states), active_names)
+
+
+def secret_path_deliveries(entries: list[CategoryEntry]) -> list[CategoryEntry]:
+  """Material winners after exact bind/mask gates; ancestor mounts remain compatible.
+
+  The whole exact-destination group participates, including losing declarations.
+  Bind contests refuse; an exact mask suppresses material, never intentional null.
+  This compatibility helper does not check environment twins.
+  """
+  return _arbitrate_credentials(entries).secrets
 
 
 #: A refused value's shape as the FILE spells it, paired with the article a sentence
@@ -661,14 +737,10 @@ def env_twin_refusal(var: str, claim: str, cure: str) -> str:
 
 
 def secret_path_names(entries: list[CategoryEntry]) -> dict[str, list[str]]:
-  """Each VAR a ``secret_path.<VAR>`` key names, with every such key (any scope).
-
-  A present-``null`` pointer (keyless) names no host file and is not counted — the
-  same rows :func:`refuse_env_secret_twins` weighs against the ``env`` family.
-  """
+  """Material-owning declarations per VAR; intentional null names no exported material."""
   names: dict[str, list[str]] = {}
   for e in entries:
-    if e.category == "secret_path" and e.host_src is not None:
+    if e.has_secret_material:
       names.setdefault(e.name, []).append(e.key)
   return names
 
@@ -703,9 +775,12 @@ def refuse_env_secret_twins(entries: list[CategoryEntry]) -> None:
   from kanibako.settings.settings_resolve import SettingsError
 
   env_keys: dict[str, list[str]] = {}
+  pg_names: set[str] = set()
   for e in entries:
     if e.category == "env":
       env_keys.setdefault(e.name, []).append(e.key)
+    elif e.persona_credential is not None and e.has_secret_material:
+      pg_names.add(e.name)
   secret_keys = secret_path_names(entries)
 
   for var, env_group in env_keys.items():
@@ -717,20 +792,24 @@ def refuse_env_secret_twins(entries: list[CategoryEntry]) -> None:
     # guess which pair is the mistake.  (A second ``env`` key normally meets
     # ``store_collapse._refuse_env_twin`` first; on a NARROW resolve, which folds
     # no env slots, it reaches here instead.)
+    if var in pg_names:
+      source = f"{_agrees('provide', secret_group)} credential material for it"
+      cure = "for credential material"
+    else:
+      source = f"{_agrees('point', secret_group)} at a host file the box exports it from"
+      cure = "when the value is secret material kanibako must never read"
     raise SettingsError(
       env_twin_refusal(
         var,
         f"is named by BOTH scalar families: "
         f"{_and_list(env_group)} {_agrees('hold', env_group)} a VALUE for it, "
-        f"and {_and_list(secret_group)} {_agrees('point', secret_group)} at a "
-        f"host file the box exports it from",
+        f"and {_and_list(secret_group)} {source}",
         "The two families share ONE "
         "delivery target, so naming a variable with both is a mistake "
         "rather than a preference: NO "
         "precedence between them is defined, and none may be inferred from the "
         "order a box happens to receive them. Keep exactly ONE and remove the "
-        "other - 'secret_path' when the value is secret material kanibako must "
-        "never read, 'env' otherwise.",
+        f"other - 'secret_path' {cure}, 'env' otherwise.",
       )
     )
 
@@ -743,6 +822,9 @@ def launch_deliveries(
   declared_by: "dict[str, str] | None" = None,
   dest_keys: "dict[tuple[str, ...], str] | None" = None,
   convenience_sources: "dict[str, str] | None" = None,
+  cli_env: Mapping[str, str] | None = None,
+  required_var: str | None = None,
+  keyless_persona: PersonaCredential | None = None,
 ) -> LaunchDeliveries:
   """Build the :class:`LaunchDeliveries` carrier from a CREDENTIAL-GATED list.
 
@@ -760,15 +842,23 @@ def launch_deliveries(
   than inside :func:`secret_path_deliveries` because it is not a dest contest —
   ``env`` has no dest at all.
   """
+  if keyless_persona is not None and (
+    not keyless_persona.keyless or keyless_persona.var is not None
+  ):
+    raise ValueError("keyless context is only for a PG persona without an authentication variable")
   refuse_env_secret_twins(entries)
+  credentials = _arbitrate_credentials(entries, cli_env=cli_env, required_var=required_var)
   return LaunchDeliveries(
-    secrets=secret_path_deliveries(entries),
+    secrets=credentials.secrets,
     agent_dests=agent_dests,
     narrow_bindings=narrow_bindings,
     declared_by=dict(declared_by or {}),
     dest_keys=dict(dest_keys or {}),
     convenience_sources=dict(convenience_sources or {}),
     secret_names=secret_path_names(entries),
+    credential_states=credentials.states,
+    active_secret_names=credentials.active_names,
+    keyless_persona=keyless_persona,
   )
 
 

@@ -541,8 +541,62 @@ class TestProjectPersonaSettings:
     data = tomllib.loads(text)
     self._project_without_io(target, data, tmp_path / "config.toml", expected, monkeypatch)
 
+  @pytest.mark.parametrize(
+    "target_cls,data,auth_env",
+    [
+      (
+        ClaudeTarget,
+        {
+          "env": {
+            "ANTHROPIC_BASE_URL": "http://synthetic.invalid/v1",
+            "ANTHROPIC_AUTH_TOKEN": "placeholder",
+          }
+        },
+        "ANTHROPIC_AUTH_TOKEN",
+      ),
+      (
+        CodexTarget,
+        {
+          "model_providers": {
+            "synthetic": {"base_url": "http://synthetic.invalid/v1", "env_key": "DYNAMIC_API_KEY"}
+          }
+        },
+        "DYNAMIC_API_KEY",
+      ),
+      (
+        CodexTarget,
+        {
+          "model_providers": {
+            "synthetic": {"base_url": "http://synthetic.invalid/v1", "env_key": ""}
+          }
+        },
+        "",
+      ),
+    ],
+  )
+  def test_keyless_projection_keeps_native_auth_name(
+    self, monkeypatch, target_cls, data, auth_env
+  ):
+    expected = PersonaReadOutcome(
+      PersonaSettings("http://synthetic.invalid/v1", None, auth_env), None
+    )
+    self._project_without_io(
+      target_cls(), data, Path("/synthetic/config"), expected, monkeypatch, keyless=True
+    )
+
+  def test_keyed_codex_still_requires_native_auth_name(self):
+    outcome = CodexTarget().project_persona_settings(
+      {
+        "model_providers": {
+          "synthetic": {"base_url": "http://synthetic.invalid/v1", "env_key": ""}
+        }
+      },
+      source="synthetic native config",
+    )
+    _reject(outcome, "env_key", "synthetic native config")
+
   @staticmethod
-  def _project_without_io(target, data, source, expected, monkeypatch):
+  def _project_without_io(target, data, source, expected, monkeypatch, *, keyless=False):
     import builtins
     import copy
     import os
@@ -557,7 +611,7 @@ class TestProjectPersonaSettings:
       patch.setattr(os, "open", forbidden)
       for name in ("open", "read_text", "read_bytes", "write_text", "write_bytes", "stat"):
         patch.setattr(Path, name, forbidden)
-      actual = target.project_persona_settings(data, source=str(source))
+      actual = target.project_persona_settings(data, source=str(source), keyless=keyless)
     assert actual == expected
     assert data == before
     if actual.settings is not None and "env" in data:
@@ -2488,3 +2542,63 @@ def test_a_core_without_the_marker_reads_null_as_absent(tmp_path):
   assert Path(out["codex_file"]).is_relative_to(REPO_ROOT)
   assert out["stand_in"] == "None"
   assert out["model"] == "None"
+
+
+class TestCredentialSourceEvidence:
+  @pytest.mark.parametrize(
+    ("token_path", "by_value", "legacy", "source"),
+    [
+      (Path("/source/token"), False, "/source/token", "file /source/token"),
+      (None, True, "(the value of -e on the command line)", "CLI -e TOK"),
+      (None, True, "(the value of -e on the command line)", "PG agent nav at /store"),
+      (None, False, "(none — this persona declares the endpoint keyless)", "keyless agent nav"),
+    ],
+  )
+  def test_source_changes_only_the_token_description(
+    self, monkeypatch, token_path, by_value, legacy, source
+  ):
+    from kanibako.targets import base
+
+    def forbidden(*args, **kwargs):
+      pytest.fail("rendering attempted credential access or a probe")
+
+    monkeypatch.setattr(Path, "open", forbidden)
+    monkeypatch.setattr(Path, "stat", forbidden)
+    monkeypatch.setattr(base, "http_probe", forbidden)
+    evidence = base.ProbeEvidence(
+      endpoint="https://e.example",
+      model="wire-model",
+      model_origin="configured alias",
+      token_path=token_path,
+      token_by_value=by_value,
+      status=403,
+      provider_text="provider explanation",
+      request="POST /v1/messages",
+    )
+    origin = "the effective configuration"
+    default = evidence.block("--", resolved_from=origin)
+    assert f"--token     {legacy}" in default
+    labeled = evidence.block("--", resolved_from=origin, credential_source=source)
+    assert labeled == default.replace(f"--token     {legacy}", f"--token     {source}")
+    assert labeled == "\n".join(
+      evidence.lines("--", resolved_from=origin, credential_source=source)
+    )
+    assert evidence.block("--", resolved_from=origin, credential_source="") == default
+    outcome = base.PersonaProbeOutcome.rejected(evidence)
+    assert outcome.evidence_block("--", resolved_from=origin, credential_source=source) == (
+      "\n" + labeled
+    )
+    assert outcome.evidence is evidence
+    assert outcome.verdict is PersonaProbeVerdict.REJECTED
+    assert evidence.token_by_value is by_value
+    assert evidence.token_path == token_path
+
+  @pytest.mark.parametrize("evidence_present", [False, True])
+  def test_a_label_does_not_create_evidence_for_an_unanswered_probe(self, evidence_present):
+    from kanibako.targets.base import PersonaProbeOutcome, ProbeEvidence
+
+    evidence = ProbeEvidence(endpoint="https://e.example") if evidence_present else None
+    outcome = PersonaProbeOutcome.inconclusive("no answer", evidence)
+    assert outcome.evidence_block(credential_source="PG agent nav at /store") == ""
+    assert outcome.evidence is evidence
+    assert outcome.verdict is PersonaProbeVerdict.INCONCLUSIVE

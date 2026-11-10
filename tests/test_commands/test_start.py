@@ -5916,17 +5916,10 @@ class TestTweakccCacheDir:
 
 
 class TestPrepareHostHook:
-  """Core invokes the agent-agnostic prepare_host() hook before mounts.
-
-  The hook is plugin-owned: the Claude plugin runs the synchronous update
-  gate + host auth refresh inside it (covered in the plugin's own
-  ``packages/agent-claude/tests/test_target.py``).  Core's
-  only contract is *that it calls the hook* with the right auto_auth flag and
-  install — it never reaches into auto_refresh_auth itself anymore.
-  """
+  """Binary preparation precedes resolution; conditional auth follows its verdict."""
 
   def test_hook_invoked_with_auto_auth_true(self, start_mocks):
-    """prepare_host is called once; auto_auth=True for the default path."""
+    """Binary and auth phases each run once on the default path."""
     with start_mocks() as m:
       _run_container(
         project_dir=None,
@@ -5937,11 +5930,12 @@ class TestPrepareHostHook:
         resume_mode=False,
         extra_args=[],
       )
-      m.target.prepare_host.assert_called_once()
-      assert m.target.prepare_host.call_args.kwargs["auto_auth"] is True
+      m.target.prepare_host_binary.assert_called_once()
+      m.target.refresh_host_auth.assert_called_once()
+      m.target.prepare_host.assert_not_called()
 
   def test_hook_auto_auth_false_with_no_auto_auth(self, start_mocks):
-    """no_auto_auth=True -> hook is still called, but auto_auth=False."""
+    """no_auto_auth skips auth, not the binary phase."""
     with start_mocks() as m:
       _run_container(
         project_dir=None,
@@ -5953,11 +5947,12 @@ class TestPrepareHostHook:
         extra_args=[],
         no_auto_auth=True,
       )
-      m.target.prepare_host.assert_called_once()
-      assert m.target.prepare_host.call_args.kwargs["auto_auth"] is False
+      m.target.prepare_host_binary.assert_called_once()
+      m.target.refresh_host_auth.assert_not_called()
+      m.target.prepare_host.assert_not_called()
 
   def test_hook_auto_auth_false_for_distinct_auth(self, start_mocks):
-    """Distinct auth (PRIVATE box, auth_src.creds_shared False) -> auto_auth=False."""
+    """Distinct auth skips auth, not the binary phase."""
     with (
       start_mocks() as m,
       patch(
@@ -5974,11 +5969,12 @@ class TestPrepareHostHook:
         resume_mode=False,
         extra_args=[],
       )
-      m.target.prepare_host.assert_called_once()
-      assert m.target.prepare_host.call_args.kwargs["auto_auth"] is False
+      m.target.prepare_host_binary.assert_called_once()
+      m.target.refresh_host_auth.assert_not_called()
+      m.target.prepare_host.assert_not_called()
 
   def test_hook_skipped_in_shell_mode(self, start_mocks):
-    """In shell mode (entrypoint set), prepare_host is not called."""
+    """Shell mode calls neither phase."""
     with start_mocks() as m:
       _run_container(
         project_dir=None,
@@ -5989,12 +5985,14 @@ class TestPrepareHostHook:
         resume_mode=False,
         extra_args=[],
       )
+      m.target.prepare_host_binary.assert_not_called()
+      m.target.refresh_host_auth.assert_not_called()
       m.target.prepare_host.assert_not_called()
 
   def test_redetect_after_update_feeds_validate_print_bind(self, start_mocks, capsys, tmp_path):
     """The post-update re-detect feeds validate, the print, and the bind.
 
-    prepare_host()'s update gate can repoint/prune the host version, so
+    prepare_host_binary()'s update gate can repoint/prune the host version, so
     start.py re-detects AFTER it; the ONE fresh install must be what
     _validate_agent_binary, the "Using host ...:" line, and the descriptor
     delivery mounts all consume — never the stale first detect.
@@ -6035,8 +6033,9 @@ class TestPrepareHostHook:
       )
       # detect called at least twice (early-out + re-detect).
       assert m.target.detect.call_count >= 2
-      # prepare_host got the FIRST (stale) install.
-      assert m.target.prepare_host.call_args.args[0] is stale
+      # Binary preparation gets the first install; auth gets the fresh native one.
+      assert m.target.prepare_host_binary.call_args.args[0] is stale
+      assert m.target.refresh_host_auth.call_args.args[0] is fresh
       # validate ran on the FRESH (post-update) binary.
       m.validate_binary.assert_called_with(fresh.binary)
       # The descriptor delivery mounts bind the FRESH install, not the stale.
@@ -6050,6 +6049,87 @@ class TestPrepareHostHook:
       err = capsys.readouterr().err
       assert "FRESH" in err
       assert "STALE" not in err
+
+  def test_combined_only_plugin_refuses_before_preparation(self, start_mocks):
+    from kanibako.errors import ConfigError
+    from kanibako.plugins.claude import ClaudeTarget
+    from kanibako.targets.base import Target
+
+    class Legacy(ClaudeTarget):
+      prepare_host_binary = Target.prepare_host_binary
+      refresh_host_auth = Target.refresh_host_auth
+
+      def prepare_host(self, *args, **kwargs):
+        raise AssertionError("combined hook must not run")
+
+    with start_mocks() as m:
+      target = Legacy()
+      with patch.object(target, "detect", return_value=m.target.detect.return_value):
+        m.resolve_target.return_value = target
+        with pytest.raises(ConfigError, match="phase-capable"):
+          _run_container(
+            project_dir=None,
+            entrypoint=None,
+            image_override=None,
+            new_session=False,
+            safe_mode=False,
+            resume_mode=False,
+            extra_args=[],
+          )
+      m.resolve_launch_snapshot.assert_not_called()
+      m.runtime.run.assert_not_called()
+
+  def test_host_auth_keeps_native_install_after_delivery_transform(self, start_mocks, tmp_path):
+    from kanibako.targets.base import AgentInstall
+
+    patched = tmp_path / "patched"
+    patched.mkdir()
+    binary = patched / "claude"
+    binary.write_bytes(b"\x7fELF" + b"\x00" * 50)
+    transformed = AgentInstall(name="claude", binary=binary, install_dir=patched, launcher=binary)
+    native_dir = tmp_path / "native"
+    native_dir.mkdir()
+    native_binary = native_dir / "claude"
+    native_binary.write_bytes(b"\x7fELF" + b"\x00" * 50)
+    native = AgentInstall(
+      name="claude", binary=native_binary, install_dir=native_dir, launcher=native_binary
+    )
+    with start_mocks() as m:
+      stale = m.target.detect.return_value
+      m.target.detect.side_effect = [stale, native]
+      m.target.prepare_host_binary.side_effect = lambda *a, **kw: stale.binary.unlink()
+      m.proj.is_new = True
+      with (
+        patch("kanibako.commands.start._apply_tweakcc", return_value=(transformed, None, None)),
+        patch("kanibako.commands.start._seed_box_home"),
+        patch("kanibako.commands.start._sync_box_at_create") as create_sync,
+      ):
+        assert (
+          _run_container(
+            project_dir=None,
+            entrypoint=None,
+            image_override=None,
+            new_session=False,
+            safe_mode=False,
+            resume_mode=False,
+            extra_args=[],
+          )
+          == 0
+        )
+      m.target.refresh_host_auth.assert_called_once_with(
+        native, data_path=m.load_std_paths.return_value.data_path
+      )
+      main_calls = [
+        call
+        for call in m.resolve_launch_snapshot.call_args_list
+        if call.kwargs.get("include_base_families", True)
+      ]
+      assert len(main_calls) == 1
+      assert main_calls[0].kwargs["install"] is transformed
+      assert create_sync.call_count == 1
+      assert create_sync.call_args.kwargs["install"] is native
+      assert not stale.binary.exists()
+      m.validate_binary.assert_called_once_with(native.binary)
 
 
 class TestBrowserSidecar:
@@ -8672,17 +8752,26 @@ class TestSeedNewBoxCreateEntry:
   """
 
   def test_delegates_to_seed_box_home(self, tmp_path):
-    from kanibako.commands.start import seed_new_box
+    from kanibako.agent_ref import AgentIdentity
+    from kanibako.commands.start import PreparedCreateAgent, seed_new_box
+    from kanibako.settings.agent_select import AgentSelection
 
     std = MagicMock()
     std.early_system = early_record(tmp_path)
     config = MagicMock()
     proj = MagicMock()
     proj.group = None
+    selection = AgentSelection(
+      AgentIdentity("claude", None, "claude", "claude", "claude", None), "settings"
+    )
+    target = MagicMock()
+    target.name = "claude"
     with (
       patch("kanibako.commands.start.load_merged_config"),
-      patch("kanibako.settings.config.resolve_agent", return_value="claude"),
-      patch("kanibako.commands.start.resolve_target") as m_rt,
+      patch(
+        "kanibako.commands.start.prepare_create_agent",
+        return_value=PreparedCreateAgent(selection, target, None),
+      ),
       patch("kanibako.commands.start.agent_settings_path"),
       patch("kanibako.settings.agent_file.save"),
       patch(
@@ -8693,7 +8782,6 @@ class TestSeedNewBoxCreateEntry:
       patch("kanibako.commands.start._seed_box_home") as m_seed,
       patch("kanibako.commands.start._sync_box_at_create"),
     ):
-      m_rt.return_value.name = "claude"
       seed_new_box(std, config, proj)
     m_seed.assert_called_once()
     kwargs = m_seed.call_args.kwargs
@@ -8712,18 +8800,27 @@ class TestSeedNewBoxCreateEntry:
     ⚑ AFTER the seed, INSIDE this function. The seed→skeleton order is pinned in
     ``test_canon_delivery``.
     """
-    from kanibako.commands.start import seed_new_box
+    from kanibako.agent_ref import AgentIdentity
+    from kanibako.commands.start import PreparedCreateAgent, seed_new_box
+    from kanibako.settings.agent_select import AgentSelection
 
     std = MagicMock()
     std.early_system = early_record(tmp_path)
     config = MagicMock()
     proj = MagicMock()
     proj.group = None
+    selection = AgentSelection(
+      AgentIdentity("claude", None, "claude", "claude", "claude", None), "settings"
+    )
+    target = MagicMock()
+    target.name = "claude"
     order: list[str] = []
     with (
       patch("kanibako.commands.start.load_merged_config"),
-      patch("kanibako.settings.config.resolve_agent", return_value="claude"),
-      patch("kanibako.commands.start.resolve_target") as m_rt,
+      patch(
+        "kanibako.commands.start.prepare_create_agent",
+        return_value=PreparedCreateAgent(selection, target, None),
+      ),
       patch("kanibako.commands.start.agent_settings_path"),
       patch("kanibako.settings.agent_file.save"),
       patch(
@@ -8740,7 +8837,6 @@ class TestSeedNewBoxCreateEntry:
         side_effect=lambda **kw: order.append("sync"),
       ) as m_sync,
     ):
-      m_rt.return_value.name = "claude"
       seed_new_box(std, config, proj)
 
     assert order == ["seed", "sync"]
@@ -10735,9 +10831,15 @@ class TestCodexPersonaLaunchWiring:
       m.resolve_agent.return_value = _sel("navigator℘codex")
       m.target.name = "codex"
       m.target.descriptor = CodexTarget().descriptor
-      with patch(
-        "kanibako.commands.start._preflight_persona_load",
-        return_value=("https://api.example/v1", None, prov),
+      with (
+        patch(
+          "kanibako.commands.start._prepare_persona_load",
+          return_value=("https://api.example/v1", None, None),
+        ),
+        patch(
+          "kanibako.commands.start._preflight_resolved_persona_load",
+          return_value=("https://api.example/v1", None, prov),
+        ),
       ):
         rc = _run_container(
           project_dir=None,
@@ -11103,7 +11205,7 @@ class TestPersonaLoadOrErrorIntegration:
   def test_bare_claude_never_enters_the_persona_gate(self, start_mocks):
     with start_mocks() as m:
       # Default resolve_agent → "claude" (bare; node == harness).
-      with patch("kanibako.commands.start._preflight_persona_load") as m_gate:
+      with patch("kanibako.commands.start._preflight_resolved_persona_load") as m_gate:
         rc = _run_container(
           project_dir=None,
           entrypoint=None,
@@ -14550,14 +14652,11 @@ class TestReattachFastPath(_RunningBoxDriver):
     ]
 
   def test_reattach_does_not_probe_the_persona(self, start_mocks):
-    """⚑ THE REPORTED BUG.  The load-or-error pre-flight posts a real 1-token
-    completion and returns rc 1 on REJECTED — i.e. it could refuse to
-    reattach a user to a box whose agent is already running and
-    authenticated."""
+    """The final credential verdict must not refuse a live, authenticated box."""
     with (
       start_mocks() as m,
       patch(
-        "kanibako.commands.start._preflight_persona_load",
+        "kanibako.commands.start._preflight_resolved_persona_load",
       ) as m_pre,
     ):
       m.resolve_agent.return_value = _sel(self._PERSONA)
@@ -14566,19 +14665,23 @@ class TestReattachFastPath(_RunningBoxDriver):
       m_pre.assert_not_called()
 
   def test_a_normal_persona_launch_still_probes(self, start_mocks):
-    """The control for the test above: the pre-flight is untouched on the
-    path that actually creates a container."""
+    """A new container takes the final credential gate exactly once."""
     with (
       start_mocks() as m,
       patch(
-        "kanibako.commands.start._preflight_persona_load",
+        "kanibako.commands.start._prepare_persona_load",
+        return_value=("https://key.example", None, None),
+      ),
+      patch(
+        "kanibako.commands.start._preflight_resolved_persona_load",
         return_value=("https://key.example", None, None),
       ) as m_pre,
     ):
       m.resolve_agent.return_value = _sel(self._PERSONA)
       self._start()
-      assert m_pre.called
-      assert m_pre.call_args.kwargs.get("probe") is True
+      m_pre.assert_called_once()
+      assert m_pre.call_args.kwargs["env"]
+      assert m_pre.call_args.kwargs["cli_env"] == {}
 
   def test_reattach_never_writes_the_agent_config(self, start_mocks):
     """A reattach delivers nothing, and rewriting under a live agent is the

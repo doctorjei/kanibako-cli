@@ -59,11 +59,15 @@ if str(_REPO / "src") not in sys.path:
 try:
   from kanibako.persona_store import (
     PersonaEntry,
+    RegisteredPersona,
     locate_entry,
+    project_registered_persona,
     persona_store_root,
     read_persona_bundle,
+    read_registered_persona,
     resolve_secret_path,
   )
+  from kanibako.settings import config_io
   from kanibako.targets import get_target
 except ImportError as exc:  # pragma: no cover - environment problem, not logic
   sys.exit(f"cannot import kanibako (looked in {_REPO / 'src'}): {exc}")
@@ -274,17 +278,26 @@ def numbered(lines: list[str], sec: Section) -> str:
 
 @dataclass(frozen=True)
 class Connection:
-  """Everything one run needs to reach the endpoint, except the bearer itself."""
+  """Endpoint and captured credential source; no bearer."""
 
   ref: str
   url: str
   model: str | None
-  token_path: Path
+  token_path: Path | None = None
+  registered_name: str | None = None
+  keyless: bool = False
+  store_root: Path | None = None
 
 
-def resolve_ref(ref: str) -> PersonaEntry:
-  """Locate the store entry for *ref*, accepting a bare ``<pid>`` iff it is unambiguous."""
+def resolve_ref(ref: str) -> PersonaEntry | RegisteredPersona:
+  """Resolve registered or unambiguous legacy personas."""
   if not any(sep in ref for sep in ("+", "℘")):
+    try:
+      registered = read_registered_persona(ref)
+    except Exception:  # noqa: BLE001 - adapter errors can contain native secrets
+      raise SystemExit("cannot read the registered persona configuration") from None
+    if registered is not None:
+      return registered
     pdir = persona_store_root() / ref
     try:
       harnesses = sorted(p.name for p in pdir.iterdir() if p.is_dir())
@@ -309,9 +322,34 @@ def resolve_ref(ref: str) -> PersonaEntry:
 
 
 def resolve_connection(
-  entry: PersonaEntry, ref: str, *, endpoint: str | None, model: str | None, path: str
+  entry: PersonaEntry | RegisteredPersona,
+  ref: str,
+  *,
+  endpoint: str | None,
+  model: str | None,
+  path: str,
 ) -> Connection:
-  """Build the :class:`Connection` from the LIVE store, with the two flag overrides applied."""
+  """Resolve persona configuration and overrides."""
+  if isinstance(entry, RegisteredPersona):
+    identity = entry.identity
+    try:
+      target = get_target(identity.target_name)()
+      bundle = project_registered_persona(entry, target)
+    except Exception:  # noqa: BLE001 - native config and plugin errors may contain secrets
+      raise SystemExit("cannot project the registered persona connection") from None
+    base = endpoint if endpoint is not None else bundle.endpoint
+    if not base:
+      raise SystemExit("registered persona has no endpoint; pass --endpoint")
+    base = base.rstrip("/")
+    return Connection(
+      ref=ref,
+      url=base if base.endswith(path) else base + path,
+      model=model if model is not None else bundle.to_persona_values().get("model"),
+      registered_name=identity.registered_name,
+      keyless=entry.keyless,
+      store_root=entry.store_root,
+    )
+
   token = resolve_secret_path(entry)
   if token.path is None:
     raise SystemExit(f"persona '{ref}': token pointer unusable -- {token.error}")
@@ -351,8 +389,21 @@ def resolve_connection(
   return Connection(ref=ref, url=url, model=model or store_model, token_path=token.path)
 
 
-def read_bearer(token_path: Path) -> str:
-  """Read the bearer ONCE for this run; held in memory, written nowhere."""
+def read_bearer(source: Connection | Path) -> str:
+  """Read or fetch once; skip keyless connections."""
+  if isinstance(source, Connection):
+    if source.keyless:
+      return ""
+    if source.registered_name is not None:
+      try:
+        return config_io.fetch_persona_secret(source.registered_name, root=source.store_root)
+      except Exception:  # noqa: BLE001 - never expose credential-manager output
+        raise SystemExit("cannot fetch the registered persona credential") from None
+    if source.token_path is None:
+      raise SystemExit("the persona has no credential source")
+    token_path = source.token_path
+  else:
+    token_path = source
   try:
     token = token_path.read_text(encoding="utf-8").strip()
   except (OSError, UnicodeDecodeError) as exc:
@@ -394,7 +445,8 @@ def post_chat(url: str, payload: dict, bearer: str, timeout: float) -> Exchange:
   data = json.dumps(payload).encode("utf-8")
   req = urllib.request.Request(url, data=data, method="POST")
   req.add_header("Content-Type", "application/json")
-  req.add_header("Authorization", f"Bearer {bearer}")
+  if bearer:
+    req.add_header("Authorization", f"Bearer {bearer}")
   opener = urllib.request.build_opener(_NoRedirects)
   try:
     with opener.open(req, timeout=timeout) as resp:  # noqa: S310
@@ -491,7 +543,7 @@ def run_section(
   payload: dict = {"messages": messages, "max_tokens": args.max_tokens}
   # ⚑ model and temperature are OMITTED when unset, never defaulted to a
   # placeholder: a hardwired-model server rejects an id it does not serve.
-  if conn.model:
+  if conn.model is not None:
     payload["model"] = conn.model
   if args.temperature is not None:
     payload["temperature"] = args.temperature
@@ -507,7 +559,13 @@ def run_section(
     # to land on a USABLE 200 too -- that is what a truncated section looks like.
     text, why, finish = completion_text(ex.body) if ex.status == 200 else (None, None, None)
     attempts.append(
-      Attempt(ex.status, ex.transport_error, len(ex.body), round(elapsed, 3), finish)
+      Attempt(
+        ex.status,
+        scrub(ex.transport_error, bearer) if ex.transport_error is not None else None,
+        len(ex.body),
+        round(elapsed, 3),
+        finish,
+      )
     )
 
     if ex.status == 200:
@@ -751,7 +809,11 @@ def main(argv: list[str]) -> int:
     if not args.persona:
       parser.error("--persona is required unless --list-sections or --dry-run is given")
     entry = resolve_ref(args.persona)
-    ref = f"{entry.persona}+{entry.harness}"
+    ref = (
+      entry.identity.registered_name
+      if isinstance(entry, RegisteredPersona)
+      else f"{entry.persona}+{entry.harness}"
+    )
     conn = resolve_connection(
       entry,
       ref,
@@ -759,8 +821,10 @@ def main(argv: list[str]) -> int:
       model=args.model,
       path=args.api_path,
     )
-    bearer = read_bearer(conn.token_path)
-    print(f"persona {ref} -> {conn.url}  model={conn.model or '(omitted)'}")
+    bearer = read_bearer(conn)
+    print(
+      f"persona {ref} -> {conn.url}  model={repr(conn.model) if conn.model is not None else '(omitted)'}"
+    )
 
   print(f"{args.spec} ({len(lines)} lines)\n")
   print(range_table(found, wanted))

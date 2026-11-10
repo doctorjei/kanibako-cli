@@ -41,7 +41,7 @@ _SOCKET_HASH_LEN = 16
 
 ## Functions
 ```
-def ensure_persona_share_symlinks(std, agent_id, target) -> None
+def ensure_persona_share_symlinks(std, agent_id, target, *, agent_identity: AgentIdentity | None=None) -> None
 def add_start_parser(subparsers: argparse._SubParsersAction) -> None
 def add_shell_parser(subparsers: argparse._SubParsersAction) -> None
 def run_start(args: argparse.Namespace) -> int
@@ -53,8 +53,9 @@ def resolve_stored_box_snapshot(std: 'StandardPaths', proj: 'ProjectPaths', agen
 def box_bind_sources(std: 'StandardPaths', proj: 'ProjectPaths') -> frozenset[str]
 def reset_collision_warnings() -> None
 def emit_collision_warnings(collisions) -> None
-def persona_create_verdict(std, config, proj, *, explicit_agent: str | None=None) -> str | None
-def seed_new_box(std, config, proj, *, explicit_agent: str | None=None) -> None
+def prepare_create_agent(std, proj, *, explicit_agent: str | None=None) -> PreparedCreateAgent
+def persona_create_verdict(std, config, proj, *, explicit_agent: str | None=None, prepared: PreparedCreateAgent | None=None) -> str | None
+def seed_new_box(std, config, proj, *, explicit_agent: str | None=None, prepared: PreparedCreateAgent | None=None) -> None
 def recover_cure(probe) -> str
 def bounded_hub_dir_name(identity: str, run_dir: Path) -> str
 def helper_socket_path(proj: ProjectPaths, run_dir: Path) -> Path
@@ -109,10 +110,10 @@ def _tweakcc_cache_dir(std, agent_id: str) -> Path
 def _apply_tweakcc(install, transform_settings, cache_dir, image, runtime_cmd, logger)
 def _parse_cli_env(cli_env: list[str] | None) -> dict[str, str]
 def _deliver_panel_permissions(*, target, proj, access, provider, logger)
-def _assemble_image_sharing_mounts(*, merged, proj, runtime, std, agent_id, system_settings_path, agent_cfg_path, auth_src, extra_mounts, logger, selection_level)
+def _assemble_image_sharing_mounts(*, merged, proj, runtime, std, agent_id, system_settings_path, agent_cfg_path, auth_src, extra_mounts, logger, selection_level, agent_identity: AgentIdentity | None=None)
 def _assemble_launch_env(*, deliveries, env_slots, extra_mounts, logger)
-def _start_helper_hub(*, runtime, image, container_name, proj, target, install, binary_mnts, std, container_env, entrypoint, box_shell, agent_id, system_settings_path, agent_cfg_path, auth_src, extra_mounts, selection_level)
-def _deliver_spawn_budget(*, std, proj, snapshot: 'KeyStore', agent_id, system_settings_path, agent_cfg_path, auth_src, extra_mounts, selection_level) -> None
+def _start_helper_hub(*, runtime, image, container_name, proj, target, install, binary_mnts, std, container_env, entrypoint, box_shell, agent_id, system_settings_path, agent_cfg_path, auth_src, extra_mounts, selection_level, agent_identity: AgentIdentity | None=None)
+def _deliver_spawn_budget(*, std, proj, snapshot: 'KeyStore', agent_id, system_settings_path, agent_cfg_path, auth_src, extra_mounts, selection_level, agent_identity: AgentIdentity | None=None) -> None
 def _spawn_budget_of(snapshot: 'KeyStore', system_settings_path: Path | None) -> 'SpawnBudget'
 def _persist_or_announce_flags(proj, box_settings_path: Path, *, image_override: str | None, share_images: bool, cli_level: 'Mapping[str, object] | None', typed_agent: str | None, workset_settings_path: Path | None, std) -> None
 def _launch_selection_level(agent_selection: 'AgentSelection | None') -> 'dict[str, object] | None'
@@ -123,11 +124,13 @@ def _spawn_creds_watcher(std, proj) -> None
 def _teardown_persistent_box(runtime: ContainerRuntime, container_name: str) -> None
 def _build_config_env(env_slots: 'CollapsedEnvs') -> dict[str, str]
 def _emit_secret_mounts(secrets, logger) -> 'tuple[list, list[str]]'
+def _pg_secret_pipe_shim(program: str, args: list[str]) -> tuple[str, list[str]]
 def _secret_export_shim(program: str, args: list[str], export_vars: list[str]) -> 'tuple[str, list[str]]'
 def _directive_flatten_shim(program: str, args: list[str]) -> 'tuple[str, list[str]]'
 def _secret_pointer_usable(raw_path: str) -> bool
 def _delivered_names(deliveries, env_slots) -> frozenset[str]
 def _name_new_box_probe(std, proj) -> None
+def _selected_persona_bundle(selection, target) -> 'PersonaBundle | None'
 def _persona_bundle_for(agent_id: str, target) -> 'PersonaBundle | None'
 def _persona_values_for(agent_id: str, target) -> 'dict[str, str | None] | None'
 def _warn_persona_store_diagnostics(agent_id: str, bundle) -> None
@@ -135,11 +138,15 @@ def _persona_wiring(target) -> 'PersonaSpec | None'
 def _persona_token_pointer(secret_paths: 'Mapping[str, object]', var: str) -> object
 def _persona_secret_path_keys(secret_paths: 'Mapping[str, object]') -> 'list[str]'
 def _persona_probe_env(secret_paths, bundle) -> 'Mapping[str, str] | None'
-def _persona_probe_error(target, endpoint: str, token_ptr: 'str | None', model: 'str | None', display: str, logger, env: 'Mapping[str, str] | None'=None, token: 'str | None'=None) -> 'str | None'
+def _persona_probe_error(target, endpoint: str, token_ptr: 'str | None', model: 'str | None', display: str, logger, env: 'Mapping[str, str] | None'=None, token: 'str | None'=None, credential_source: str='') -> 'str | None'
 def _verify_takes_token(verify) -> bool
 def _resolve_codex_persona_env_key(secret_paths, wiring) -> 'str | None'
 def _resolve_codex_persona_provider(agent_id: str, endpoint: str, env_key: str, model: str | None, wiring) -> 'CodexModelProvider'
+def _prepare_persona_load(agent_id: str, keyspace_endpoint: str | None, *, target=None, bundle=None) -> 'tuple[str | None, str | None, CodexModelProvider | None]'
 def _preflight_persona_load(agent_id: str, secret_paths, keyspace_endpoint: str | None, logger, *, target=None, keyspace_model: str | None=None, bundle=None, probe: bool=False, cli_env: 'Mapping[str, str] | None'=None) -> 'tuple[str | None, str | None, CodexModelProvider | None]'
+def _resolved_persona_secret_table(deliveries, active_agent: str, env) -> 'PersonaSecretTable'
+def _preflight_resolved_persona_load(agent_id: str, deliveries, keyspace_endpoint: str | None, logger, *, target, env: 'Mapping[str, str]', cli_env: 'Mapping[str, str]', probe_model: str | None, provider_model: str | None, bundle=None) -> 'tuple[str | None, str | None, CodexModelProvider | None]'
+def _prepare_resolved_persona_delivery(agent_id: str, deliveries, keyspace_endpoint: str | None, logger, *, target, env: 'Mapping[str, str]', cli_env: 'Mapping[str, str]', probe_model: str | None, provider_model: str | None, bundle=None) -> 'tuple[tuple[str | None, str | None, CodexModelProvider | None], SecretPayload]'
 def _persona_cli_token(cli_env: 'Mapping[str, str] | None', var: 'str | None') -> 'str | None | _ESuppresses'
 def _warn_e_suppressed_credential(display: str, var: 'str | None') -> None
 def _preflight_env_persona(secret_paths, endpoint: str, keyspace_model: str | None, wiring, display: str, *, bundle=None, target=None, probe: bool=False, logger=None, cli_env: 'Mapping[str, str] | None'=None) -> 'tuple[str | None, str | None, CodexModelProvider | None]'
@@ -148,13 +155,13 @@ def _persona_no_endpoint_error(agent_id: str, wiring) -> str
 def _preflight_config_file_persona(agent_id: str, secret_paths, endpoint: str, keyspace_model: str | None, wiring, display: str, *, bundle=None, target=None, probe: bool=False, logger=None, cli_env: 'Mapping[str, str] | None'=None) -> 'tuple[str | None, str | None, CodexModelProvider | None]'
 def _provider_model(target, model: str | None) -> str | None
 def _codex_persona_token_error(secret_paths, wiring, endpoint: str, display: str, *, cli_env: 'Mapping[str, str] | None'=None) -> 'str | None'
-def _effective_behavior_for_display(target, agent_cfg, *, std, proj, system_settings_path, selection_level: 'Mapping[str, object] | None', node_name=None, agent_cfg_path=None) -> dict[str, str]
-def _resolve_box_auth_source(*, std, proj, agent_name: str, system_settings_path, agent_cfg_path, selection_level: 'Mapping[str, object] | None', agent_identity: AgentIdentity | None=None)
-def _resolve_box_launch_decisions(*, std, proj, target, agent_name: str, system_settings_path, agent_cfg_path, selection_level: 'Mapping[str, object] | None', agent_identity: AgentIdentity | None=None, persona_values: 'Mapping[str, str | None] | None'=None, cli_env: 'Mapping[str, str] | None'=None) -> 'tuple[AuthSource, str | None, str | None, dict[str, object]]'
+def _effective_behavior_for_display(target, agent_cfg, *, std, proj, system_settings_path, selection_level: 'Mapping[str, object] | None', node_name=None, agent_cfg_path=None, agent_identity: AgentIdentity | None=None, persona_values: 'Mapping[str, str | None] | None'=None) -> dict[str, str]
+def _resolve_box_auth_source(*, std, proj, agent_name: str, system_settings_path, agent_cfg_path, selection_level: 'Mapping[str, object] | None', agent_identity: AgentIdentity | None=None, persona_values: 'Mapping[str, str | None] | None'=None)
+def _resolve_box_launch_decisions(*, std, proj, target, agent_name: str, system_settings_path, agent_cfg_path, selection_level: 'Mapping[str, object] | None', agent_identity: AgentIdentity | None=None, persona_values: 'Mapping[str, str | None] | None'=None, cli_env: 'Mapping[str, str] | None'=None, resolve_secrets: bool=True) -> 'tuple[AuthSource, str | None, str | None, dict[str, object]]'
 def _persona_secret_table(snapshot, active_agent: str, box_ctx, *, cli_env: 'Mapping[str, str] | None'=None) -> PersonaSecretTable
 def _merge_default_categories(table: dict[str, object], incoming: 'Mapping[str, object]', *, family: str, origins: dict[tuple[str, str], str]) -> None
-def _box_scalars(std, proj, agent_id: str, system_path, cli_overrides) -> KanibakoConfig
-def _resolve_launch_snapshot(*, std, proj, agent_name: str, system_settings_path, agent_cfg_path, desc, install, target=None, persona_values: 'Mapping[str, str | None] | None'=None, socket_path=None, log_path=None, budget_path=None, graph_root=None, storage_conf_path=None, deliver_creds: bool=True, include_base_families: bool=True, extra_default_categories: 'Mapping[str, object] | None'=None, guarantee_create: bool=True, cli_level: 'Mapping[str, object] | None', cli_env: 'Mapping[str, str] | None'=None, realize: 'Callable[[KeyStore], LaunchRealization] | None'=None, narrow_bind_dests: 'frozenset[str] | None'=None, written_out: 'list | None'=None)
+def _box_scalars(std, proj, agent_id: str, system_path, cli_overrides, *, agent_identity: AgentIdentity | None=None, persona_values: 'Mapping[str, str | None] | None'=None) -> KanibakoConfig
+def _resolve_launch_snapshot(*, std, proj, agent_name: str, system_settings_path, agent_cfg_path, desc, install, agent_identity: AgentIdentity | None=None, target=None, persona_values: 'Mapping[str, str | None] | None'=None, persona_credential: PersonaCredential | None=None, required_var: str | None=None, socket_path=None, log_path=None, budget_path=None, graph_root=None, storage_conf_path=None, deliver_creds: bool=True, include_base_families: bool=True, extra_default_categories: 'Mapping[str, object] | None'=None, guarantee_create: bool=True, cli_level: 'Mapping[str, object] | None', cli_env: 'Mapping[str, str] | None'=None, realize: 'Callable[[KeyStore], LaunchRealization] | None'=None, narrow_bind_dests: 'frozenset[str] | None'=None, written_out: 'list | None'=None)
 def _annotate_pref_origin(exc, prefs)
 def _install_derived_bindings(snapshot, derived: 'Mapping[tuple[str, ...], object]') -> None
 def _install_assembly_collapse(snapshot, entries, *, whole_box: bool, cli_env: 'Mapping[str, str] | None'=None, env_origins: 'Mapping[str, str] | None'=None) -> 'dict[str, str]'
@@ -167,8 +174,8 @@ def _agent_delivered_dests(entries: list) -> 'frozenset[str]'
 def _narrow_bind_map(entries: list, dests: 'frozenset[str]') -> 'dict[str, object]'
 def _add_narrow_mounts(extra_mounts: list, narrow_mounts: list) -> None
 def _emit_category_mounts(bindings, *, std, proj, label: str, must_exist: frozenset[str]=frozenset(), skip_if_absent: frozenset[str]=frozenset(), box_home: Path | None=None) -> list
-def _seed_box_home(*, std, proj, target, desc, agent_id: str, agent_cfg_path, system_settings_path, auth_src, logger, suppress_oauth: bool=False, selection_level: 'Mapping[str, object] | None') -> None
-def _sync_box_at_create(*, std, proj, agent_name: str, target=None, desc=None, install=None, global_config_path, agent_config_path, persona_values: 'Mapping[str, str | None] | None'=None, logger, deliver_creds: bool=True, selection_level: 'Mapping[str, object] | None') -> None
+def _seed_box_home(*, std, proj, target, desc, agent_id: str, agent_cfg_path, system_settings_path, auth_src, logger, suppress_oauth: bool=False, selection_level: 'Mapping[str, object] | None', agent_identity: AgentIdentity | None=None) -> None
+def _sync_box_at_create(*, std, proj, agent_name: str, target=None, desc=None, install=None, global_config_path, agent_config_path, persona_values: 'Mapping[str, str | None] | None'=None, logger, deliver_creds: bool=True, selection_level: 'Mapping[str, object] | None', agent_identity: AgentIdentity | None=None) -> None
 def _snapshot_scalar(snapshot: 'KeyStore', dotted: str) -> str | None
 def _snapshot_assembly_bindings(snapshot: 'KeyStore') -> 'dict[str, object] | None'
 def _snapshot_assembly_seeded(snapshot: 'KeyStore') -> 'list[CollapsedCopy] | None'
@@ -189,7 +196,7 @@ def _synced_uptodate(src: Path, dest: Path) -> bool
 def _apply_shell_copy(src: Path, dest: Path, *, label: str, name: str, host_src: str, logger, if_absent: bool, skip_if: 'Callable[[Path, Path], bool] | None'=None, dest_root: Path | None=None) -> None
 def _copy_into_box(src: Path, dest: Path, root: Path) -> None
 def _host_copy_dest(box_dest: str, box_root: Path, *, label: str, name: str, logger) -> Path | None
-def _apply_init_seeds(*, std, proj, agent_name: str, target=None, global_config_path, agent_config_path, logger, deliver_creds: bool=True, selection_level: 'Mapping[str, object] | None') -> 'KeyStore'
+def _apply_init_seeds(*, std, proj, agent_name: str, target=None, global_config_path, agent_config_path, logger, deliver_creds: bool=True, selection_level: 'Mapping[str, object] | None', agent_identity: AgentIdentity | None=None) -> 'KeyStore'
 def _synced_cover(box_dest: str, bindings) -> 'str | None'
 def _refuse_synced_under_mask(copies: 'list[CollapsedCopy]', bindings, *, declared_by: 'Mapping[str, str]') -> None
 def _synced_host_dest(box_dest: str, bindings, *, logger) -> 'Path | None'
@@ -207,7 +214,7 @@ def _channel_default_categories(std, proj) -> 'core_defaults.BindArmTable'
 def _seed_channel_files(std, proj) -> None
 def _core_default_categories(std, proj, *, guarantee_create: bool=True) -> 'core_defaults.BindArmTable'
 def _kanibako_mounts()
-def _run_setup_command(*, runtime: ContainerRuntime, image: str, proj, container_name: str, setup_entrypoint: str, setup_args: list[str], extra_mounts: list, tmpfs_masks, container_env: dict[str, str]) -> int
+def _run_setup_command(*, runtime: ContainerRuntime, image: str, proj, container_name: str, setup_entrypoint: str, setup_args: list[str], extra_mounts: list, tmpfs_masks, container_env: dict[str, str], target_name: str | None) -> int
 def _print_supervisor_fallback(box_home: Path) -> None
 def _container_logs(runtime: ContainerRuntime, name: str) -> str
 def _bootstrap_session_exists(runtime: ContainerRuntime, name: str) -> bool
@@ -247,6 +254,13 @@ class StoredBoxAgent(NamedTuple):
     target: 'Target | None'
     agent_cfg: object
     agent_cfg_path: Path
+    persona_values: 'Mapping[str, str | None] | None' = None
+    persona_credential: PersonaCredential | None = None
+
+class PreparedCreateAgent(NamedTuple):
+    selection: AgentSelection | None
+    target: Target | None
+    persona_bundle: PersonaBundle | None
 
 class LaunchRealization(NamedTuple):
     effective_state: dict[str, str]

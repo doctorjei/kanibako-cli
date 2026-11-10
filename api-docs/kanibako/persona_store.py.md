@@ -56,6 +56,7 @@ class PersonaBundle(NamedTuple):
 @dataclass(frozen=True)
 class RegisteredPersona:
     identity: AgentIdentity
+    store_root: Path
     config: dict[str, object] = field(repr=False)
     auth_env: str | None
     keyless: bool

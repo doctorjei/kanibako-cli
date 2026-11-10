@@ -464,6 +464,38 @@ class TestHubFrameCap:
 
 
 class TestHubSpawn:
+  @pytest.mark.parametrize("target", ["claude", "Goose", "Claude", None, ""])
+  def test_creation_target_is_separate_from_identity_labels(self, mock_ctx, target):
+    identity = {
+      "kanibako.workset": "primary",
+      "kanibako.box": "scout",
+      "kanibako.workset_kuid": "00000",
+    }
+    mock_ctx.labels = identity.copy()
+    mock_ctx.target_name = target
+    mock_ctx.runtime.container_exists.return_value = False
+    mock_ctx.runtime.find_labeled.return_value = []
+    (mock_ctx.helpers_dir / "4" / "workspace").mkdir(parents=True)
+    hub = HelperHub()
+    hub._ctx = mock_ctx
+
+    assert hub._handle_spawn({"helper_num": 4})["status"] == "ok"
+    created = mock_ctx.runtime.run.call_args.kwargs["labels"]
+    assert created == {
+      **identity,
+      "kanibako.helper": "4",
+      "kanibako.target": "" if target is None else target,
+    }
+    assert mock_ctx.labels == identity
+    assert mock_ctx.runtime.find_labeled.call_args.args[0] == {
+      **identity,
+      "kanibako.helper": "4",
+    }
+    created["kanibako.box"] = "other"
+    assert mock_ctx.labels == identity
+    mock_ctx.labels["kanibako.workset"] = "changed"
+    assert created["kanibako.workset"] == "primary"
+
   def test_spawn_success(self, hub_and_sock):
     hub, sock_path, ctx = hub_and_sock
     # Create helper dirs on host

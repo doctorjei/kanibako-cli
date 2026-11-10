@@ -275,9 +275,10 @@ _ENDPOINT_SCHEMES = frozenset({"http", "https"})
 
 @dataclass(frozen=True)
 class RegisteredPersona:
-  """One live PG read; native config stays out of settings."""
+  """Live PG input; store_root is captured, never reconstructed from entry_path."""
 
   identity: AgentIdentity
+  store_root: Path
   config: dict[str, object] = field(repr=False)
   auth_env: str | None
   keyless: bool
@@ -333,6 +334,7 @@ def read_registered_persona(name: str) -> RegisteredPersona | None:
     )
     return RegisteredPersona(
       identity=identity,
+      store_root=root,
       config=config,
       auth_env=None if keyless else auth_env,
       keyless=keyless,
@@ -344,7 +346,7 @@ def read_registered_persona(name: str) -> RegisteredPersona | None:
 
 
 def project_registered_persona(persona: RegisteredPersona, target: Target) -> PersonaBundle:
-  """Project one already-read value without store reads, credential fetches, or mutation."""
+  """Project native values and keyless names without I/O or mutation."""
   identity = persona.identity
   if find_identifier(target.name, (identity.target_name,)) is None:
     raise ConfigError(
@@ -370,7 +372,7 @@ def project_registered_persona(persona: RegisteredPersona, target: Target) -> Pe
   return PersonaBundle(
     endpoint=settings.endpoint,
     model=settings.model,
-    auth_env=persona.auth_env,
+    auth_env=settings.auth_env if persona.keyless else persona.auth_env,
     env=MappingProxyType(env),
     env_dropped=settings.env_dropped,
   )

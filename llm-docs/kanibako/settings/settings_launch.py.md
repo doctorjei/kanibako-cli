@@ -1015,7 +1015,7 @@ selection-ONLY level.
 
 ### The splice itself — `assemble_cascade`
 
-```assemble_cascade(*, agent_name, floor, files, agent_partial=None, persona_values=None, prefs=None, valid_agents=None, cli_level=None) -> Cascade```
+```assemble_cascade(*, agent_name, floor, files, agent_partial=None, persona_values=None, persona_credential=None, prefs=None, valid_agents=None, cli_level=None) -> Cascade```
 `build_launch_snapshot`'s second phase, shared with set time (`config_interface`): assemble the
 already-read *files* (`settings_assemble.assemble_levels`), splice the extra partials, and merge. It
 collects the prefs when *prefs* is `None`, resolves *valid_agents*, and runs `guard_cli_level`.
@@ -1052,20 +1052,23 @@ it becomes observable the moment the allowlist grows to a target a lower file ma
 unpinned on purpose: a test asserting an unobservable ordering would be asserting the
 implementation, not the behavior.
 
-⚑ **The persona rung's ordering is semantically FORCED, not a preference.** The agent file stores
-ONLY non-default values, so an `agent.<active>.<key>` present in it can only be a DELIBERATE user
-edit — and a user edit must outrank a value the store re-renders on every launch. Below the file,
-above the defaults: write the file once to pin a value, write nothing to stay persona-driven.
+The agent file holds user intent, so it outranks live persona input. Persona and
+`agent.default` spell disjoint keys; their contest is the active-over-default pick,
+not merge order. Persona input does beat the same-key descriptor default.
 
-⚑ **The persona placement relative to `base_levels[3]` is likewise UNOBSERVABLE in the merge** — the
-same class of note as the pref overlays. This partial spells `agent.<active>.*` and that level
-spells `agent.default.*`: DISJOINT names (§2d keeps the two agent slots distinct), so they never
-contend by name, and moving the append below breaks no test. Persona-beats-`agent.default` is real
-all the same, it is just decided ELSEWHERE — by `effective_behavior`'s §2d active-over-default pick,
-which takes the active slot unconditionally. The nearest level this DOES contend with, and must
-beat, is `agent_partial`, the 7a descriptor default, which does spell the active slot and is
-appended below `agent.default`. It is spelled at this rung anyway because that is the rung the
-ordering is ruled at.
+Optional `persona_credential` is plaintext-free PG metadata, never a snapshot value.
+`_eligible_persona_credential` inserts a local identity marker into a separate merge
+projection at the persona rung, below any actual persona value. The existing merge
+alone decides whether file, null, ancestor, pref, or CLI input eliminated that source.
+`Cascade.persona_credential` retains only surviving metadata; no file-provenance walk
+or second precedence algorithm runs. A no-VAR keyless persona retains context without
+inventing a key. A different registered node refuses.
+
+`build_launch_snapshot` forwards surviving metadata through `persona_credential_out`
+only after every existing validation succeeds. The category adapter accepts that
+result, inserts it into a private cloned view before the existing active/default pick,
+and emits the one `CategoryEntry` route with `host_src=None`. Neither clone nor marker
+escapes as the actual snapshot. Without metadata, existing resolution is unchanged.
 
 ⚑ **There is no `box.agent.*` category fold.** `box.agent.*` is the RO read-back
 `meta.box.agent.*` (spec §2b), and a box tweaks its agent with `pref.agent.<agent>.<key>` (§2h) — a
@@ -1101,16 +1104,17 @@ finished tree. The box-root assertion runs when the caller supplied the anchor.
 After the materializers, `build_launch_snapshot` closes with these calls, in this order. The probe
 goes FIRST, and that position is load-bearing.
 
-1. `observe_keyspace` — the REPORT-ONLY probe. It runs FIRST because a raise ahead of it would blind
-   the instrument to precisely the resolves that matter, so any later re-measurement would see only
-   the snapshots that already conform.
+Supplied `AgentNames` reaches strict expansion unchanged, binding mirror, path, and refusal
+judgments through `key_class` with `ANY_AGENT`'s name concession. Plain collections and `None`
+retain legacy expansion and `keyspace_verdict`. Local oracles never enter the global cache.
+
+1. `observe_keyspace(..., oracle=oracle)` — REPORT-ONLY. First, so refusals cannot blind measurement.
 2. `refuse_read_time_faults(written, expanded, *, ctx, files, subject, tiers, active_agent="",
-   plugin_owners=None)` — the READ-TIME refusals, IN ORDER (below). `build_launch_snapshot` is its
-   only call site, and every resolve — the workset preview
-   (`commands/workset_cmd._workset_preview_entries`) included — goes through it, so the order has
-   one carrier and a resolve route cannot run one refusal and skip the other.
-3. `settings_assemble.refuse_undeclared_per_file(files)` — stage (h), the per-file §0 audit, AFTER
-   the snapshot refusals so a tailored cure is the one a user reads.
+   plugin_owners=None, oracle=keyspace_verdict, valid_agents=None)` — ordered READ-TIME refusals.
+   `build_launch_snapshot` is its only caller; every resolve, including
+   `commands/workset_cmd._workset_preview_entries`, passes through it.
+3. `settings_assemble.refuse_undeclared_per_file(files, oracle=oracle)` — stage (h), AFTER
+   snapshot refusals so tailored cures answer first.
 4. `_warn_lone_none_standard_binds`, then `_warn_null_ref_secrets` (below).
 
 *files* are the tiers the resolve read, most-specific first (`cascade_files`, base included on
@@ -1245,12 +1249,13 @@ would carry a bare relative straight into the credential path. The set-time guar
 hand-edit. This sweep asks the same question of every path key, so a new consumer cannot open a
 gap.
 
-* **THE KEY SET IS DERIVED, NEVER LISTED.** `_path_key_leaves` walks a level and asks
-  `config_keys.is_path_valued_key` of every leaf: the registry's `type: path` rows plus the
-  parametric families it recognizes by parser. A key added to the registry is swept the day it
-  lands. A segment containing a dot stops the walk, because it is data (a bind destination), not key
-  path — the same rule `settings_keyspace.classify_store_path` applies.
-* **A LEAF IS SWEPT ONLY IF THE §0 ORACLE CALLS IT A KEY** (`keyspace_verdict(key).cls is
+* **THE KEY SET IS DERIVED, NEVER LISTED.** `_path_key_leaves` asks
+  `config_keys.is_path_valued_key` of every leaf: registry paths plus parametric families.
+  `build_launch_snapshot` forwards supplied `AgentNames` through `refuse_read_time_faults`,
+  `_refuse_ambiguous_path_values`, both walks, and `path_key_anchor`; plain collections keep
+  lazy discovery. New registry keys are swept immediately. Dot-containing segments stop the walk:
+  bind destinations are data, as `settings_keyspace.classify_store_path` requires.
+* **A LEAF IS SWEPT ONLY IF THE §0 ORACLE CALLS IT A KEY** (`oracle(key).cls is
   KeyClass.KEY`). The predicate parses CLI spellings, so it also accepts the bare `template` /
   `canon` (the any-agent tier a verb serves) and nested shapes such as `agent.claude.nav.template`
   or `agent.claude.nav.secret_path.X`. In a store those are undeclared entries, not keys, and
@@ -1284,11 +1289,10 @@ gap.
   above it is removed.
 * **The test reads the STORED spelling.** `{$XDG_DATA_HOME}/x` is legal even where that variable holds
   something odd, and the message quotes what the user typed.
-* **Only a non-empty string is judged.** `None` is a reset or a standalone pin. A non-scalar is
-  not judged here: `refuse_non_scalar_family_value` refuses one by name in the `env` and
-  `secret_path` families; the Layer-1/Layer-2 read stringifies one (`config._flatten_dotted`) and
-  `paths._refuse_bare_relative` refuses the string as a bare relative; at any other path key
-  (`workset.auth.path`, `box.canon`) this resolve passes it through and nothing refuses it by name.
+* **Type errors precede ambiguity checks.** `is_path_key_value` accepts strings and `None`;
+  the sweep refuses the first wrong type through `ambiguous_path_shape_error`, naming its key
+  and file. Only non-empty strings enter the bare-relative check; `None` remains a reset or
+  standalone pin, and `""` is exempt.
 
 Pinned by the `test_R147_*` tests in `tests/test_settings/test_settings_launch.py`, including the
 anti-vacuity test that proves the swept set holds `workset.auth.path` and every registry
@@ -1313,15 +1317,14 @@ THREE distinguishable states, which the caller MUST keep apart (see `settings/ag
 🛑 **BOTH ARE REFUSALS, NEVER AN IMPLICIT PICK** ([Jei:2026-09-19]: no installed-agent count rule).
 Keeping the two states apart is what decides WHICH refusal prints.
 
-**Why this is a SEPARATE resolve.** `build_launch_snapshot` needs the active agent BEFORE it
-assembles: it discriminates the agent tier, wraps the per-agent file's state, and builds the
-meta-agent floor — and the active agent is a key INSIDE that cascade. The pass is safe to run
-first because the pref-legal file pair comes from the runtime TREEWALK
-(`paths._box_settings_files`), which consults no settings key; see the termination note in
-`settings_prefs`.
+Selection precedes launch assembly; its agent-tier file is not yet known.
+Pref-legal paths come from the runtime treewalk, not settings keys (`settings_prefs`).
 
-No `agent_path` is passed: the agent-tier FILE is selected BY this key, so reading it here would be
-the chicken-and-egg this function exists to break.
+`resolve_selected_agent` validates requests before calling shared `selection_from_overlays`.
+`select_agent` stages captured overlays through that expansion, classifies once, then validates
+with node/harness vocabulary before return. Nonselection prefs may supply dependencies; dropping
+them changes values. Supplied `AgentNames` reaches lenient expansion unchanged; plain
+collections retain legacy expansion. The expansion helpers read neither an agent file nor PG.
 
 **Why LENIENT expand.** `expand` is whole-tree, and in STRICT mode a defect anywhere would abort
 selection — e.g. a perfectly legitimate `{$AGENT}` in some unrelated bind source raises here, because
@@ -1666,25 +1669,27 @@ def resolve_box_scalars(
     cli_overrides: dict[str, object] | None, inputs: LaunchInputs | None = None,
     agent_name: str = GENERAL_SLOT, agent_path: Path | None = None,
     refuse_null_scalars: bool = True,
+    persona_values: Mapping[str, str | None] | None = None,
 ) -> dict[str, object]
 ```
-The box scalars (`config._BOX_SCALAR_FIELDS`: `box.image`, `box.share_images`, `box.shell`,
-`box.enable_vault`) resolved through the keyspace, as `{dotted key: value}`. It builds a launch
-snapshot and reads each key with `snapshot_leaf`; a key the snapshot lacks is left out.
+Reads `config._BOX_SCALAR_FIELDS` (`box.image`, `box.share_images`, `box.shell`,
+`box.enable_vault`) with `snapshot_leaf`; absent keys stay absent.
 
-* With *inputs*, the snapshot is theirs (subject, files, anchors), under *agent_name* and its
-  settings file *agent_path*.
-* Without, a *box_path* or *workset_path* makes it a BOX resolve over those files and the system
-  settings file; neither makes it a SYSTEM resolve.
+* With *inputs*, retains their subject, files, and anchors under *agent_name* and *agent_path*.
+  Their identity overlays vocabulary for cascade, final/per-file audits, paths, mirrors, and
+  the probe, without PG reads or cache mutation.
+* Without, *box_path* or *workset_path* selects BOX over those files and system settings;
+  neither selects SYSTEM.
+* *persona_values* forwards captured live data unchanged into either snapshot shape. No
+  lookup, projection, or credential fetch occurs here. Omitted/`None` preserves file-only
+  reads; `{}` adds nothing. `commands.start._box_scalars` forwards the same optional input.
 
 *cli_overrides*' `box_image` and `box_share_images` become the §1A CLI level (`build_cli_level`).
 
-⚑ A present `None` that WINS is KEPT (spec §2h). Where `config.refuses_null_box_scalar` says the
-key's default is a value (every box scalar but `box.shell`), `_refuse_null_box_scalars` raises
-`SettingsError` naming the winning tier's file. The judgment runs on the resolved value, so a `null`
-that a more authoritative tier or the CLI overrides is never refused. *refuse_null_scalars* off is
-the display's read (`config_interface`'s effective table prints the `null`); a caller that acts on
-the values must leave it on.
+Winning `None` stays `None` (spec §2h). For a value-default scalar (all but `box.shell`),
+`_refuse_null_box_scalars` raises `SettingsError` naming the winning tier's file. Higher-tier
+or CLI overrides prevent refusal. *refuse_null_scalars=False* preserves null for display;
+acting callers must leave it on.
 
 ```python
 def load_merged_config(
@@ -1692,16 +1697,16 @@ def load_merged_config(
     cli_overrides: dict[str, object] | None = None, inputs: LaunchInputs | None = None,
     agent_name: str = GENERAL_SLOT, agent_path: Path | None = None,
     refuse_null_scalars: bool = True,
+    persona_values: Mapping[str, str | None] | None = None,
 ) -> KanibakoConfig
 ```
-The same resolve, landed on a `KanibakoConfig`. *project_path* is the box-tier file; with *inputs*,
-both tier paths come from `inputs.cascade_workset_path` / `inputs.cascade_box_path` instead. A
-*cli_overrides* entry that names a field is set first; each resolved key then lands on its field
-through `config._typed_box_scalar`, and a `None` stays `None`.
+`resolve_box_scalars` receives input; *inputs* supplies cascade paths, else
+*project_path* names the box file. Resolved scalars override named CLI fields;
+`_box_scalar_config`/`config._typed_box_scalar` keep nulls. `box_scalar_config(snapshot)`
+converts snapshots without I/O or resolution.
 
-⚑ `paths.resolve_box_enable_vault` resolves `box.enable_vault` a second way, over a cascade that
-skips the whole-tree audit. `tests/test_settings/test_config.py::TestTheTwoBoxScalarResolvesAgree`
-pins the two equal at every tier.
+`paths.resolve_box_enable_vault` separately resolves `box.enable_vault`, skipping the whole-tree
+audit; `tests/test_settings/test_config.py::TestTheTwoBoxScalarResolvesAgree` pins equal tier results.
 
 ## The small shared declarations
 

@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Literal
 from kanibako.errors import UserCanceled
 
 if TYPE_CHECKING:
-  from collections.abc import Callable
+  from collections.abc import Callable, Mapping
 
   from kanibako.runtime.container import ContainerRuntime
   from kanibako.settings.paths import ProjectPaths
@@ -234,6 +234,14 @@ LABEL_WORKSET = "kanibako.workset"
 LABEL_BOX = "kanibako.box"
 LABEL_WORKSET_KUID = "kanibako.workset_kuid"
 LABEL_HELPER = "kanibako.helper"
+
+#: The creation-time selected target, never a container lookup filter.
+LABEL_TARGET = "kanibako.target"
+
+
+def launch_labels(identity_labels: Mapping[str, str], target_name: str | None) -> dict[str, str]:
+  """Copy identity labels with the creation target; ``None`` means agentless."""
+  return {**identity_labels, LABEL_TARGET: "" if target_name is None else target_name}
 
 
 def box_labels(proj: ProjectPaths, helper_num: int | None = None) -> dict[str, str]:

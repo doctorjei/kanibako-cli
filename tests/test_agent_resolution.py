@@ -611,15 +611,16 @@ def test_identity_view_keeps_the_legacy_discovery_warning_and_call_count(monkeyp
   assert identity.node == "claude"
 
 
-def test_identity_facade_stays_legacy_only_until_consumer_cutover(monkeypatch):
+def test_installed_plugin_skips_pg_while_missing_names_check_it(monkeypatch):
+  from unittest.mock import Mock
+
   from kanibako.settings.config import resolve_agent_identity
 
   _patch_targets(monkeypatch, ["claude"])
-
-  def unexpected(*args, **kwargs):
-    pytest.fail("PG selection is not active yet")
-
-  monkeypatch.setattr("kanibako.persona_store.read_registered_persona", unexpected)
+  reader = Mock(return_value=None)
+  monkeypatch.setattr("kanibako.persona_store.read_registered_persona", reader)
   assert resolve_agent_identity(explicit_agent="Claude").target_name == "claude"
+  reader.assert_not_called()
   with pytest.raises(AgentNotInstalledError):
     resolve_agent_identity(explicit_agent="scout")
+  reader.assert_called_once_with("scout")

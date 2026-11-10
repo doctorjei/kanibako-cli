@@ -251,6 +251,9 @@ class _FakeRuntime:
   def is_running(self, container_name):
     return True
 
+  def inspect_creation_metadata(self, container_name):
+    return "shell-id", {}
+
   def container_image(self, container_name):
     return "example/img:tag"
 

@@ -1464,25 +1464,30 @@ class TestBlankAgentFlagIsGivenAtBothDoors:
     from kanibako.settings.paths import load_std_paths
 
     seen: dict[str, str] = {}
+    prepared_inputs = []
 
-    def spy_store(agent_ref):
+    def spy_store(agent_ref, *, prepared):
       seen["checked"] = agent_ref
+      prepared_inputs.append(prepared)
       return None
+
+    def spy_seed(std, config, proj, *, prepared):
+      seen["seeded"] = prepared.selection.node
+      prepared_inputs.append(prepared)
 
     monkeypatch.setattr(
       "kanibako.commands.box._parser._check_persona_store_for_create",
       spy_store,
     )
-    monkeypatch.setattr(
-      "kanibako.commands.start.seed_new_box",
-      lambda std, config, proj, **kw: seen.__setitem__("seeded", kw.get("explicit_agent")),
-    )
+    monkeypatch.setattr("kanibako.commands.start.seed_new_box", spy_seed)
 
     assert run_create(_create_args(tmp_home / "project", name="spaced", agent="  goose  ")) == 0
 
     std = load_std_paths(load_config(config_file))
     persisted = load_doc(std.boxes / "spaced" / "box.yaml")["pref"]["system"]["agent"]
     assert seen["checked"] == persisted == seen["seeded"]
+    assert len(prepared_inputs) == 2
+    assert prepared_inputs[0] is prepared_inputs[1]
     # And it is a ref the grammar accepts, so the box is configured for a name
     # the cascade can actually resolve.
     assert parse_agent_ref(persisted)[0] == "goose"

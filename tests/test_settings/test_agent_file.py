@@ -1884,3 +1884,55 @@ class TestEveryNeighborOfABoolIsUntouched:
     # the renderer's own `null` spelling must not be reachable by accident.
     assert cfg.env.get("ABSENT") is None
     assert stored_leaf_display("env.ABSENT", None) == "null"
+
+
+class TestRecordLegacyVocabulary:
+  def test_core_leaf_keeps_discovery_lazy_and_legacy_oracle(self, monkeypatch):
+    from unittest.mock import Mock
+
+    from kanibako.settings import config_keys, settings_keyspace, settings_keyspace_probe
+    from kanibako.settings.agent_file import record
+
+    discovery = Mock(side_effect=AssertionError("plugin discovery was asked"))
+    monkeypatch.setattr("kanibako.settings.settings_prefs.default_valid_agents", discovery)
+    monkeypatch.setattr(settings_keyspace_probe, "plugin_agent_leaf_map", discovery)
+    validity = Mock(wraps=settings_keyspace.key_validity)
+    oracle = Mock(wraps=settings_keyspace_probe.keyspace_verdict)
+    monkeypatch.setattr(settings_keyspace, "key_validity", validity)
+    monkeypatch.setattr(settings_keyspace_probe, "keyspace_verdict", oracle)
+    level = level_table({"self": {"model": "x"}}, sub_key="claude", node="claude")
+    assert record(level, node="claude").state == {"model": "x"}
+    assert record(level, node="claude", valid_agents=None).state == {"model": "x"}
+    assert validity.call_count == 2
+    for call in validity.call_args_list:
+      assert call.args == ("agent.claude.model",)
+      assert call.kwargs["valid_agents"] == ("claude",)
+      assert call.kwargs["agent_leaf_map"] is config_keys.AGENT_LEAF_MAP
+    assert oracle.call_count > 0
+    discovery.assert_not_called()
+
+  def test_plugin_leaf_uses_legacy_supplier_when_input_is_absent(self, monkeypatch):
+    from unittest.mock import Mock
+
+    from kanibako.settings.agent_file import record
+    from kanibako.settings.settings_prefs import AgentNames
+
+    names = AgentNames({"goose"}, leaf_map={"goose": {"provider"}})
+    discovery = Mock(return_value=names)
+    monkeypatch.setattr("kanibako.settings.settings_prefs.default_valid_agents", discovery)
+    level = level_table({"self": {"provider": "ollama"}}, sub_key="goose", node="goose")
+    assert record(level, node="goose").state == {"provider": "ollama"}
+    discovery.assert_called_once_with()
+
+  def test_unreadable_file_is_named_and_can_be_repaired(self, tmp_path):
+    from kanibako.errors import ConfigError
+
+    path = tmp_path / "agent.yaml"
+    path.write_text("self: [unterminated\n")
+    with pytest.raises(ConfigError, match="not valid YAML") as exc:
+      agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
+    assert str(path) in str(exc.value)
+    dump_doc(path, {"self": {"model": "repaired"}})
+    assert agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE).state == {
+      "model": "repaired"
+    }

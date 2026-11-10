@@ -5,13 +5,13 @@
 from __future__ import annotations
 
 from pathlib import Path
-from types import SimpleNamespace
+from types import MappingProxyType, SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from kanibako.runtime.container import ContainerRuntime
-from kanibako.utils import box_container, box_labels
+from kanibako.utils import box_container, box_labels, launch_labels
 
 
 def _proj(
@@ -68,6 +68,53 @@ class TestBoxLabels:
     settings_pair["file"] = settings
     assert box_labels(proj, helper_num=3)["kanibako.helper"] == "3"
     assert "kanibako.helper" not in box_labels(proj)
+
+
+class TestLaunchLabels:
+  @pytest.mark.parametrize(
+    ("name", "target"),
+    [
+      ("native", "claude"),
+      ("claude", "Goose"),
+      ("scout", "Claude"),
+      ("agentless", None),
+      ("empty", ""),
+    ],
+  )
+  def test_creation_records_the_selected_target_exactly(
+    self, tmp_path, settings_pair, name, target
+  ):
+    proj, settings = _proj(tmp_path, name=name)
+    settings_pair["file"] = settings
+    identity = box_labels(proj)
+    assert launch_labels(MappingProxyType(identity), target) == {
+      **identity,
+      "kanibako.target": "" if target is None else target,
+    }
+    assert "kanibako.target" not in identity
+
+  def test_creation_and_identity_maps_are_independent(self):
+    identity = {"kanibako.box": "scout", "kanibako.helper": "4"}
+    created = launch_labels(identity, "Claude")
+    assert created is not identity
+    created["kanibako.box"] = "other"
+    identity["kanibako.helper"] = "5"
+    assert identity["kanibako.box"] == "scout"
+    assert created["kanibako.helper"] == "4"
+    assert "kanibako.target" not in identity
+
+  def test_creation_target_never_becomes_a_lookup_filter(self, tmp_path, settings_pair):
+    proj, settings = _proj(tmp_path)
+    settings_pair["file"] = settings
+    identity = box_labels(proj)
+    first = launch_labels(identity, "Claude")
+    second = launch_labels(identity, "Goose")
+    runtime = MagicMock()
+    runtime.find_labeled.return_value = ["kb-old-target"]
+    assert first["kanibako.target"] != second["kanibako.target"]
+    assert box_container(runtime, proj) == "kb-old-target"
+    runtime.find_labeled.assert_called_once_with(identity, without="kanibako.helper", check=False)
+    assert "kanibako.target" not in runtime.find_labeled.call_args.args[0]
 
 
 class TestRunSetsLabels:

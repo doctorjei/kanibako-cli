@@ -408,9 +408,9 @@ config).
 
 ## `is_path_valued_key` / `path_key_anchor` — keyspec §2a "A path key's stored value" at set time
 
-`is_path_valued_key` answers "is this key's value a host path", over the fixed `KEY_TYPES` rows plus
-the three parametric families. `path_key_anchor` answers the second half the refusal needs: the ROOT
-the user might have meant INSTEAD of the cwd, plus the LABEL that introduces it.
+`is_path_valued_key` recognizes host paths from `KEY_TYPES` and three parametric families.
+`path_key_anchor` names the alternate ROOT and LABEL. Both forward optional `valid_agents`
+(`AgentNames`) to `_parse_persona_agent_key`'s shared judgment; omission keeps lazy discovery.
 
 The anchor is chosen so a key cannot get two answers at its two ends. A Layer-1/Layer-2 key takes its
 own declared default's leading token, exactly as `paths._refuse_bare_relative` derives it. Every
@@ -427,7 +427,7 @@ must not invent.
 
 ## `agent_node_of` — which node a write is ABOUT
 
-```agent_node_of(canonical: str) -> str```
+```agent_node_of(canonical, *, valid_agents=None) -> str```
 The agent NODE a per-node *canonical* key addresses, or `""` when it names none.
 
 `cascade_agent_name` on `set_config_value` is "the agent this command is about", and each write door
@@ -516,15 +516,15 @@ mutation itself so it cannot go green by the production flattener disappearing.
 
 ``agent.<node>.<key>``, set on the agent's OWN settings file ``agents/<node>/agent.yaml``.
 
-`_parse_persona_agent_key` RECOGNIZES the per-persona agent keys: a FLAT agent-state leaf, judged
-against THAT NODE's vocabulary (`settings_keyspace.agent_leaf_is_declared` over `AGENT_LEAF_MAP`),
-or an ``env.<VAR>`` whose VAR matches `settings_categories.SECRET_VAR_RE` — the EXACT shape
-`agent_file.record` reads back (`AgentConfig.state` / `.env`), so a value `set` here is what the
-launch snapshot resolves for the persona (endpoint via `effective_behavior`). 🛑 It is NOT purely
-structural: `None` for an undeclared tail is the closed keyspace's answer, and a structural match
-would turn `config set`'s §0 refusal into a write. The SECRET category
-``agent.<node>.secret_path.<VAR>`` is routed by `_is_agent_node_secret_key` → `_node_secret_target`,
-not here.
+`_parse_persona_agent_key` judges flat leaves with `settings_keyspace.agent_leaf_is_declared`
+and ``env.<VAR>`` with `settings_categories.SECRET_VAR_RE`; `agent_file.record` reads that shape
+(`AgentConfig.state` / `.env`) for launch resolution (endpoint via `effective_behavior`). An
+undeclared tail returns `None`, not a structural match that would let `config set` write it.
+`_is_agent_node_secret_key` → `_node_secret_target` owns ``agent.<node>.secret_path.<VAR>``.
+
+`valid_agents` feeds canonicalization, node extraction, dispatch, display, probes, and prefs.
+Supplied maps, even empty, replace `AGENT_LEAF_MAP`/discovery without mutation; omission stays lazy.
+Reserved-default/universal predicates ignore unrelated plugin tails.
 
 ⚑⚑ **THE VOCABULARY IS PER AGENT (keyspec §0 "The leaf VOCABULARY is partitioned by TIER").** §0
 puts the agent specifics in the PLUGINS: a leaf established at `agent.default` is universal, and
@@ -685,7 +685,7 @@ through `agent_ref.agent_address_node`. ONE function for both surfaces, so a key
 name different nodes for one spelling. Raises `ConfigError` for an illegal ref (`resolve_key` then
 leaves the key raw for the verb to refuse).
 
-```resolve_key(raw: str) -> str```
+```resolve_key(raw, *, valid_agents=None) -> str```
 Return the canonical config key for a user-supplied key name.
 
 Most config keys are already canonical (dot-notation like ``box.image`` or ``box.enable_vault``) and
@@ -721,7 +721,7 @@ segment + the bind name are preserved verbatim.
 CANONICAL key. Dropping it would make a ``+``-form bind key fall through to the persona branch and get
 re-rooted as the wrong key on its way to the wrong message.
 
-```_parse_persona_agent_key(key: str) -> "tuple[str, str] | None"```
+```_parse_persona_agent_key(key: str, *, valid_agents: AgentNames | None = None) -> "tuple[str, str] | None"```
 Split an ``agent.<node>.<tail>`` persona key into ``(node_raw, tail)``.
 
 Returns `None` when *key* is not a settable per-persona agent key. The settable *tail* forms are a
@@ -733,9 +733,10 @@ rc-only ``env_file.<VAR>``, which routed here). The node segment is returned VER
 key-path separator and cannot appear in an agent name) for :func:`agent_key_node` to canonicalize
 as a WHOLE.
 
-Parsed from the RIGHT: the closed set of settable tails is unambiguous, so everything left of a
-recognized tail is the node. ``env`` is matched BEFORE the flat leaves so ``agent.<node>.env.MODEL``
-is an env var named ``MODEL``, never mis-split as the state leaf ``model``.
+Parse from the RIGHT: a recognized tail fixes the node boundary. Judge flat leaves using
+`agent_key_node`'s case/separator fold, but return the raw node for typed-key warnings; strict
+stored-key validation stays separate. Match ``env`` first: ``agent.<node>.env.MODEL`` names a
+variable, never state leaf ``model``.
 
 ⚑⚑ **BOTH ARMS JUDGE THEIR TAIL, and the ``env.`` arm only.** The flat arm has
 always asked :func:`agent_leaf_is_declared`; the ``env.`` arm tested ONLY that the second-from-last
@@ -762,8 +763,8 @@ answers *"Error: unknown config key: agent.claude.env."* at rc 1 — correct and
 `key_validity` already computed the precise §2a reason and `config_interface`'s tail refusal discards
 it. That discard is a SEPARATE boarded defect at `config_interface`, not a gap in this guard.
 
-```_is_persona_agent_key(key: str) -> bool```
-True iff *key* is a settable per-persona ``agent.<node>.<key>`` key (B1).
+```_is_persona_agent_key(key, *, valid_agents=None) -> bool```
+Whether *key* is settable in this vocabulary.
 
 ```is_access_key(canonical: str) -> bool```
 True iff *canonical* is the auth-critical ``access`` permission key.
@@ -834,7 +835,7 @@ True iff *key* is a per-node ``agent.<node>.secret_path.<VAR>`` key (SECRET cate
 
 Checked BEFORE the persona + path-category branches in dispatch.
 
-```_persona_display_key(canonical: str) -> str```
+```_persona_display_key(canonical, *, valid_agents=None) -> str```
 Render a canonical persona key for USER-FACING output (``℘`` -> ``+``).
 
 ```_node_secret_display_key(canonical: str) -> str```
@@ -1195,7 +1196,7 @@ directly at the <scope> scope instead") is appended for a scope-prefixed target 
 YAML-only one (:func:`has_no_cli_write_route`): there is no direct set to redirect to, and naming one
 would prescribe a command that refuses.
 
-```_pref_target_error(canonical: str, command_scope: "ConfigLevel | None") -> str | None```
+```_pref_target_error(canonical, command_scope, *, valid_agents=None) -> str | None```
 Run the three §2h filters on the ``pref.*`` TARGET KEY at SET time.
 
 Same predicate the launch path applies TO THE KEY. ⚑ The KEY is only half of a request: the VALUE is
@@ -1400,7 +1401,7 @@ the sentence from `_AGENT_DEFAULT_TIER_CURE` instead of spelling it. ⚑ The THI
 ``config_dest._reserved_tier_refusal``, was folded in and now interpolates this
 constant too — three consumers, one source. Add a consumer, never a fourth spelling.
 
-```agent_key_reason(node: str, tail: str) -> str | None```
+```agent_key_reason(node: str, tail: str, *, valid_agents: AgentNames | None = None) -> str | None```
 The §0 reason *tail* is not a declared key of agent *node*, or `None` when it is — **the `agent`
 noun's closed keyspace, spelled ONCE** (S3, defect D-5).
 
@@ -1413,41 +1414,38 @@ launch owes a file to open.
 ⚑⚑ **`key_validity`, NEVER `is_known_key`, AND THE DIFFERENCE IS MEASURED.**
 `is_known_key("agent.claude.self.model")` is **True** — `_parse_persona_agent_key` splits on the LAST
 segment and reads the node as ``claude.self`` — so a literal `is_known_key` gate would leave the
-exact [spec:14-18, "self"] hole open while REFUSING ``run_args`` and ``name``, both live and both
-pinned. `is_known_key` answers *"is this key-SHAPED, as opposed to a project name"*; §0 asks
+exact [spec:14-18, "self"] hole open while refusing the declared ``run_args``. `is_known_key`
+answers *"is this key-SHAPED, as opposed to a project name"*; §0 asks
 *"is this a DECLARED key"*, and only `key_validity` answers that.
 **Do not "simplify" this to the other predicate.**
 
 ⚑ **The node is supplied AS the valid-agent set** (`valid_agents=(node,)`): it is the on-disk store
 dir, known good, so an agent-DISCOVERY result must never be able to refuse a key on an agent the user
-is demonstrably running. The PLUGIN-declared leaves are unioned in the OTHER direction — without it
-a legitimate ``agent.goose.provider`` would be refused, at the verb AND at the launch. Both
-directions are pinned, with the union's own mutation proof.
+is demonstrably running. Optional *valid_agents* supplies only its `leaf_map`, carrying local
+node/harness facts, plugin declarations, and unreadable-harness concessions. Its membership never
+re-judges the file's node; `key_validity` still owns declaredness.
 
-⚑ **THE VOCABULARY ARRIVES AS `AGENT_LEAF_MAP`, NOT AS `default_valid_agents().leaf_map` READ
-HERE** (`agent_leaf_map=AGENT_LEAF_MAP`). Same value, but reached through the module's ONE supplier,
-which is what stops this gate and the per-node recognizer from drifting into two vocabularies — and
-passing it rather than materializing it means a core §2d leaf is answered without importing a single
-plugin.
+Without that input, `AGENT_LEAF_MAP` remains the lazy supplier, passed without materialization:
+a core §2d leaf imports no plugin. A supplied map replaces it without discovery or mutation.
 
 🛑 **THERE IS NO IDENTITY ALLOWLIST, AND IT DOES NOT COME BACK.** `run_args` is a declared §2d leaf,
 so the gate admits it on its own; `name` is no key. What the FILE models is
 `agent_file._MODELED_KEYS`, and that is not a keyspace question.
 
-```agent_write_key_error(node, tail, *, verb) -> str | None``` ·
-```agent_read_key_error(node, tail) -> str | None```
-The two verb-facing wrappers. WRITE is the reason with the verb's wording. READ is the same, PLUS the
-ONE carve-out: ``agent.<node>.bindings.{ro,rw}.<name>`` is not a declared key — the arm is terminal
-and its entries are destinations inside the value — but `config get` reads it anyway (R-9: the read
-survived the write), and the hand edit that refusal prescribes is only checkable if the read-back
-works. Two verbs over ONE file must not disagree, so the carve-out is taken from the SAME predicate
-`get_config_value` branches on (`_is_agent_node_bind_key`) rather than restated.
+```agent_write_key_error(node, tail, *, verb, valid_agents=None) -> str | None``` ·
+```agent_read_key_error(node, tail, *, valid_agents=None) -> str | None```
+WRITE renders the shared reason with *verb* (`"set"` / `"reset"`); READ uses `"read"`.
+Both forward local vocabulary unchanged; `None` retains lazy discovery, an empty map does not.
+`scope_read_key_error` forwards it through canonicalization and its declaration judge too.
+Messages, readable-route exceptions, and cure order stay unchanged.
 
-⚑ Reading an undeclared key is an error under §0 exactly as writing one is — which is why the read
-gate exists at all: ``agent get claude self.model`` REFUSES instead of answering "(not set)".
+READ additionally admits ``agent.<node>.bindings.{ro,rw}.<name>`` through
+`_is_agent_node_bind_key`, the predicate `get_config_value` uses. The arm is terminal,
+so its destinations are not keys, but R-9 keeps their read after retiring the write.
+The prescribed hand edit needs that read-back; verbs over one file must agree.
 
-*verb* is the op word (``"set"`` / ``"reset"``). Gates itself — `None` for every other key — so every
-verb door applies it uniformly.
+§0 refuses undeclared reads and writes alike: ``agent get claude self.model`` errors
+instead of answering "(not set)". Each gate returns `None` for keys its verb serves.
 
 ⚑ **The `agent` NOUN has ONE writer.** `agent set` routes its writes to the shared setter
 (`config_interface.set_config_value`), so the E3 resolution probe and the typed-scalar check run
@@ -1490,7 +1488,7 @@ DECLARED terminal keys by :func:`~kanibako.settings.settings_keyspace.is_termina
 dispatch (R-39); ``masks`` (a dest-keyed map, ``dict[box_dest → bool|None]``) is YAML-only (spec
 §2a) and is NOT matched here.
 
-```_has_dedicated_route(canonical: str) -> bool```
+```_has_dedicated_route(canonical, *, valid_agents=None) -> bool```
 Does SOME `set_config_value` branch claim *canonical*?
 
 ⚑ MIRRORS THE DISPATCH CHAIN in `set_config_value`, in the same order. A branch added there without a
@@ -1516,7 +1514,7 @@ reaches the routing table at the bottom of the dispatch and is reported as ``unk
 <key>`` — the error §0 requires, which NAMES the key, rather than a resolution complaint about a value
 on a key that does not exist.
 
-```_probes_at_set_time(canonical: str) -> bool```
+```_probes_at_set_time(canonical, *, valid_agents=None) -> bool```
 Does a `config set` of *canonical* run the E3 RESOLUTION probe?
 
 The test is **"does this value reach the expander"**, NOT "is it a scalar". A value the expander never

@@ -16,10 +16,9 @@ there would only overlap the parent.
 The spec lives in the canon (``~/canon/workbook/specs/``), outside this repo and absent
 from CI, so the binding tests here run against a fixture that reproduces both shapes.
 
-A SECOND contract is pinned at the end of this file: the truncation guard in
-``run_section``.  ``scripts/`` is outside ``ruff check src/ tests/ packages/`` and outside
-both mypy runs, so collection here is the only automated protection that guard has -- and
-it was proved once, by hand, against a fixture that no longer exists.
+Tests stay together because this non-package script is loaded by path. The same import
+covers truncation, registered projection, and credential handling; scripts lie outside
+both standard mypy scopes.
 """
 
 from __future__ import annotations
@@ -357,3 +356,435 @@ def test_a_null_or_empty_store_model_names_no_model_and_the_metadata_serializes(
   assert calls == ["resolve_secret_path", "get_target", "read_persona_bundle"]
   assert conn.model is None
   json.dumps({"model": conn.model, "url": conn.url})
+
+
+@pytest.fixture
+def registered(monkeypatch: pytest.MonkeyPatch):
+  from types import SimpleNamespace
+
+  from kanibako.agent_ref import AgentIdentity
+  from kanibako.persona_store import RegisteredPersona
+  from kanibako.targets.base import PersonaReadOutcome, PersonaSettings
+
+  persona = RegisteredPersona(
+    identity=AgentIdentity(
+      node="claude",
+      registered_name="claude",
+      persona="p",
+      harness="Goose",
+      target_name="goose",
+      entry_path=Path("/synthetic-store/claude"),
+    ),
+    store_root=Path("/selected-store"),
+    config={"model": "chosen", "secret": "synthetic-native-secret"},
+    auth_env="OPENAI_API_KEY",
+    keyless=False,
+  )
+  calls: list[str] = []
+
+  def project(config, *, source, keyless=False):
+    assert config is persona.config
+    assert source == "/synthetic-store/claude/agent.cfg"
+    calls.append("project")
+    return PersonaReadOutcome(
+      PersonaSettings("https://endpoint.invalid/v1", config.get("model"), "OPENAI_API_KEY"),
+      None,
+    )
+
+  def target(name):
+    calls.append(name)
+    assert name == "goose", "registered spelling must never select the target"
+    return lambda: SimpleNamespace(name="goose", project_persona_settings=project)
+
+  def forbidden(*args, **kwargs):
+    pytest.fail("registered projection touched legacy paths or PG discovery")
+
+  monkeypatch.setattr(keyspec, "get_target", target)
+  monkeypatch.setattr(keyspec, "resolve_secret_path", forbidden)
+  monkeypatch.setattr(keyspec, "read_persona_bundle", forbidden)
+  monkeypatch.setattr(keyspec.config_io, "load_persona_agent", forbidden)
+  monkeypatch.setattr(keyspec.config_io, "persona_store_agents", forbidden)
+  return persona, calls
+
+
+@pytest.mark.parametrize("state", ["missing", "null", "empty", "named"])
+def test_registered_projection_uses_resolved_target_and_preserves_model(
+  registered,
+  state: str,
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  from kanibako.targets.base import PERSONA_DEFAULT_MODEL
+
+  persona, calls = registered
+  persona.config.pop("model")
+  if state != "missing":
+    persona.config["model"] = {"null": PERSONA_DEFAULT_MODEL, "empty": "", "named": "m"}[state]
+  conn = keyspec.resolve_connection(
+    persona, "claude", endpoint=None, model=None, path="/chat/completions"
+  )
+  assert calls == ["goose", "project"]
+  assert conn.token_path is None and conn.registered_name == "claude"
+  assert conn.store_root == persona.store_root
+  assert "synthetic-native-secret" not in repr(conn)
+  assert conn.model == {"missing": None, "null": None, "empty": "", "named": "m"}[state]
+  payloads = _serve(monkeypatch, _usable_200(finish_reason="stop"))
+  keyspec.run_section(conn=conn, bearer="", prompt="p", args=_args())
+  if state in ("missing", "null"):
+    assert "model" not in payloads[0]
+  else:
+    assert payloads[0]["model"] == conn.model
+
+
+@pytest.mark.parametrize("keyless", [False, True])
+@pytest.mark.parametrize("failure", [False, True])
+@pytest.mark.parametrize("model", [None, ""])
+def test_registered_run_fetches_once_or_never_for_keyless(
+  registered,
+  keyless: bool,
+  failure: bool,
+  model: str | None,
+  monkeypatch: pytest.MonkeyPatch,
+  tmp_path: Path,
+  capsys: pytest.CaptureFixture[str],
+) -> None:
+  from dataclasses import replace
+  from types import SimpleNamespace
+
+  persona, _ = registered
+  persona = replace(persona, keyless=keyless)
+  persona.config["model"] = None
+  conn = keyspec.resolve_connection(
+    persona, "claude", endpoint=None, model=model, path="/chat/completions"
+  )
+  fetched: list[str] = []
+  sent: list[str] = []
+
+  def fetch(name, *, root):
+    assert not keyless, "keyless must not fetch"
+    assert root == persona.store_root
+    fetched.append(name)
+    return "synthetic-bearer"
+
+  def post(url, payload, bearer, timeout):
+    sent.append(bearer)
+    if model is None:
+      assert "model" not in payload
+    else:
+      assert payload["model"] == ""
+    if failure:
+      return keyspec.Exchange(None, b"", f"echoed {bearer}", None)
+    return keyspec.Exchange(200, _usable_200(finish_reason="stop"), None, None)
+
+  monkeypatch.setattr(keyspec.config_io, "fetch_persona_secret", fetch)
+  monkeypatch.setattr(
+    keyspec, "resolve_ref", lambda ref: SimpleNamespace(persona="p", harness="legacy")
+  )
+  monkeypatch.setattr(keyspec, "resolve_connection", lambda *a, **kw: conn)
+  monkeypatch.setattr(keyspec, "post_chat", post)
+  spec = tmp_path / "spec.md"
+  spec.write_text(FIXTURE)
+  brief = tmp_path / "brief.md"
+  brief.write_text("synthetic brief")
+  assert keyspec.main(
+    [
+      "keyspec-extract.py",
+      "--persona",
+      "legacy",
+      "--spec",
+      str(spec),
+      "--brief",
+      str(brief),
+      "--out",
+      str(tmp_path / "out"),
+      "--sections",
+      "1,1A",
+      "--gap",
+      "0",
+    ]
+  ) == int(failure)
+  assert fetched == ([] if keyless else ["claude"])
+  attempts = 2 * (_args().max_retries + 1) if failure else 2
+  assert sent == ([""] * attempts if keyless else ["synthetic-bearer"] * attempts)
+  captured = capsys.readouterr()
+  assert f"model={repr(model) if model is not None else '(omitted)'}\n" in captured.out
+  assert "synthetic-bearer" not in captured.out + captured.err
+  for artifact in (tmp_path / "out").iterdir():
+    assert "synthetic-bearer" not in artifact.read_text()
+
+
+def test_keyless_transport_omits_authorization(monkeypatch: pytest.MonkeyPatch) -> None:
+  requests = []
+
+  class Opener:
+    def open(self, req, *, timeout):
+      requests.append(req)
+      raise OSError("synthetic transport failure")
+
+  monkeypatch.setattr(keyspec.urllib.request, "build_opener", lambda *a: Opener())
+  keyspec.post_chat("https://endpoint.invalid", {}, "", 1)
+  keyspec.post_chat("https://endpoint.invalid", {}, "synthetic-bearer", 1)
+  assert requests[0].get_header("Authorization") is None
+  assert requests[1].get_header("Authorization") == "Bearer synthetic-bearer"
+
+
+def test_registered_fetch_failure_hides_exception_and_traceback(
+  registered,
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  import traceback
+
+  persona, _ = registered
+  conn = keyspec.resolve_connection(
+    persona, "claude", endpoint=None, model=None, path="/chat/completions"
+  )
+
+  def fail(name, *, root):
+    assert root == persona.store_root
+    raise RuntimeError("synthetic-secret-from-manager")
+
+  monkeypatch.setattr(keyspec.config_io, "fetch_persona_secret", fail)
+  with pytest.raises(SystemExit, match="cannot fetch") as caught:
+    keyspec.read_bearer(conn)
+  rendered = "".join(traceback.format_exception(caught.type, caught.value, caught.tb))
+  assert "synthetic-secret-from-manager" not in rendered
+  assert "synthetic-secret-from-manager" not in repr(conn)
+
+
+def test_registered_projection_failure_hides_native_secret(
+  registered,
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  import traceback
+
+  persona, _ = registered
+
+  def fail(*args):
+    raise RuntimeError(persona.config["secret"])
+
+  monkeypatch.setattr(keyspec, "project_registered_persona", fail)
+  with pytest.raises(SystemExit, match="cannot project") as caught:
+    keyspec.resolve_connection(
+      persona, "claude", endpoint=None, model=None, path="/chat/completions"
+    )
+  assert "synthetic-native-secret" not in "".join(
+    traceback.format_exception(caught.type, caught.value, caught.tb)
+  )
+
+
+def test_transport_failure_scrubs_bearer_from_attempt_metadata(
+  monkeypatch: pytest.MonkeyPatch,
+  capsys: pytest.CaptureFixture[str],
+) -> None:
+  secret = "synthetic-echoed-bearer"
+  monkeypatch.setattr(keyspec, "post_chat", lambda *a: keyspec.Exchange(None, b"", secret, None))
+  args = _args()
+  args.gap = 0
+  _, failure, attempts = keyspec.run_section(conn=_CONN, bearer=secret, prompt="p", args=args)
+  assert secret not in json.dumps([a.__dict__ for a in attempts])
+  assert secret not in failure
+  assert secret not in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("separator", ["+", "℘"])
+def test_legacy_resolution_does_not_discover_registered_personas(
+  monkeypatch: pytest.MonkeyPatch,
+  tmp_path: Path,
+  separator: str,
+) -> None:
+  from types import SimpleNamespace
+
+  from kanibako.persona_store import SecretPathResult
+
+  def forbidden(*args, **kwargs):
+    pytest.fail("legacy route accessed registered PG API")
+
+  monkeypatch.setattr(keyspec.config_io, "persona_store_agents", forbidden)
+  monkeypatch.setattr(keyspec.config_io, "load_persona_agent", forbidden)
+  monkeypatch.setattr(keyspec.config_io, "fetch_persona_secret", forbidden)
+  entry = SimpleNamespace(harness="legacy")
+  monkeypatch.setattr(keyspec, "locate_entry", lambda ref: entry)
+  token = tmp_path / "legacy-token"
+  token.write_text("synthetic-legacy-token\n")
+  monkeypatch.setattr(keyspec, "resolve_secret_path", lambda entry: SecretPathResult(token, None))
+  ref = f"p{separator}legacy"
+  assert keyspec.resolve_ref(ref) is entry
+  conn = keyspec.resolve_connection(
+    entry, ref, endpoint="https://endpoint.invalid", model="m", path="/chat/completions"
+  )
+  assert conn.registered_name is None
+  assert keyspec.read_bearer(conn) == "synthetic-legacy-token"
+  assert keyspec.read_bearer(token) == "synthetic-legacy-token"
+
+
+@pytest.mark.parametrize("keyless", [False, True])
+@pytest.mark.parametrize("missing_plugin", [False, True])
+def test_registered_main_resolves_once_and_fetches_from_captured_store(
+  keyless: bool,
+  missing_plugin: bool,
+  monkeypatch: pytest.MonkeyPatch,
+  tmp_path: Path,
+  capsys: pytest.CaptureFixture[str],
+) -> None:
+  from unittest.mock import MagicMock
+
+  from kanibako.plugins.claude import ClaudeTarget
+
+  root = tmp_path / "selected-store"
+  entry = tmp_path / "external-entry"
+  calls: list[tuple] = []
+  resolved = {
+    "agent": {
+      "persona": {"name": "Guide"},
+      "harness": {
+        "name": "claude",
+        "config_store": {
+          "env": {"ANTHROPIC_BASE_URL": "https://endpoint.invalid/v1"},
+          "model": "chosen",
+        },
+        "auth_var": "ANTHROPIC_AUTH_TOKEN",
+      },
+      "secret": None if keyless else {"backend": "synthetic"},
+    }
+  }
+
+  def agents(*, root):
+    calls.append(("agents", root))
+    return {"TrailGuide": entry}
+
+  def load(name, *, root):
+    calls.append(("load", name, root))
+    monkeypatch.setenv("AGENT_STORE_DIR", str(tmp_path / "wrong-store"))
+    return entry, resolved
+
+  def target(name):
+    calls.append(("target", name))
+    assert name == "claude"
+    if missing_plugin:
+      raise KeyError("synthetic-plugin-secret")
+    return ClaudeTarget
+
+  def spawn(argv, **kwargs):
+    assert not keyless, "keyless must not run credential retrieval"
+    calls.append(("fetch", argv))
+    process = MagicMock(returncode=0)
+    process.__enter__.return_value = process
+    process.communicate.return_value = (b"synthetic-captured-bearer\n", None)
+    return process
+
+  def post(url, payload, bearer, timeout):
+    calls.append(("post", url, bearer))
+    assert payload["model"] == "chosen"
+    return keyspec.Exchange(200, _usable_200(finish_reason="stop"), None, None)
+
+  def forbidden(*args, **kwargs):
+    pytest.fail("registered CLI entered the legacy store")
+
+  monkeypatch.setattr(keyspec.config_io, "persona_store_location", lambda: root)
+  monkeypatch.setattr(keyspec.config_io, "persona_store_agents", agents)
+  monkeypatch.setattr(keyspec.config_io, "load_persona_agent", load)
+  monkeypatch.setattr(keyspec.config_io.subprocess, "Popen", spawn)
+  monkeypatch.setattr(keyspec, "get_target", target)
+  monkeypatch.setattr(keyspec, "persona_store_root", forbidden)
+  monkeypatch.setattr(keyspec, "locate_entry", forbidden)
+  monkeypatch.setattr(keyspec, "resolve_secret_path", forbidden)
+  monkeypatch.setattr(keyspec, "post_chat", post)
+  spec = tmp_path / "spec.md"
+  spec.write_text(FIXTURE)
+  brief = tmp_path / "brief.md"
+  brief.write_text("synthetic brief")
+  out = tmp_path / "out"
+  argv = [
+    "keyspec-extract.py",
+    "--persona",
+    "TRAILGUIDE",
+    "--spec",
+    str(spec),
+    "--brief",
+    str(brief),
+    "--out",
+    str(out),
+    "--sections",
+    "1,1A",
+    "--gap",
+    "0",
+  ]
+  if missing_plugin:
+    import traceback
+
+    with pytest.raises(SystemExit, match="cannot project") as caught:
+      keyspec.main(argv)
+    assert "synthetic-plugin-secret" not in "".join(
+      traceback.format_exception(caught.type, caught.value, caught.tb)
+    )
+    assert calls == [("agents", root), ("load", "TrailGuide", root), ("target", "claude")]
+    return
+  assert keyspec.main(argv) == 0
+  assert calls[:3] == [("agents", root), ("load", "TrailGuide", root), ("target", "claude")]
+  fetches = [call[1] for call in calls if call[0] == "fetch"]
+  assert fetches == (
+    []
+    if keyless
+    else [
+      [
+        sys.executable,
+        "-I",
+        "-m",
+        "persona_grata",
+        "--get-secret=TrailGuide",
+        "--store",
+        str(root),
+      ]
+    ]
+  )
+  assert [call[2] for call in calls if call[0] == "post"] == (
+    ["", ""] if keyless else ["synthetic-captured-bearer", "synthetic-captured-bearer"]
+  )
+  captured = capsys.readouterr()
+  assert "persona TrailGuide -> https://endpoint.invalid/v1/chat/completions" in captured.out
+  assert "synthetic-captured-bearer" not in captured.out + captured.err
+  assert all("synthetic-captured-bearer" not in p.read_text() for p in out.iterdir())
+
+
+def test_bare_legacy_fallback_requires_registered_absence(
+  monkeypatch: pytest.MonkeyPatch,
+  tmp_path: Path,
+) -> None:
+  from kanibako import persona_store
+
+  calls = []
+  root = tmp_path / "legacy"
+  (root / "Guide" / "claude").mkdir(parents=True)
+
+  def agents(*, root):
+    calls.append(root)
+    return {}
+
+  monkeypatch.setattr(keyspec.config_io, "persona_store_location", lambda: tmp_path / "pg")
+  monkeypatch.setattr(keyspec.config_io, "persona_store_agents", agents)
+  monkeypatch.setattr(keyspec, "persona_store_root", lambda: root)
+  monkeypatch.setattr(persona_store, "persona_store_root", lambda: root)
+  entry = keyspec.resolve_ref("Guide")
+  assert isinstance(entry, keyspec.PersonaEntry)
+  assert entry.persona == "Guide" and entry.harness == "claude"
+  assert calls == [tmp_path / "pg"]
+
+
+def test_broken_registered_input_refuses_without_legacy_fallback_or_secret_trace(
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  import traceback
+
+  def broken(*, root):
+    raise RuntimeError("synthetic-native-secret")
+
+  def forbidden(*args, **kwargs):
+    pytest.fail("broken registered input fell through to legacy")
+
+  monkeypatch.setattr(keyspec.config_io, "persona_store_location", lambda: Path("/synthetic/pg"))
+  monkeypatch.setattr(keyspec.config_io, "persona_store_agents", broken)
+  monkeypatch.setattr(keyspec, "persona_store_root", forbidden)
+  with pytest.raises(SystemExit, match="cannot read the registered persona") as caught:
+    keyspec.resolve_ref("Guide")
+  assert "synthetic-native-secret" not in "".join(
+    traceback.format_exception(caught.type, caught.value, caught.tb)
+  )

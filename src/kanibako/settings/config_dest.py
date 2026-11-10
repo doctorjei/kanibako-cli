@@ -17,7 +17,7 @@ from __future__ import annotations
 import shlex
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, overload
+from typing import TYPE_CHECKING, Callable, overload
 
 from kanibako.agent_ref import parse_agent_address
 from kanibako.errors import ConfigError
@@ -35,6 +35,9 @@ from kanibako.settings.config_keys import (
   _parse_persona_agent_key,
   parse_agent_node_bind_key,
 )
+
+if TYPE_CHECKING:
+  from kanibako.settings.settings_prefs import AgentNames
 
 
 @dataclass(frozen=True)
@@ -188,18 +191,17 @@ def _persona_agent_target(
   agents_root: "Path | None",
   *,
   verb: str,
+  valid_agents: AgentNames | None = None,
 ) -> "AgentFileSlot | str | None":
-  """Resolve a canonical persona key to its FILE write/read location.
+  """Route a canonical persona key using its vocabulary, or lazy discovery.
 
   An :class:`AgentFileSlot`, an ``"Error: ..."`` string for a refused node, or
-  ``None`` when it is not a persona key / *agents_root* was not supplied.
+  ``None`` for a non-persona key or missing *agents_root*.
 
-  ⚑ *verb* goes straight to :func:`_reserved_tier_refusal`, whose docstring states its contract.
-
-  ⚑ The node is taken VERBATIM from *canonical* and only VALIDATED here, never
-  re-swapped — canonicalization happened once, at :func:`resolve_key`.
+  *verb* reaches :func:`_reserved_tier_refusal` unchanged. The node is validated,
+  never re-swapped: :func:`resolve_key` already canonicalized it.
   """
-  parsed = _parse_persona_agent_key(canonical)
+  parsed = _parse_persona_agent_key(canonical, valid_agents=valid_agents)
   if parsed is None:
     return None
   node, tail = parsed

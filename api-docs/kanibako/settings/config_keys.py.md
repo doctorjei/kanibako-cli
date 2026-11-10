@@ -35,11 +35,11 @@ _SCOPE_SHOW_COMMAND = {'system': 'kanibako system show', 'workset': 'kanibako wo
 
 ## Functions
 ```
-def is_path_valued_key(canonical: str) -> bool
-def path_key_anchor(canonical: str, *, active_agent: str | None=None) -> 'tuple[str, str]'
-def agent_node_of(canonical: str) -> str
+def is_path_valued_key(canonical: str, *, valid_agents: AgentNames | None=None) -> bool
+def path_key_anchor(canonical: str, *, active_agent: str | None=None, valid_agents: AgentNames | None=None) -> 'tuple[str, str]'
+def agent_node_of(canonical: str, *, valid_agents: AgentNames | None=None) -> str
 def agent_key_node(raw: str) -> str
-def resolve_key(raw: str) -> str
+def resolve_key(raw: str, *, valid_agents: AgentNames | None=None) -> str
 def plugin_declared_leaf_map() -> 'Mapping[str, Collection[str]]'
 def is_access_key(canonical: str) -> bool
 def access_value_error(canonical: str, value: str) -> str | None
@@ -59,25 +59,25 @@ def is_config_file_only_key(key: str) -> bool
 def has_no_cli_write_route(target: str) -> bool
 def scope_bind_retired_error(canonical: str, *, verb: str) -> str | None
 def agent_node_bind_retired_error(canonical: str, *, verb: str) -> str | None
-def agent_key_reason(node: str, tail: str) -> str | None
-def agent_write_key_error(node: str, tail: str, *, verb: str) -> str | None
-def agent_read_key_error(node: str, tail: str) -> str | None
-def scope_key_reason(canonical: str) -> str | None
+def agent_key_reason(node: str, tail: str, *, valid_agents: AgentNames | None=None) -> str | None
+def agent_write_key_error(node: str, tail: str, *, verb: str, valid_agents: AgentNames | None=None) -> str | None
+def agent_read_key_error(node: str, tail: str, *, valid_agents: AgentNames | None=None) -> str | None
+def scope_key_reason(canonical: str, *, valid_agents: AgentNames | None=None) -> str | None
 def table_leaf_read_cure(canonical: str, active_agent: str | None=None) -> str | None
 def agent_category_read_error(canonical: str, key: str) -> str | None
 def foreign_scope_read_error(canonical: str, key: str, command_scope: 'ConfigLevel | None') -> str | None
-def scope_read_key_error(key: str, command_scope: 'ConfigLevel | None', *, active_agent: str | None=None) -> str | None
+def scope_read_key_error(key: str, command_scope: 'ConfigLevel | None', *, active_agent: str | None=None, valid_agents: AgentNames | None=None) -> str | None
 def scope_key_refusal(key: str, reason: str, command_scope: 'ConfigLevel | None', *, verb: str, cure: str | None=None) -> str
 def _coerce_value(canonical: str, value: 'str | None') -> object | None
 def _scope_direction_error(canonical: str, command_scope: 'ConfigLevel | None') -> str | None
 def _typed_key_node(node_raw: str, *, prefix: str) -> str
-def _resolve_agent_key(raw: str, *, prefix: str) -> str
-def _parse_persona_agent_key(key: str) -> 'tuple[str, str] | None'
-def _is_persona_agent_key(key: str) -> bool
+def _resolve_agent_key(raw: str, *, prefix: str, valid_agents: AgentNames | None=None) -> str
+def _parse_persona_agent_key(key: str, *, valid_agents: AgentNames | None=None) -> 'tuple[str, str] | None'
+def _is_persona_agent_key(key: str, *, valid_agents: AgentNames | None=None) -> bool
 def _is_agent_node_bind_key(key: str) -> bool
 def _parse_agent_node_secret_key(key: str) -> 'tuple[str, str] | None'
 def _is_agent_node_secret_key(key: str) -> bool
-def _persona_display_key(canonical: str) -> str
+def _persona_display_key(canonical: str, *, valid_agents: AgentNames | None=None) -> str
 def _node_secret_display_key(canonical: str) -> str
 def _is_bare_env_key(key: str) -> bool
 def _file_scope_match(family: 're.Pattern[str]', key: str) -> 're.Match[str] | None'
@@ -92,7 +92,7 @@ def _is_scope_secret_key(key: str) -> bool
 def _is_pref_key(key: str) -> bool
 def _pref_level(command_scope: 'ConfigLevel | None') -> str | None
 def _pref_write_site_error(canonical: str, command_scope: 'ConfigLevel | None', *, verb: str='set') -> str | None
-def _pref_target_error(canonical: str, command_scope: 'ConfigLevel | None') -> str | None
+def _pref_target_error(canonical: str, command_scope: 'ConfigLevel | None', *, valid_agents: AgentNames | None=None) -> str | None
 def _pref_sections_leaf(canonical: str) -> 'tuple[tuple[str, ...], str]'
 def _scope_bind_match(key: str) -> 're.Match[str] | None'
 def _agent_bind_match(key: str) -> 're.Match[str] | None'
@@ -101,8 +101,8 @@ def _is_scope_bind_key(key: str) -> bool
 def _retired_because(category: str) -> str
 def _bind_route_retired_message(display_key: str, *, verb: str, route: str, why: str, cure: str, survives: str) -> str
 def _is_path_category_key(key: str) -> bool
-def _has_dedicated_route(canonical: str) -> bool
-def _probes_at_set_time(canonical: str) -> bool
+def _has_dedicated_route(canonical: str, *, valid_agents: AgentNames | None=None) -> bool
+def _probes_at_set_time(canonical: str, *, valid_agents: AgentNames | None=None) -> bool
 ```
 
 ## Classes

@@ -604,16 +604,16 @@ spelling's refusal prints. A level whose file is absent gets an empty view.
 The five cascade files read for *purpose*; *base_path* defaults to `settings_base_path()`, the site
 base file.
 
-```refuse_undeclared_per_file(files) -> None```
-Stage (h): RAISE for the first file, MOST-SPECIFIC FIRST (`_H_AUDITED_LEVELS` = box, workset,
-system, base), whose OWN view carries an undeclared entry. The walk does not follow the read's
-order: `NARROW` reads base→box, and its order would name the WORKSET file when both carry one.
-Callers: the launch (`settings_launch`, after its §0 audit) and `commands/workset_cmd`.
+```refuse_undeclared_per_file(files, *, oracle=keyspace_verdict) -> None```
+Stage (h): RAISE for the first file whose OWN view carries an undeclared entry.
+`_H_AUDITED_LEVELS` orders box, workset, system, base, independent of read order;
+`NARROW` reads base→box and would otherwise name workset when both carry faults.
+Callers: launch (`settings_launch`, after §0) and `commands/workset_cmd`.
 
-```refuse_undeclared_entries(view, *, level, path, stored=None) -> None```
-RAISE when *view* carries an undeclared entry, naming EVERY such key and *path*, with the cure to
-remove them BY HAND. `retired_cure` runs first, since a retired spelling is the more specific fault.
-`DISPLAY` never reaches it: `show` LISTS undeclared entries (Q5).
+```refuse_undeclared_entries(view, *, level, path, stored=None, oracle=keyspace_verdict) -> None```
+Name EVERY undeclared key and *path*, with a BY HAND removal cure. `retired_cure`
+answers first. Both audits accept the resolve-local *oracle*; omission retains global
+judgment. `DISPLAY` never reaches this: `show` LISTS undeclared entries (Q5).
 
 ```undeclared_listing(findings) -> tuple[str, str, str]```
 `(listing, count phrase, pronoun)` for `undeclared_store_paths` findings — the one listing stage (h)
@@ -625,14 +625,13 @@ RAISE the TAILORED refusal when a loaded file's view still carries a RETIRED spe
 only once §0 has decided to refuse, to pick WHICH refusal the user reads; nothing is re-read.
 Callers: `settings_launch._refuse_undeclared_snapshot` and `refuse_undeclared_entries`.
 
-```agent_record(path: Path, *, node: str, purpose: ReadPurpose) -> AgentConfig```
-THE ONE READER of an agent's settings file: one `read_settings_files` read, the shape judged by
-`agent_file.level_table` (the same view `agent_file_partial` takes), and the record built by
-`agent_file.record`, then `refuse_undeclared_entries` over the level's contained tables. Every
-reader — the launch, `agent show` / `info` / `list` / `get` — takes the record from here, so one
-file gets one verdict. Returns an empty record if the file does not exist. A store folder named for
-the file alias (`self`), or a present folder named for the reserved `default` tier, is refused
-through `agent_store_refusal`.
+```agent_record(path: Path, *, node: str, purpose: ReadPurpose, valid_agents: AgentNames | None = None) -> AgentConfig```
+THE ONE READER: `read_settings_files` reads once; `agent_file.level_table` judges the same shape
+`agent_file_partial` takes; `agent_file.record` and `refuse_undeclared_entries` audit own and
+contained tables. Supplied *valid_agents* reaches the record unchanged; contained scopes use
+`key_class` with its leaf map and membership-neutral `ANY_AGENT`. Omission retains legacy judges
+and discovery laziness. Repair bypasses this reader. An absent file returns an empty record;
+a folder named `self`, or a present `default` folder, refuses through `agent_store_refusal`.
 
 ```agent_store_refusal(store: Path, why: str, *, fix: str | None = None) -> SettingsError```
 THE refusal of folder *store* as an agent store, because of *why*. The default cure renames or moves

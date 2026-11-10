@@ -3672,7 +3672,7 @@ class TestANarrowTableDestIsMountedOnce:
       selection_level=None,
     )
 
-  def _hub(self, std, proj, mounts, tmp_path, run_dir=None, hub_cls=None):
+  def _hub(self, std, proj, mounts, tmp_path, run_dir=None, hub_cls=None, agent_identity=None):
     """The REAL hub start, with the hub process itself stubbed out; returns the
     runtime dir it used.
 
@@ -3710,8 +3710,31 @@ class TestANarrowTableDestIsMountedOnce:
         auth_src=SimpleNamespace(creds_shared=True),
         extra_mounts=mounts,
         selection_level=None,
+        agent_identity=agent_identity,
       )
     return run_dir
+
+  @pytest.mark.parametrize("target_name", [None, "shell", "Goose", "Claude"])
+  def test_hub_keeps_selected_target_separate_from_lookup_labels(
+    self, std, config, project_dir, tmp_path, target_name
+  ):
+    from unittest.mock import MagicMock
+
+    from kanibako.agent_ref import AgentIdentity
+    from kanibako.utils import box_labels
+
+    proj = self._box(std, config, project_dir)
+    identity = (
+      None
+      if target_name is None
+      else AgentIdentity("claude", "claude", "Guide", "Claude", target_name, None)
+    )
+    hub_cls = MagicMock()
+    self._hub(std, proj, [], tmp_path, hub_cls=hub_cls, agent_identity=identity)
+    context = hub_cls.return_value.start.call_args.args[1]
+    assert context.target_name == target_name
+    assert context.labels == box_labels(proj)
+    assert "kanibako.target" not in context.labels
 
   @staticmethod
   def _at(mounts, dest):
@@ -3932,3 +3955,384 @@ def test_a_narrow_mount_replaces_only_the_mount_at_its_own_dest():
   _add_narrow_mounts(mounts, [narrow])
 
   assert mounts == [kept, narrow]
+
+
+class TestPersonaCredentialResolve:
+  @pytest.fixture
+  def credential(self, tmp_path):
+    from kanibako.settings.settings_categories import PersonaCredential
+
+    return PersonaCredential("Claude", tmp_path / "unread-pg-root", "TOK", False)
+
+  @pytest.fixture
+  def identity(self, tmp_path):
+    from kanibako.agent_ref import AgentIdentity
+
+    return AgentIdentity("claude", "Claude", "Guide", "Claude", "claude", tmp_path / "entry")
+
+  @pytest.fixture(autouse=True)
+  def no_material_access(self, monkeypatch):
+    from unittest.mock import Mock
+
+    for name in (
+      "locate_entry",
+      "read_registered_persona",
+      "read_persona_bundle",
+      "resolve_secret_path",
+    ):
+      monkeypatch.setattr(
+        f"kanibako.persona_store.{name}", Mock(side_effect=AssertionError("PG read"))
+      )
+    monkeypatch.setattr(
+      "kanibako.settings.config_io.fetch_persona_secret",
+      Mock(side_effect=AssertionError("credential fetch")),
+    )
+    monkeypatch.setattr("subprocess.Popen", Mock(side_effect=AssertionError("credential spawn")))
+    for method in ("stat", "open", "read_bytes", "read_text", "write_bytes", "write_text"):
+      original = getattr(Path, method)
+
+      def guarded(path, *args, _original=original, **kwargs):
+        if "unread-pg-root" in path.parts or path.name == "winning-file":
+          raise AssertionError(f"credential source access: {path}")
+        return _original(path, *args, **kwargs)
+
+      monkeypatch.setattr(Path, method, guarded)
+
+  def build(self, std, config, project_dir, tmp_path, *, agent=None, system=None, box=None, **kw):
+    from kanibako.settings.config_io import dump_doc
+    from kanibako.settings.paths import box_workset_settings_paths
+
+    proj = resolve_project(std, config, str(project_dir), initialize=True)
+    box_path, _ = box_workset_settings_paths(proj)
+    paths = []
+    for name, doc in (("agent", agent), ("system", system), ("box", box)):
+      if doc is not None:
+        path = box_path if name == "box" else tmp_path / f"{name}.yaml"
+        dump_doc(path, doc)
+        paths.append(path)
+        if name != "box":
+          kw[f"{name}_cfg_path" if name == "agent" else "system_settings_path"] = path
+    before = {path: path.read_bytes() for path in paths}
+    snapshot, deliveries = _resolve(std, proj, **kw)
+    assert {path: path.read_bytes() for path in before} == before
+    assert "PersonaCredential" not in repr(snapshot)
+    assert "unread-pg-root" not in repr(snapshot)
+    return snapshot, deliveries
+
+  def test_pg_metadata_reaches_only_the_returned_state(
+    self, std, config, project_dir, tmp_path, credential, identity
+  ):
+    kwargs = dict(agent_identity=identity, required_var="TOK")
+    snapshot, result = self.build(
+      std, config, project_dir, tmp_path, persona_credential=credential, **kwargs
+    )
+    state = result.credential_states["TOK"]
+    assert state.kind == "pg"
+    assert state.declaration.persona_credential is credential
+    assert state.declaration.host_src is None
+    assert result.secrets == [state.declaration]
+    assert result.active_secret_names == {"TOK": ["agent.claude.secret_path.TOK"]}
+    control, absent = self.build(std, config, project_dir, tmp_path, **kwargs)
+    assert snapshot == control
+    assert absent.credential_states["TOK"].kind == "absent"
+
+  @pytest.mark.parametrize("source", ["agent", "pref", "box"])
+  @pytest.mark.parametrize("value", [None, "/winning-file"])
+  def test_file_and_null_overrides_are_the_only_returned_source(
+    self, std, config, project_dir, tmp_path, credential, identity, source, value
+  ):
+    if source == "agent":
+      doc = {"agent": {"self": {"secret_path": {"TOK": value}}}}
+    elif source == "pref":
+      doc = {"box": {"pref": {"agent": {"claude": {"secret_path": {"TOK": value}}}}}}
+    else:
+      doc = {"box": {"box": {"secret_path": {"TOK": value}}}}
+    _, result = self.build(
+      std,
+      config,
+      project_dir,
+      tmp_path,
+      persona_credential=credential,
+      agent_identity=identity,
+      required_var="TOK",
+      **doc,
+    )
+    state = result.credential_states["TOK"]
+    assert state.kind == ("keyless-null" if value is None else "file")
+    assert state.declaration.persona_credential is None
+    assert state.declaration.host_src == value
+    assert result.secrets == ([] if value is None else [state.declaration])
+    assert result.keyless_persona is None
+
+  @pytest.mark.parametrize(
+    "reset",
+    [
+      pytest.param(
+        {"secret_path": None},
+        marks=pytest.mark.writes_undeclared(
+          "agent.claude.secret_path", reason="Refuses the ancestor reset."
+        ),
+      ),
+      pytest.param(
+        None,
+        marks=pytest.mark.writes_undeclared("agent.claude", reason="Refuses the ancestor reset."),
+      ),
+    ],
+  )
+  def test_ancestor_reset_faults_do_not_emit_credential_state(
+    self, std, config, project_dir, tmp_path, credential, identity, reset
+  ):
+    from unittest.mock import Mock
+    from kanibako.settings import settings_categories
+
+    with patch.object(settings_categories, "launch_deliveries", Mock()) as deliver:
+      with pytest.raises(SettingsError):
+        self.build(
+          std,
+          config,
+          project_dir,
+          tmp_path,
+          system={"agent": {"claude": reset}},
+          persona_credential=credential,
+          agent_identity=identity,
+          required_var="TOK",
+        )
+    deliver.assert_not_called()
+
+  @pytest.mark.parametrize("cli", ["", " ", "supplied"])
+  def test_cli_suppression_is_carried_by_the_existing_arbitration(
+    self, std, config, project_dir, tmp_path, credential, identity, cli
+  ):
+    _, result = self.build(
+      std,
+      config,
+      project_dir,
+      tmp_path,
+      persona_credential=credential,
+      agent_identity=identity,
+      required_var="TOK",
+      cli_env={"TOK": cli},
+    )
+    state = result.credential_states["TOK"]
+    assert state.kind == ("cli-value" if cli.strip() else "cli-blank-suppressed")
+    assert state.declaration.persona_credential is credential
+    assert result.secrets == []
+    assert result.active_secret_names == {"TOK": ["agent.claude.secret_path.TOK"]}
+
+  def test_exact_mask_suppression_is_not_keyless(
+    self, std, config, project_dir, tmp_path, credential, identity
+  ):
+    from kanibako.settings.settings_categories import SECRET_MOUNT_DIR
+
+    _, result = self.build(
+      std,
+      config,
+      project_dir,
+      tmp_path,
+      box={"box": {"masks": {f"{SECRET_MOUNT_DIR}/TOK": True}}},
+      persona_credential=credential,
+      agent_identity=identity,
+      required_var="TOK",
+    )
+    state = result.credential_states["TOK"]
+    assert state.kind == "exact-mask-suppressed"
+    assert state.declaration.persona_credential is credential
+    assert state.suppressed_by.category == "masks"
+    assert result.secrets == []
+    assert result.keyless_persona is None
+
+  @pytest.mark.parametrize("var", ["TOK", None])
+  def test_keyless_metadata_retains_only_its_real_variable(
+    self, std, config, project_dir, tmp_path, credential, identity, var
+  ):
+    from dataclasses import replace
+
+    keyless = replace(credential, var=var, keyless=True)
+    _, result = self.build(
+      std,
+      config,
+      project_dir,
+      tmp_path,
+      persona_credential=keyless,
+      agent_identity=identity,
+      required_var=var,
+    )
+    assert result.secrets == []
+    if var is None:
+      assert result.keyless_persona is keyless
+      assert result.credential_states == {}
+      assert result.active_secret_names == {}
+    else:
+      assert result.keyless_persona is None
+      assert result.credential_states[var].kind == "keyless-null"
+      assert result.active_secret_names == {var: [f"agent.claude.secret_path.{var}"]}
+
+  @pytest.mark.parametrize("cli", [None, "", "supplied"])
+  def test_required_absence_has_an_explicit_state_without_metadata(
+    self, std, config, project_dir, tmp_path, cli
+  ):
+    _, result = self.build(
+      std,
+      config,
+      project_dir,
+      tmp_path,
+      required_var="TOK",
+      cli_env=None if cli is None else {"TOK": cli},
+    )
+    state = result.credential_states["TOK"]
+    assert state.kind == (
+      "absent" if cli is None else "cli-value" if cli else "cli-blank-suppressed"
+    )
+    assert state.declaration is None
+    assert result.secrets == []
+    assert result.active_secret_names == {}
+
+  @pytest.mark.parametrize("mismatch", ["metadata", "node", "registered", "legacy"])
+  def test_identity_mismatch_refuses_before_any_resolution(
+    self, std, config, project_dir, tmp_path, credential, identity, mismatch
+  ):
+    from dataclasses import replace
+    from unittest.mock import Mock
+    from kanibako.settings import settings_launch
+
+    if mismatch == "metadata":
+      credential = replace(credential, registered_name="Other")
+    elif mismatch == "node":
+      identity = replace(identity, node="other")
+    elif mismatch == "registered":
+      identity = replace(identity, registered_name="Other")
+    else:
+      identity = replace(identity, registered_name=None)
+    proj = resolve_project(std, config, str(project_dir), initialize=True)
+    with patch.object(settings_launch, "resolve_inputs", Mock()) as resolve:
+      with pytest.raises(SettingsError, match="PG credential"):
+        _resolve(std, proj, agent_identity=identity, persona_credential=credential)
+    resolve.assert_not_called()
+
+  def test_omitted_metadata_keeps_the_existing_file_delivery(
+    self, std, config, project_dir, tmp_path
+  ):
+    _, result = self.build(
+      std, config, project_dir, tmp_path, box={"box": {"secret_path": {"TOK": "/winning-file"}}}
+    )
+    state = result.credential_states["TOK"]
+    assert state.kind == "file"
+    assert state.declaration.host_src == "/winning-file"
+    assert state.declaration.persona_credential is None
+    assert result.secrets == [state.declaration]
+    assert result.keyless_persona is None
+
+  @pytest.mark.parametrize("cli", ["supplied", "", " \t "])
+  @pytest.mark.parametrize("source", ["file", "null", "absent", "mask"])
+  def test_resolve_to_assembler_preserves_only_the_file_override_announcement(
+    self, std, config, project_dir, tmp_path, cli, source
+  ):
+    from unittest.mock import Mock
+    from kanibako.commands.start import _assemble_launch_env, _launch_env_map
+    from kanibako.settings.settings_categories import SECRET_MOUNT_DIR
+
+    box = (
+      None
+      if source == "absent"
+      else {"box": {"secret_path": {"TOK": None if source == "null" else "/winning-file"}}}
+    )
+    if source == "mask":
+      box["box"]["masks"] = {f"{SECRET_MOUNT_DIR}/TOK": True}
+    snapshot, result = self.build(
+      std,
+      config,
+      project_dir,
+      tmp_path,
+      box=box,
+      cli_env={"TOK": cli},
+      required_var="TOK",
+    )
+    logger = Mock()
+    mounts = []
+    with patch("kanibako.commands.start._emit_secret_mounts", return_value=([], [])) as emit:
+      env, exports = _assemble_launch_env(
+        deliveries=result,
+        env_slots=_launch_env_map(snapshot),
+        extra_mounts=mounts,
+        logger=logger,
+      )
+    assert env["TOK"] == cli
+    assert exports == [] and mounts == []
+    emit.assert_called_once_with([], logger)
+    if source == "file":
+      logger.info.assert_called_once_with(
+        "secret_path: -e %s overrides %s for this launch",
+        "TOK",
+        "box.secret_path.TOK",
+      )
+    else:
+      logger.info.assert_not_called()
+
+  @pytest.mark.parametrize("cli", [None, "supplied", "", " \t "])
+  @pytest.mark.parametrize("source", ["file", "null", "absent", "mask"])
+  def test_final_gate_consumes_real_returned_states_without_a_second_walk(
+    self, std, config, project_dir, tmp_path, source, cli
+  ):
+    from dataclasses import replace
+    from unittest.mock import Mock
+    from kanibako.commands.start import _preflight_resolved_persona_load, _launch_env_map
+    from kanibako.plugins.claude.target import ClaudeTarget
+    from kanibako.settings.settings_categories import SECRET_MOUNT_DIR
+    from kanibako.targets.base import PersonaProbeOutcome
+
+    box = (
+      None
+      if source == "absent"
+      else {"box": {"secret_path": {"TOK": None if source == "null" else "/winning-file"}}}
+    )
+    if source == "mask":
+      box["box"]["masks"] = {f"{SECRET_MOUNT_DIR}/TOK": True}
+    snapshot, result = self.build(
+      std,
+      config,
+      project_dir,
+      tmp_path,
+      box=box,
+      required_var="TOK",
+      cli_env={} if cli is None else {"TOK": cli},
+    )
+    target = Mock()
+    target.descriptor = replace(
+      ClaudeTarget().descriptor,
+      persona=replace(ClaudeTarget().descriptor.persona, token_var="TOK"),
+    )
+    target.verify_persona.return_value = PersonaProbeOutcome.passed()
+    with (
+      patch("kanibako.commands.start._secret_pointer_usable", return_value=True) as usable,
+      patch(
+        "kanibako.settings.settings_launch.snapshot_category_entries", side_effect=AssertionError
+      ),
+      patch(
+        "kanibako.settings.settings_categories.secret_path_winners", side_effect=AssertionError
+      ),
+      patch("kanibako.settings.store_collapse.collapse_env", side_effect=AssertionError),
+    ):
+      endpoint, error, provider = _preflight_resolved_persona_load(
+        "claude",
+        result,
+        "https://endpoint.invalid",
+        None,
+        target=target,
+        env=_launch_env_map(snapshot),
+        cli_env={} if cli is None else {"TOK": cli},
+        probe_model=None,
+        provider_model=None,
+      )
+    assert provider is None
+    assert usable.call_count == (1 if source == "file" and cli is None else 0)
+    if cli is not None and not cli.strip():
+      assert endpoint == "https://endpoint.invalid" and error is None
+      target.verify_persona.assert_not_called()
+    elif cli is not None or source in ("file", "null"):
+      assert endpoint == "https://endpoint.invalid" and error is None
+      target.verify_persona.assert_called_once()
+      assert target.verify_persona.call_args.kwargs["env"] == _launch_env_map(snapshot)
+      assert target.verify_persona.call_args.kwargs.get("token") == cli
+    else:
+      assert endpoint is None and "no usable auth token" in error
+      target.verify_persona.assert_not_called()

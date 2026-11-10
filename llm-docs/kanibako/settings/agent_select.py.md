@@ -1,9 +1,9 @@
 # Agent Selection — which agent a box runs, and why the answer is installed
 
-`agent_select` is the ONE seam every command uses to answer *"which agent is this box's?"*. It
-resolves the settings side of the question with a narrow pre-pass, applies `--agent` on top, and
-hands the winner to `kanibako.settings.config.resolve_agent_identity`, which owns everything that is NOT a
-key: name validation against the installed set and persona-ref canonicalization.
+`agent_select` resolves the box's agent through a narrow settings pre-pass and `--agent`.
+`config.resolve_agent_identity` owns explicit-plugin precedence, public PG lookup, and legacy
+canonicalization. `AgentSelection.registered_persona` retains captured input;
+launch projection and credential retrieval never rediscover its store root.
 
 🛑 **IF NOTHING NAMES AN AGENT, NOTHING LAUNCHES** (keyspec §2b). The installed-agent COUNT decides
 nothing — not even one installed plugin is picked for the user — and the two no-name states get two
@@ -19,10 +19,9 @@ as STRINGS, so those spellings request an agent by that name and fail as `AgentN
 ⚑ The null state is reachable BY TYPO — `null`, `Null`, `NULL`, `None`, `~` and a key left blank after its
 colon all read as Python `None`.
 
-The module is deliberately thin. It contains one dataclass, two context builders
-(`launch_resolve_ctx` and its box-less body `host_resolve_ctx`), and one resolve function; the
-interesting content is the set of rules below, all of which are spec rules
-(`specs/settings-keyspace-1.8.0.md` §1A / §2b / §2g / §2h) rather than local choices.
+Known-name pref prefixes are judged first; unknown nodes await one facade call.
+Dependency overlays survive. `apply_prefs` checks captured requests with selected-harness
+vocabulary before return; captured input must own that identity.
 
 ## The selection order, and where each tier is settled
 
@@ -32,10 +31,10 @@ Selection order (spec §2h, least to most specific):
 system.agent  <  workset pref  <  box pref  <  --agent (the §1A CLI level)
 ```
 
-The first three are settled INSIDE the settings cascade. `system.agent` is the stored default, and
-a `pref.system.agent` request from the workset or box file overrides it, box beating workset by
-assignment order. This module resolves that much with a NARROW pre-pass,
-`kanibako.settings.settings_launch.resolve_selected_agent`, and then applies `--agent` on top.
+The first three resolve through the cascade: workset prefs override the system default;
+box prefs override workset prefs. `settings_launch.selection_from_overlays` shares the strict
+`resolve_selected_agent` helper's expansion, preserving nonselection dependencies. An explicit
+`--agent` bypasses that pre-pass. No staged selection escapes before pref validation.
 
 `SELECTION_KEY` is the key naming the agent a box runs (spec §2g), re-exported from here so callers
 spell it once.

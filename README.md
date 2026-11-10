@@ -312,16 +312,16 @@ Requirements: the `code` CLI on your PATH, the Dev Containers extension
 kanibako code --remote <host> <project>
 ```
 
-attaches your **local** VS Code to a box on a **remote** kanibako host —
-no relay service, no VS Code on the remote host. `<host>` is an opaque SSH
-destination resolved by your own `~/.ssh/config`. kanibako runs the box
-lifecycle on the remote host over plain SSH, and the container-engine leg
-rides a kanibako-owned SSH tunnel: one OpenSSH `ControlPersist` master
-forwards the remote rootless podman socket to a local unix socket, and local
-podman dials that socket. podman's own golang `ssh:` transport is **not**
-used, so no `ssh-agent` is required, your `~/.ssh/config` is fully honored
-(aliases, ProxyJump, ports, `IdentityFile`), and per-call SSH handshake
-overhead is gone once the first call warms the tunnel.
+attaches **local** VS Code to a **remote** box without a relay or remote VS Code.
+`<host>` is an opaque SSH destination; your `~/.ssh/config` controls aliases,
+ProxyJump, ports, and `IdentityFile`. Lifecycle uses plain SSH. For engine calls,
+one kanibako-owned OpenSSH `ControlPersist` master forwards remote rootless
+podman's socket to a local unix socket. Local podman dials it without golang
+`ssh:` transport, `ssh-agent`, or repeated handshakes after warmup.
+
+Remote extension suggestions use the container's creation-time target, never local
+agent settings. Older containers use their agent stamp. Suggestions remain
+additive in image-shared configs, not exclusive to one box.
 
 Requirements:
 
@@ -444,10 +444,10 @@ reauth`. The two spellings of `create` are the exception: `kanibako create --age
 <name>` persists the request into the new box, so a plain `kanibako start` runs it
 -- change it afterwards with `kanibako box set pref.system.agent=<name>`.
 
-If a name resolves, it is used (and an error is raised if that agent's plugin
-isn't installed). If **nothing** resolves, kanibako **refuses to launch**. It never
-picks for you -- not even when exactly one agent plugin is installed. Which refusal
-you get depends on which of two states `system.agent` is in:
+An explicitly named installed plugin wins; otherwise a registered Persona Grata
+name may select its harness, whose plugin must be installed. Legacy names work.
+If **nothing** resolves, kanibako **refuses to launch**, never choosing by
+plugin count. Unset and explicit-null defaults have different cures:
 
 | `system.agent` | Means | Behavior |
 |---|---|---|

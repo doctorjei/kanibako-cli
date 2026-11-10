@@ -27,11 +27,11 @@ Derive = Callable[[str, Callable[[str], object]], object]
 ```
 def is_cascade_blindness(reason: str) -> bool
 @overload
-def expand(snapshot: KeyStore, ctx: ResolveCtx, *, null_sources: NullSources | None=None, refs_read: RefsRead | None=None, dest_keys: DestKeys | None=None, derive: Derive | None=None) -> KeyStore
+def expand(snapshot: KeyStore, ctx: ResolveCtx, *, null_sources: NullSources | None=None, refs_read: RefsRead | None=None, dest_keys: DestKeys | None=None, derive: Derive | None=None, valid_agents: AgentNames | None=None) -> KeyStore
 @overload
-def expand(snapshot: KeyStore, ctx: ResolveCtx, *, collect_errors: bool, null_sources: NullSources | None=None, refs_read: RefsRead | None=None, dest_keys: DestKeys | None=None, derive: Derive | None=None) -> KeyStore | tuple[KeyStore, dict[str, str]]
-def expand(snapshot: KeyStore, ctx: ResolveCtx, *, collect_errors: bool=False, null_sources: NullSources | None=None, refs_read: RefsRead | None=None, dest_keys: DestKeys | None=None, derive: Derive | None=None) -> KeyStore | tuple[KeyStore, dict[str, str]]
-def _absent_reason(dotted: str) -> str | None
+def expand(snapshot: KeyStore, ctx: ResolveCtx, *, collect_errors: bool, null_sources: NullSources | None=None, refs_read: RefsRead | None=None, dest_keys: DestKeys | None=None, derive: Derive | None=None, valid_agents: AgentNames | None=None) -> KeyStore | tuple[KeyStore, dict[str, str]]
+def expand(snapshot: KeyStore, ctx: ResolveCtx, *, collect_errors: bool=False, null_sources: NullSources | None=None, refs_read: RefsRead | None=None, dest_keys: DestKeys | None=None, derive: Derive | None=None, valid_agents: AgentNames | None=None) -> KeyStore | tuple[KeyStore, dict[str, str]]
+def _absent_reason(dotted: str, valid_agents: AgentNames | None=None) -> str | None
 def _is_whole_value_ref(value: str) -> str | None
 def _is_whole_value_var(value: str) -> str | None
 def _whole_braced(value: str, kind: str) -> str | None
@@ -53,7 +53,7 @@ class _LenientDefect(Exception):
 class _ExpandedShapeError(SettingsError):
 
 class _Expander:
-    def __init__(self, snapshot: KeyStore, ctx: ResolveCtx, *, collect_errors: bool=False, derive: Derive | None=None) -> None
+    def __init__(self, snapshot: KeyStore, ctx: ResolveCtx, *, collect_errors: bool=False, derive: Derive | None=None, valid_agents: AgentNames | None=None) -> None
 
     def run(self) -> KeyStore
 

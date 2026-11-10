@@ -13,15 +13,17 @@ import sys
 import textwrap
 from collections.abc import Callable, Mapping
 from pathlib import Path, PurePosixPath
-from typing import TYPE_CHECKING, Literal, NamedTuple, overload
+from typing import TYPE_CHECKING, Any, Literal, NamedTuple, overload
 
 if TYPE_CHECKING:
   from kanibako.settings.agent_select import AgentSelection
   from kanibako.persona_store import PersonaBundle
+  from kanibako.secret_delivery import SecretPayload
   from kanibako.settings.config import BootstrapConfig, KanibakoConfig
   from kanibako.channels.helpers import SpawnBudget
   from kanibako.settings.keystore import KeyStore
   from kanibako.settings.paths import ProjectPaths, StandardPaths
+  from kanibako.settings.settings_categories import PersonaCredential
   from kanibako.settings.settings_launch import AuthSource
   from kanibako.settings.settings_prefs import PrefRequest
   from kanibako.settings.store_collapse import CollapsedCopy, CollapsedEnvs
@@ -50,7 +52,11 @@ from kanibako.settings.config import (
   read_system_agent,
   system_helpers_leaf_int,
 )
-from kanibako.settings.config_interface import persist_creation_env, persist_creation_level
+from kanibako.settings.config_interface import (
+  identity_valid_agents,
+  persist_creation_env,
+  persist_creation_level,
+)
 from kanibako.settings.settings_launch import load_merged_config
 from kanibako.settings import core_defaults
 from kanibako.runtime.container import (
@@ -119,7 +125,6 @@ from kanibako.agent_ref import (
   harness_of,
   parse_agent_address,
   persona_of,
-  with_harness,
 )
 from kanibako.channels.roots import (
   ChannelLinkError,
@@ -137,6 +142,7 @@ from kanibako.utils import (
   box_labels,
   container_name_for,
   container_name_segments,
+  launch_labels,
   legacy_container_names,
   render_socket_identity,
   short_hash,
@@ -221,9 +227,18 @@ def _link_persona_share(
   # that dies naming nothing.  An existing dir made this call a no-op anyway, so the
   # only behavior that changes is the raise — and a symlink to a real file shares it
   # exactly as a link to a dir shares a dir.
-  if not harness_dir.exists():
-    harness_dir.mkdir(parents=True, exist_ok=True)
-  node_link.parent.mkdir(parents=True, exist_ok=True)
+  try:
+    if not harness_dir.exists():
+      harness_dir.mkdir(parents=True, exist_ok=True)
+    node_link.parent.mkdir(parents=True, exist_ok=True)
+  except (FileExistsError, NotADirectoryError):
+    logger.debug(
+      "persona %s: non-directory ancestor of %s or %s; leaving as-is",
+      what,
+      node_link,
+      harness_dir,
+    )
+    return
 
   if node_link.is_symlink():
     # An existing symlink: no-op if it already points at the harness dir,
@@ -254,16 +269,16 @@ def _link_persona_share(
   logger.debug("persona %s: linked %s -> %s", what, node_link, harness_dir)
 
 
-def ensure_persona_share_symlinks(std, agent_id, target) -> None:
+def ensure_persona_share_symlinks(
+  std, agent_id, target, *, agent_identity: AgentIdentity | None = None
+) -> None:
   """Point a persona's agent-scope shared stores at the harness's (symlink shim).
 
-  A persona is a distinct agent NODE (``navigator℘claude``) whose ``agents/<node>/``
-  dir is its own store, but whose template/common/canon SHOULD be shared with the
-  bare harness (``agents/claude/``) rather than starting empty.  The resolver DOES
-  re-root a declaration onto the node (``agent_categories_for_node``); what makes
-  that resolve to the harness's content is the SYMLINK laid here.  THREE whole-leaf
-  shares plus the remaining declared sources, one mechanism
-  (:func:`_link_persona_share`):
+  *agent_identity*, when supplied, describes *agent_id* and selects the resolved
+  harness; otherwise legacy ref grammar selects it. Both stores belong to
+  kanibako, never PG's entry_path. Node-rooted declarations inherit harness content
+  through these links; existing node paths remain user-owned. Three whole-leaf
+  shares plus remaining declared sources use :func:`_link_persona_share`:
 
   * ``template`` — the seed-layer-2 SOURCE store: ``agents/<node>/template``
     becomes a symlink -> ``agents/<harness>/template``.
@@ -342,7 +357,7 @@ def ensure_persona_share_symlinks(std, agent_id, target) -> None:
   ``{config.agents}/<store_dirname>``) — so this shim and the resolver cannot drift:
   they are two consumers of ONE layout fact, reached the two ways.
   """
-  harness = harness_of(agent_id)
+  harness = agent_identity.target_name if agent_identity is not None else harness_of(agent_id)
   if agent_id == harness:
     return
 
@@ -1409,13 +1424,7 @@ def _focused_agent_snapshot(
     agent_identity=agent_identity,
     system_path=system_settings_path,
   )
-  valid_agents = None
-  if agent_identity is not None and agent_identity.registered_name is not None:
-    from kanibako.settings.settings_prefs import default_valid_agents
-
-    valid_agents = default_valid_agents().with_harnesses(
-      {agent_identity.node: agent_identity.target_name}
-    )
+  valid_agents = identity_valid_agents(agent_identity)
   return settings_launch.build_launch_snapshot(
     **inputs.as_kwargs(),
     agent_name=agent_id,
@@ -2769,6 +2778,7 @@ def _assemble_image_sharing_mounts(
   extra_mounts,
   logger,
   selection_level,
+  agent_identity: AgentIdentity | None = None,
 ):
   """Append host image-storage share mounts to ``extra_mounts`` (conditional).
 
@@ -2809,6 +2819,7 @@ def _assemble_image_sharing_mounts(
       desc=None,
       install=None,
       target=None,
+      agent_identity=agent_identity,
       graph_root=graph_root,
       storage_conf_path=storage_conf_path,
       deliver_creds=auth_src.creds_shared,
@@ -2906,10 +2917,25 @@ def _assemble_launch_env(
   # named by both an ``env`` key and a ``secret_path`` key before this point, so
   # the only way one VAR reaches both is a per-run ``-e`` filling a vacancy.  The
   # shim exports after podman applies the env, so a mounted secret would win.
+  announced = set()
+  for var, state in getattr(deliveries, "credential_states", {}).items():
+    declaration = state.declaration
+    if (
+      state.kind in ("cli-value", "cli-blank-suppressed")
+      and declaration is not None
+      and declaration.host_src is not None
+      and declaration.persona_credential is None
+      and state.suppressed_by is None
+    ):
+      logger.info("secret_path: -e %s overrides %s for this launch", var, declaration.key)
+      announced.add(var)
   secrets = []
   for e in deliveries.secrets:
+    if e.persona_credential is not None:
+      continue
     if e.name in env_slots:
-      logger.info("secret_path: -e %s overrides %s for this launch", e.name, e.key)
+      if e.name not in announced:
+        logger.info("secret_path: -e %s overrides %s for this launch", e.name, e.key)
       continue
     secrets.append(e)
   secret_mounts, secret_export_vars = _emit_secret_mounts(secrets, logger)
@@ -2940,6 +2966,7 @@ def _start_helper_hub(
   auth_src,
   extra_mounts,
   selection_level,
+  agent_identity: AgentIdentity | None = None,
 ):
   """Start the helper hub + append its mounts; return its :class:`HubProcess`.
 
@@ -2997,6 +3024,7 @@ def _start_helper_hub(
     image=image,
     container_name_segments=container_name_segments(proj),
     labels=box_labels(proj),
+    target_name=agent_identity.target_name if agent_identity is not None else None,
     shell_path=proj.shell_path,
     helpers_dir=helpers_dir,
     socket_path=socket_path,
@@ -3065,6 +3093,7 @@ def _start_helper_hub(
     desc=None,
     install=None,
     target=None,
+    agent_identity=agent_identity,
     socket_path=socket_path,
     log_path=log_path,
     deliver_creds=auth_src.creds_shared,
@@ -3100,6 +3129,7 @@ def _deliver_spawn_budget(
   auth_src,
   extra_mounts,
   selection_level,
+  agent_identity: AgentIdentity | None = None,
 ) -> None:
   """Write the box's resolved spawn budget and bind it ro at ``~/spawn.yaml``.
 
@@ -3130,6 +3160,7 @@ def _deliver_spawn_budget(
     desc=None,
     install=None,
     target=None,
+    agent_identity=agent_identity,
     budget_path=budget_path,
     deliver_creds=auth_src.creds_shared,
     include_base_families=False,
@@ -3817,7 +3848,7 @@ def _run_container(
     else:
       logger.debug("Resolved target: %s", target.display_name)
       # First detect: early-out / "is the agent present on the host". The
-      # "Using host ...:" line is deferred until after prepare_host() (the
+      # "Using host ...:" line follows prepare_host_binary() (the
       # update gate) so it names the real, post-update version — see the
       # re-detect below.
       install = target.detect()
@@ -3831,6 +3862,11 @@ def _run_container(
   # Selection already canonicalized the node; a registered name is not a designation.
   agent_identity = agent_selection.identity if target is not None and agent_selection else None
   agent_id = agent_identity.node if agent_identity is not None else GENERAL_SLOT
+  registered_persona = (
+    getattr(agent_selection, "registered_persona", None)
+    if agent_identity is not None and agent_identity.registered_name is not None
+    else None
+  )
 
   # The ONE conversion of ``-- <words>`` into the box shell's ``-lc S`` (keyspec
   # §2d ``shell``).  It applies when this launch's program is the box shell:
@@ -3883,7 +3919,9 @@ def _run_container(
 
   # The box scalars (the image the rig prep below reads), resolved through the
   # keyspace under the agent the launch snapshot uses, so the two cannot disagree.
-  merged = _box_scalars(std, proj, agent_id, system_settings_path, _cli_scalar_overrides)
+  merged = _box_scalars(
+    std, proj, agent_id, system_settings_path, _cli_scalar_overrides, agent_identity=agent_identity
+  )
   image = merged.box_image
 
   # AGENT-scope ``bootstrap`` (spec §2d): the AUTHORITATIVE per-launch value,
@@ -4130,21 +4168,21 @@ def _run_container(
       purpose=settings_assemble.ReadPurpose.RESOLVE,
     )
 
-  # PERSONA-GRATA STORE, read ONCE for this launch (the persona analog of
-  # credsync — but a READ, not a sync).  For a PERSONA agent whose store entry
-  # exists, this is the SOLE store access on the launch path: the bundle's
-  # values are threaded into every resolve that must see them (the launch
-  # snapshot, the launch decisions, the auth source) as a LIVE cascade level.
-  # They are a resolution INPUT, never a persisted one — the tier carries
-  # endpoint/model/secret_path/env into the cascade directly, so a launch
-  # leaves ``agents/<node>/agent.yaml`` BYTE-IDENTICAL (the file holds
-  # user-intent values only, and higher scopes still override normally).  Bare
-  # agents and store-less personas do zero work: the store is never touched
-  # for a bare node, and a miss is a clean ``None``.
-  #
-  # The BUNDLE is kept, not just the rendered values: it carries the store's
-  # reject verdict and the probe env, which the values mapping does not.
-  persona_bundle = _persona_bundle_for(agent_id, target)
+  # Persona values are live cascade input, never persisted into agent settings.
+  # Registered selections carry the public PG read; legacy personas keep their reader.
+  # The bundle retains diagnostics and probe env beyond the rendered values.
+  persona_credential = None
+  persona_bundle = _selected_persona_bundle(agent_selection, target)
+  if registered_persona is not None and target is not None:
+    from kanibako.settings.settings_categories import PersonaCredential
+
+    assert registered_persona.identity.registered_name is not None
+    persona_credential = PersonaCredential(
+      registered_persona.identity.registered_name,
+      registered_persona.store_root,
+      registered_persona.auth_env,
+      registered_persona.keyless,
+    )
   persona_values = None
   if persona_bundle is not None:
     # ⚑ THE LAUNCH IS THE ONLY PRINTER.  ``_persona_bundle_for`` is silent by
@@ -4165,7 +4203,7 @@ def _run_container(
   # BARE (byte-identical to today); a set endpoint is the cred-fork signal →
   # ``suppress_oauth`` drops the host OAuth cred sync so the Anthropic token never
   # reaches a box pointed at a third-party endpoint.
-  auth_src, active_endpoint, active_model, secret_paths = _resolve_box_launch_decisions(
+  auth_src, active_endpoint, active_model, _ = _resolve_box_launch_decisions(
     std=std,
     proj=proj,
     target=target,
@@ -4173,9 +4211,9 @@ def _run_container(
     system_settings_path=system_settings_path,
     agent_cfg_path=agent_cfg_path,
     persona_values=persona_values,
+    agent_identity=agent_identity,
     selection_level=selection_level,
-    # The verify probe's env only (the box gets ``-e``, so the probe does too).
-    cli_env=cli_env_values,
+    resolve_secrets=False,
   )
 
   # Plugin descriptor (None only for the built-in shell).  Hoisted here so
@@ -4382,33 +4420,225 @@ def _run_container(
   # settings file: every persona value is a live resolution input and is never
   # written back.  There is no other writer left.
   agent_cfg_dirty = target is not None and not agent_cfg_exists
-  if target is not None and harness_of(agent_id) != agent_id:
-    active_endpoint, persona_error, provider = _preflight_persona_load(
+  if target is not None and (registered_persona is not None or harness_of(agent_id) != agent_id):
+    active_endpoint, persona_error, provider = _prepare_persona_load(
       agent_id,
-      secret_paths,
       active_endpoint,
-      logger,
       target=target,
-      keyspace_model=active_model,
-      # The store read from above carries the store's own reject verdict
-      # and the probe's env.  ``probe=True`` is the LAUNCH path only: the create
-      # path keeps its separate WARN-ONLY probe [Jei:2026-08-05].
       bundle=persona_bundle,
-      probe=True,
-      # ``-e`` outranks a ``secret_path`` file (spec §1A); the gate and the
-      # probe read the token the box will get.
-      cli_env=cli_env_values,
     )
     if persona_error is not None:
       print(persona_error, file=sys.stderr)
       return 1
 
-  # Loadability resolved → materialize the DEFERRED box now (the explicit-persona
-  # path resolved paths only above; mkdir the box + set ``is_new`` here, then
-  # replay the one ``is_new``-gated step the deferred probe skipped — the
-  # flag-persist seam below).  A non-deferred launch already materialized at the
-  # ``resolve_box_target`` up top — this is a no-op for it.  (There were TWO such
-  # steps until MBR-6 residual 2 removed the orphan hint; see its note at the probe.)
+  native_install = install
+  if target and install and is_agent_mode:
+    from kanibako.targets.base import Target
+
+    target_type = type(target)
+    if getattr(
+      target_type, "prepare_host", Target.prepare_host
+    ) is not Target.prepare_host and all(
+      getattr(target_type, phase, getattr(Target, phase)) is getattr(Target, phase)
+      for phase in ("prepare_host_binary", "refresh_host_auth")
+    ):
+      raise ConfigError(
+        f"The {target.name} plugin only implements combined host preparation. "
+        "Update it to a phase-capable plugin before launching."
+      )
+    target.prepare_host_binary(install, data_path=std.data_path)
+    native_install = target.detect() or install
+    install = native_install
+    print(f"Using host {target.display_name}: {install.binary}", file=sys.stderr)
+
+  # Validate the resolved HOST binary BEFORE anything execs it.  A 0-byte
+  # or non-executable file passes binary_mounts()' is_file() check and
+  # would be exec'd into a brick.  This MUST run before the auth check
+  # below: target.check_auth() shells out to the host agent binary, so a
+  # corrupt/empty binary there raises an uncaught OSError (Exec format
+  # error) and the user sees a Python traceback instead of the actionable
+  # message.  Scoped to the real-agent path (entrypoint is None and not a
+  # plain box shell launch).
+  if target and install and is_agent_mode:
+    from kanibako.targets.base import _validate_agent_binary
+
+    reason = _validate_agent_binary(install.binary)
+    if reason:
+      print(
+        f"Error: {target.display_name} host binary is unusable: "
+        f"{reason}.\n"
+        f"  binary: {install.binary}\n"
+        f"The host agent binary appears corrupt or empty; the "
+        f"container would launch into a non-executable file.\n"
+        f"Reinstall the host {target.display_name} (and prune any "
+        f"stale 0-byte versions in {install.install_dir}), then "
+        f"retry.\n"
+        f"Run 'kanibako system diagnose' for a full health check.",
+        file=sys.stderr,
+      )
+      return 1
+
+  # Binary transform: run the one this agent's ``transform`` key NAMES (spec
+  # §2d).  ``transform_settings`` is that transform's CONFIG INPUT and was
+  # never the switch — gating on it ran tweakcc for ANY agent whose settings
+  # merely carried the dict.  An unrunnable/unnamed transform WARNS rather
+  # than passing silently: a lost plugin declaration must not read as
+  # "tweakcc quietly broke".
+  from kanibako.tweakcc import TRANSFORM_NAME as _TWEAKCC_TRANSFORM
+
+  tweakcc_entry = None
+  tweakcc_cache_obj = None
+  active_transform = (
+    _effective_transform(
+      proj,
+      system_settings_path,
+      agent_id,
+      target,
+      std=std,
+      selection_level=selection_level,
+      agent_cfg_path=agent_cfg_path,
+      agent_identity=agent_identity,
+    )
+    if target and install
+    else None
+  )
+  transform_settings = (
+    _effective_transform_settings(
+      proj,
+      system_settings_path,
+      agent_id,
+      std=std,
+      selection_level=selection_level,
+      agent_cfg_path=agent_cfg_path,
+      agent_identity=agent_identity,
+    )
+    if target and install and active_transform in (_TWEAKCC_TRANSFORM, None)
+    else {}
+  )
+  if active_transform == _TWEAKCC_TRANSFORM:
+    result = _apply_tweakcc(
+      install,
+      transform_settings,
+      _tweakcc_cache_dir(std, agent_id),
+      image,
+      runtime.cmd,
+      logger,
+    )
+    if result:
+      install, tweakcc_entry, tweakcc_cache_obj = result
+  elif active_transform:
+    logger.warning(
+      "agent.%s.transform names %r, which this kanibako does not "
+      "implement (known: %r) — no binary transform applied.",
+      agent_id,
+      active_transform,
+      _TWEAKCC_TRANSFORM,
+    )
+  elif transform_settings:
+    logger.warning(
+      "agent.%s.transform_settings is set but agent.%s.transform names "
+      "no transform — the settings are an INPUT, not a switch, so "
+      "nothing was patched.",
+      agent_id,
+      agent_id,
+    )
+
+  # Block 7b ([Jei:2026-06-28f] — the FULL read-path swap): build the ONE launch
+  # snapshot HERE, before the behavior read, so BOTH the behavior read (just
+  # below) AND the category delivery (further down) consume the SAME snapshot
+  # (S12 resolve-ONCE). It carries the behavior FLOORS (core's → agent.default.*,
+  # the target's declared defaults → agent.<active>.*; OS1, [Q91]), the
+  # per-agent file's flat behavior state (wrapped under agent.<active>), the
+  # always-available category default tables, 7a's descriptor delivery partial,
+  # and the resolved system.* tier.
+  #
+  # The §1A CLI LEVEL (P8) — built where the agent was selected, above.
+  # THE REALIZATION (MBR-1 P4c-2): everything this launch DERIVES from its
+  # resolved settings — the behavior read, the access tier, and the
+  # variables the descriptor realizes — computed ONCE, INSIDE the resolve
+  # below, and read back off ``.result`` further down.  It has to run in
+  # there: it reads the built snapshot, and the variables it derives must be
+  # keys before the collapse arbitrates them (see :class:`_LaunchRealizer`).
+  # ⚑ BUILT UNCONDITIONALLY, and that is deliberate: a ``kanibako shell`` /
+  # no-target box simply realizes NOTHING (no descriptor ⇒ no permission axis
+  # and no variables), which the realizer expresses as an empty derivation
+  # rather than the caller expressing it as an absent one. One shape means the
+  # read below cannot be handed a value that was never derived.
+  _realizer = _LaunchRealizer(
+    desc=desc,
+    agent_id=agent_id,
+    cli_level=_cli_level,
+    # The persona provider pin, resolved from the TARGET (never hardwired):
+    # given only when this launch has an active persona endpoint, empty
+    # otherwise — a BARE box is never touched.
+    provider_pin=(
+      getattr(_persona_wiring(target), "provider_pin", ()) if active_endpoint is not None else ()
+    ),
+  )
+  _written: list = []
+  _snapshot, deliveries = _resolve_launch_snapshot(
+    std=std,
+    proj=proj,
+    agent_name=agent_id,
+    system_settings_path=system_settings_path,
+    agent_cfg_path=agent_cfg_path,
+    desc=desc,
+    install=install,
+    target=target,
+    agent_identity=agent_identity,
+    persona_values=persona_values,
+    persona_credential=persona_credential,
+    deliver_creds=auth_src.creds_shared,
+    cli_level=_cli_level,
+    # ⚑ THE ONE RESOLVE THAT TAKES ``-e``, because it is the only one that
+    # describes THIS BOX'S LAUNCH.  The conditional image/helper resolves
+    # describe an injected table and write no env leaf; ``_sync_box_at_create``
+    # and ``box show --effective`` describe stored configuration, which a
+    # per-run flag must not appear in.
+    cli_env=cli_env_values,
+    required_var=getattr(_persona_wiring(target), "token_var", None) or None,
+    guarantee_create=False,
+    # ⚑ THE ONE RESOLVE THAT REALIZES, for the same reason it is the one
+    # that takes ``-e``: a realization is what THIS launch's flags produce,
+    # so a stored map or a display must not carry one.
+    realize=_realizer,
+    written_out=_written,
+  )
+  # ``--browser`` writes BROWSER_WS_ENDPOINT after the collapse; a user value
+  # for it (any scope's key or ``-e``) would be replaced silently. Refused
+  # here, before ``-e`` is persisted or anything starts.
+  if browser:
+    _refuse_browser_env_twin(
+      _launch_env_map(_snapshot),
+      _env_key_origins(
+        agent_name=agent_id,
+        persona_values=persona_values,
+        written=_written,
+      ),
+    )
+  from kanibako.secret_delivery import SecretPayload
+
+  pg_payload = SecretPayload()
+  if target is not None and (registered_persona is not None or harness_of(agent_id) != agent_id):
+    (active_endpoint, persona_error, provider), pg_payload = _prepare_resolved_persona_delivery(
+      agent_id,
+      deliveries,
+      active_endpoint,
+      logger,
+      target=target,
+      env=_build_config_env(_launch_env_map(_snapshot)),
+      cli_env=cli_env_values,
+      probe_model=_realizer.result.effective_state.get("model"),
+      provider_model=active_model,
+      bundle=persona_bundle,
+    )
+    if persona_error is not None:
+      print(persona_error, file=sys.stderr)
+      return 1
+
+  # Registered deferred boxes already have their final paths. Materialization
+  # may create a connected named box's home and mark it new, without another
+  # launch resolve.
   if _defer_box:
     proj = resolve_box_target(
       std,
@@ -4417,15 +4647,8 @@ def _run_container(
       initialize=True,
       register=False,
     )
-    # REBIND every proj-derived local (Editor ADD-c): the deferred probe
-    # resolved paths against the placeholder ``boxes/__unregistered__``
-    # metadata_path (a brand-NEW box has no name/dir yet), so ``project_toml``/
-    # ``workset_path``/``merged`` were bound to that placeholder.  Now that the
-    # box is materialized its REAL metadata_path is known — recompute them so
-    # the image-override persist AND every downstream box-tier read/write hit
-    # the real ``box.toml``, never ``__unregistered__/``.  (For a deferred
-    # EXISTING box the probe already had the real path; this recomputes the
-    # same values — a harmless no-op.)
+    # Refresh locals for the materialized record; the snapshot still describes
+    # the same registered box, never an unregistered placeholder.
     project_toml, workset_path = box_workset_settings_paths(proj)
     merged = _box_scalars(
       std,
@@ -4433,18 +4656,11 @@ def _run_container(
       agent_id,
       system_settings_path,
       _cli_scalar_overrides,
+      agent_identity=agent_identity,
     )
 
-    # §1A CREATE EXCEPTION — the DEFERRED arm's call to the one seam
-    # [Jei:2026-08-02]: a shadowing flag's value persists ONLY while the box
-    # is BEING MATERIALIZED, and this arm materializes HERE, so this IS its
-    # earliest safe point (the rig was prepped further up, and
-    # ``project_toml`` was just rebound to the box's REAL settings file —
-    # never the ``__unregistered__`` placeholder the probe resolved
-    # against).  The direct arm already called the seam and does not reach
-    # this line.  For an EXISTING box (``is_new`` False) the gate no-ops and
-    # the seam announces the ephemerality instead: ``start --image`` stays
-    # strictly ephemeral, but no longer silently.
+    # Only a newly materialized box persists these flags; an existing one
+    # announces their ephemerality. The direct arm already called this seam.
     _persist_or_announce_flags(
       proj,
       project_toml,
@@ -4471,17 +4687,17 @@ def _run_container(
   # its endpoint came from the keyspace or the persona-store tier below it.
   suppress_oauth = active_endpoint is not None
 
-  # Loadability resolved → NOW materialize the persona artifacts.  Persist the
-  # freshly generated agent config; the share shim points ``agents/<node>/``'s
-  # ``template``, ``common`` and ``canon`` leaves (plus ``caches/tweakcc`` and any
-  # other declared store leaf) at the harness's dirs BEFORE mount assembly
-  # resolves them.  A bare agent (node == harness) is a no-op for the shim.
-  # ⚑ ``agent_cfg_dirty`` is FIRST-USE ONLY: nothing on this path writes a resolved
-  # persona value back, so a persona launch leaves an existing
-  # ``agents/<node>/agent.yaml`` byte-identical.
+  if target and native_install and is_agent_mode and auth_src.creds_shared and not no_auto_auth:
+    target.refresh_host_auth(native_install, data_path=std.data_path)
+  # Refused credentials must not create missing vault sources.
+  _core_default_categories(std, proj)
+
+  # First-use files contain only user intent. Share links materialize the
+  # already-resolved persona paths before delivery consumes them; existing
+  # agent settings remain byte-identical.
   if target and agent_cfg_dirty:
     agent_file.save(agent_cfg_path, agent_cfg)
-  ensure_persona_share_symlinks(std, agent_id, target)
+  ensure_persona_share_symlinks(std, agent_id, target, agent_identity=agent_identity)
 
   # Deterministic container name for stop/cleanup
 
@@ -4734,27 +4950,24 @@ def _run_container(
         logger=logger,
         suppress_oauth=suppress_oauth,
         selection_level=selection_level,
+        agent_identity=agent_identity,
       )
-      # The create-time ``synced`` write — the seed's SIBLING, immediately
-      # after it and BEFORE the canon skeleton (which makes that region 555).
-      # It runs again below on this same launch, mtime-gated; that is the
-      # point, not a duplicate: this write is what the gate then compares
-      # against.  ⚑ ``install`` here is the FIRST detect — the launch
-      # re-detects after ``prepare_host()`` further down, so the two bind maps
-      # are not guaranteed identical.
+      # Create-time sync uses the stable native install, never a pruned version
+      # or transformed cache. The later launch refresh is mtime-gated.
       _sync_box_at_create(
         std=std,
         proj=proj,
         agent_name=agent_id,
         target=target,
         desc=desc,
-        install=install,
+        install=native_install,
         global_config_path=system_settings_path,
         agent_config_path=agent_cfg_path,
         persona_values=persona_values,
         logger=logger,
         deliver_creds=auth_src.creds_shared,
         selection_level=selection_level,
+        agent_identity=agent_identity,
       )
       # The canon skeleton (J-7), in the SAME position as ``run_create``'s:
       # after the seed, inside the journal window.
@@ -4762,196 +4975,6 @@ def _run_container(
       _register_new_box(std, proj)
       _clear_create_entry(std, proj)
 
-    # Plugin-owned pre-launch host preparation (agent-agnostic call).
-    # The plugin owns everything agent-specific that must touch the host
-    # before mounts: e.g. the Claude plugin runs a synchronous `claude
-    # update` gate so the host binary/symlink are stable before we bind
-    # them, then refreshes host auth with the auto-updater disabled.  This
-    # runs BEFORE the binary validation below because the update step can
-    # repoint the resolved binary.  The hook never raises.
-    if target and install and is_agent_mode:
-      target.prepare_host(
-        install,
-        auto_auth=bool(auth_src.creds_shared and not no_auto_auth),
-        data_path=std.data_path,
-      )
-      # Re-detect after the update gate.  prepare_host() can repoint /
-      # prune the host version (the synchronous `claude update`), so the
-      # first `install` (frozen before that) is stale.  Re-detecting here
-      # — agent-agnostic — yields ONE fresh install that validate, the
-      # "Using host ...:" print, and binary_mounts all consume, so they
-      # describe and bind the real post-update version.  With the
-      # auto-updater disabled the version is then stable detect→mount.
-      install = target.detect() or install
-
-    # Announce the (post-update) host agent now that prepare_host has run.
-    if target and install and is_agent_mode:
-      print(
-        f"Using host {target.display_name}: {install.binary}",
-        file=sys.stderr,
-      )
-
-    # Validate the resolved HOST binary BEFORE anything execs it.  A 0-byte
-    # or non-executable file passes binary_mounts()' is_file() check and
-    # would be exec'd into a brick.  This MUST run before the auth check
-    # below: target.check_auth() shells out to the host agent binary, so a
-    # corrupt/empty binary there raises an uncaught OSError (Exec format
-    # error) and the user sees a Python traceback instead of the actionable
-    # message.  Scoped to the real-agent path (entrypoint is None and not a
-    # plain box shell launch).
-    if target and install and is_agent_mode:
-      from kanibako.targets.base import _validate_agent_binary
-
-      reason = _validate_agent_binary(install.binary)
-      if reason:
-        print(
-          f"Error: {target.display_name} host binary is unusable: "
-          f"{reason}.\n"
-          f"  binary: {install.binary}\n"
-          f"The host agent binary appears corrupt or empty; the "
-          f"container would launch into a non-executable file.\n"
-          f"Reinstall the host {target.display_name} (and prune any "
-          f"stale 0-byte versions in {install.install_dir}), then "
-          f"retry.\n"
-          f"Run 'kanibako system diagnose' for a full health check.",
-          file=sys.stderr,
-        )
-        return 1
-
-    # Binary transform: run the one this agent's ``transform`` key NAMES (spec
-    # §2d).  ``transform_settings`` is that transform's CONFIG INPUT and was
-    # never the switch — gating on it ran tweakcc for ANY agent whose settings
-    # merely carried the dict.  An unrunnable/unnamed transform WARNS rather
-    # than passing silently: a lost plugin declaration must not read as
-    # "tweakcc quietly broke".
-    from kanibako.tweakcc import TRANSFORM_NAME as _TWEAKCC_TRANSFORM
-
-    tweakcc_entry = None
-    tweakcc_cache_obj = None
-    active_transform = (
-      _effective_transform(
-        proj,
-        system_settings_path,
-        agent_id,
-        target,
-        std=std,
-        selection_level=selection_level,
-        agent_cfg_path=agent_cfg_path,
-        agent_identity=agent_identity,
-      )
-      if target and install
-      else None
-    )
-    transform_settings = (
-      _effective_transform_settings(
-        proj,
-        system_settings_path,
-        agent_id,
-        std=std,
-        selection_level=selection_level,
-        agent_cfg_path=agent_cfg_path,
-        agent_identity=agent_identity,
-      )
-      if target and install and active_transform in (_TWEAKCC_TRANSFORM, None)
-      else {}
-    )
-    if active_transform == _TWEAKCC_TRANSFORM:
-      result = _apply_tweakcc(
-        install,
-        transform_settings,
-        _tweakcc_cache_dir(std, agent_id),
-        image,
-        runtime.cmd,
-        logger,
-      )
-      if result:
-        install, tweakcc_entry, tweakcc_cache_obj = result
-    elif active_transform:
-      logger.warning(
-        "agent.%s.transform names %r, which this kanibako does not "
-        "implement (known: %r) — no binary transform applied.",
-        agent_id,
-        active_transform,
-        _TWEAKCC_TRANSFORM,
-      )
-    elif transform_settings:
-      logger.warning(
-        "agent.%s.transform_settings is set but agent.%s.transform names "
-        "no transform — the settings are an INPUT, not a switch, so "
-        "nothing was patched.",
-        agent_id,
-        agent_id,
-      )
-
-    # Block 7b ([Jei:2026-06-28f] — the FULL read-path swap): build the ONE launch
-    # snapshot HERE, before the behavior read, so BOTH the behavior read (just
-    # below) AND the category delivery (further down) consume the SAME snapshot
-    # (S12 resolve-ONCE). It carries the behavior FLOORS (core's → agent.default.*,
-    # the target's declared defaults → agent.<active>.*; OS1, [Q91]), the
-    # per-agent file's flat behavior state (wrapped under agent.<active>), the
-    # always-available category default tables, 7a's descriptor delivery partial,
-    # and the resolved system.* tier.
-    #
-    # The §1A CLI LEVEL (P8) — built where the agent was selected, above.
-    # THE REALIZATION (MBR-1 P4c-2): everything this launch DERIVES from its
-    # resolved settings — the behavior read, the access tier, and the
-    # variables the descriptor realizes — computed ONCE, INSIDE the resolve
-    # below, and read back off ``.result`` further down.  It has to run in
-    # there: it reads the built snapshot, and the variables it derives must be
-    # keys before the collapse arbitrates them (see :class:`_LaunchRealizer`).
-    # ⚑ BUILT UNCONDITIONALLY, and that is deliberate: a ``kanibako shell`` /
-    # no-target box simply realizes NOTHING (no descriptor ⇒ no permission axis
-    # and no variables), which the realizer expresses as an empty derivation
-    # rather than the caller expressing it as an absent one. One shape means the
-    # read below cannot be handed a value that was never derived.
-    _realizer = _LaunchRealizer(
-      desc=desc,
-      agent_id=agent_id,
-      cli_level=_cli_level,
-      # The persona provider pin, resolved from the TARGET (never hardwired):
-      # given only when this launch has an active persona endpoint, empty
-      # otherwise — a BARE box is never touched.
-      provider_pin=(
-        getattr(_persona_wiring(target), "provider_pin", ()) if active_endpoint is not None else ()
-      ),
-    )
-    _written: list = []
-    _snapshot, deliveries = _resolve_launch_snapshot(
-      std=std,
-      proj=proj,
-      agent_name=agent_id,
-      system_settings_path=system_settings_path,
-      agent_cfg_path=agent_cfg_path,
-      desc=desc,
-      install=install,
-      target=target,
-      persona_values=persona_values,
-      deliver_creds=auth_src.creds_shared,
-      cli_level=_cli_level,
-      # ⚑ THE ONE RESOLVE THAT TAKES ``-e``, because it is the only one that
-      # describes THIS BOX'S LAUNCH.  The conditional image/helper resolves
-      # describe an injected table and write no env leaf; ``_sync_box_at_create``
-      # and ``box show --effective`` describe stored configuration, which a
-      # per-run flag must not appear in.
-      cli_env=cli_env_values,
-      # ⚑ THE ONE RESOLVE THAT REALIZES, for the same reason it is the one
-      # that takes ``-e``: a realization is what THIS launch's flags produce,
-      # so a stored map or a display must not carry one.
-      realize=_realizer,
-      written_out=_written,
-    )
-    # ``--browser`` writes BROWSER_WS_ENDPOINT after the collapse; a user value
-    # for it (any scope's key or ``-e``) would be replaced silently. Refused
-    # here, before ``-e`` is persisted or anything starts.
-    if browser:
-      _refuse_browser_env_twin(
-        _launch_env_map(_snapshot),
-        _env_key_origins(
-          agent_name=agent_id,
-          persona_values=persona_values,
-          written=_written,
-        ),
-      )
     # §1A CREATE EXCEPTION for ``-e`` (181-CX1 (a) [Jei:2026-10-13]): the collapse above is the
     # first point that knows which key owns each variable — its env slots, and the
     # entry list's ``secret_path`` names — and nothing has run in the box yet.  The
@@ -5434,6 +5457,7 @@ def _run_container(
       extra_mounts=extra_mounts,
       logger=logger,
       selection_level=selection_level,
+      agent_identity=agent_identity,
     )
 
     container_env, secret_export_vars = _assemble_launch_env(
@@ -5462,6 +5486,7 @@ def _run_container(
       auth_src=auth_src,
       extra_mounts=extra_mounts,
       selection_level=selection_level,
+      agent_identity=agent_identity,
     )
 
     # Helper hub: start it before the director and bind its socket's directory.
@@ -5517,6 +5542,7 @@ def _run_container(
         auth_src=auth_src,
         extra_mounts=extra_mounts,
         selection_level=selection_level,
+        agent_identity=agent_identity,
       )
 
     # Pre-launch validation: warn about missing mount sources.
@@ -5586,6 +5612,7 @@ def _run_container(
         extra_mounts=extra_mounts,
         tmpfs_masks=tmpfs_masks,
         container_env=container_env,
+        target_name=agent_identity.target_name if agent_identity is not None else None,
       )
       # Fast-fail: the setup command CRASHED (non-zero exit) -> don't launch.
       if setup_rc != 0:
@@ -5896,6 +5923,10 @@ def _run_container(
           list(cli_args or []),
         )
 
+    if pg_payload.values:
+      assert entrypoint is not None
+      entrypoint, cli_args = _pg_secret_pipe_shim(entrypoint, list(cli_args or []))
+
     # Preflight: rootless podman cannot overlay/pivot_root on a virtiofs
     # graph root, so the launch would die with a cryptic runtime error.
     # virtiofs-rootless is an unsupported configuration — fail gracefully
@@ -5942,6 +5973,9 @@ def _run_container(
       # Past the last refusal: name what ``--entrypoint`` drops.
       _print_entrypoint_notes(_entrypoint_drops, _entrypoint_detach_flag)
       # Run the container
+      pg_runtime_options: dict[str, Any] = (
+        {"secret_payload": pg_payload} if pg_payload.values else {}
+      )
       rc = runtime.run(
         image,
         shell_path=proj.shell_path,
@@ -5953,10 +5987,13 @@ def _run_container(
         enable_vault=proj.vault_enabled(),
         env=container_env,
         name=container_name,
-        labels=box_labels(proj),
+        labels=launch_labels(
+          box_labels(proj), agent_identity.target_name if agent_identity is not None else None
+        ),
         entrypoint=entrypoint,
         cli_args=cli_args or None,
         detach=persistent,
+        **pg_runtime_options,
       )
     finally:
       # The hub outlives this command only while its box does: a persistent box
@@ -6670,6 +6707,15 @@ def _emit_secret_mounts(secrets, logger) -> "tuple[list, list[str]]":
   return mounts, export_vars
 
 
+def _pg_secret_pipe_shim(program: str, args: list[str]) -> tuple[str, list[str]]:
+  """Receive PG credentials once before exec; the existing PID-1 topology stays unchanged."""
+  bootstrap = (
+    f"import sys;sys.path.insert(0,{KANIBAKO_PKG_MOUNT_ROOT!r});"
+    "from kanibako.secret_delivery import main;raise SystemExit(main(sys.argv[1:]))"
+  )
+  return "python3", ["-I", "-c", bootstrap, "--", program, *args]
+
+
 def _secret_export_shim(
   program: str,
   args: list[str],
@@ -6871,6 +6917,20 @@ def _name_new_box_probe(std, proj) -> None:
     proj.name = short_hash(proj.project_hash)
 
 
+def _selected_persona_bundle(selection, target) -> "PersonaBundle | None":
+  """Project the selection's captured PG input; legacy identities retain their reader."""
+  if selection is None or target is None:
+    return None
+  if selection.identity.registered_name is not None:
+    registered = getattr(selection, "registered_persona", None)
+    if registered is None:
+      return None
+    from kanibako.persona_store import project_registered_persona
+
+    return project_registered_persona(registered, target)
+  return _persona_bundle_for(selection.identity.node, target)
+
+
 def _persona_bundle_for(agent_id: str, target) -> "PersonaBundle | None":
   """The persona store's LIVE bundle for *agent_id* — the ONE store read.
 
@@ -7044,6 +7104,7 @@ def _persona_probe_error(
   logger,
   env: "Mapping[str, str] | None" = None,
   token: "str | None" = None,
+  credential_source: str = "",
 ) -> "str | None":
   """PER-LAUNCH persona verify probe — the load gate's last question.
 
@@ -7083,13 +7144,10 @@ def _persona_probe_error(
   REJECTED sentence there is the Q29 table's own wording, and the H1 cell that
   could not send the box's model id arrives here as ``INCONCLUSIVE`` and warns.
 
-  ⚑ *env* is the box's env (:func:`_persona_probe_env`), handed to the probe so the
-  harness can rewrite a tier alias the way its runtime will (claude resolves one
-  through ``ANTHROPIC_DEFAULT_<TIER>_MODEL``).  Probing a raw alias is what produced
-  the measured false REJECTED this signature exists to prevent.  It is folded by the
-  launch's own ``collapse_env`` over the pre-flight snapshot's entries
-  (:func:`_persona_secret_table`), so a mapping at any rung, the store's, or ``-e``
-  reaches the probe as it reaches the box.
+  *env* lets the harness rewrite tier aliases exactly as its runtime does.
+  Launch supplies the final snapshot's collapsed env; compatibility callers use
+  :func:`_persona_probe_env`. A mapping from any scope or ``-e`` must reach both
+  the probe and the box.
 
   🛑 THE REJECTED MESSAGE NAMES WHAT WAS REFUSED, NEVER WHAT TO FIX.  It used to
   assert the token was bad and send the user to replace a VALID one; the probe cannot
@@ -7097,12 +7155,11 @@ def _persona_probe_error(
   not say which input was at fault.  State the status, the inputs and the provider's
   own words, and let the user read them.
 
-  ⚑ *token* is the ``-e`` value of the token var (:func:`_persona_cli_token`); when
-  set it is sent instead of the file at *token_ptr*.  It is passed only when set, and
-  only to a ``verify_persona`` that accepts it (a ``token`` parameter or ``**kwargs``).
-  Without ``-e`` an older plugin is called as before.  With ``-e`` an older plugin is
-  NOT called: probing the file would test a token the box does not get, so the launch
-  prints a note that the endpoint is not verified and proceeds (``NOT_APPLICABLE``).
+  *token* is the winning by-value credential; *credential_source* labels PG input,
+  while its empty default retains CLI wording. Older plugins that lack ``token=``
+  remain unprobed rather than testing a shadowed file. Rendered text removes this
+  token's exact spelling; encoded, truncated, or otherwise derived echoes are not
+  covered. By-value probe exceptions never contribute a traceback to the log.
 
   The probe contract is NEVER-RAISE; a third-party plugin can still break it,
   so a raise is caught and treated as INCONCLUSIVE (a plugin bug IS an anomaly
@@ -7117,15 +7174,24 @@ def _persona_probe_error(
 
   if target is None:
     return None
+
+  def shown(text: str) -> str:
+    return text.replace(token, "<redacted>") if token else text
+
+  display = shown(display)
   model = model or None  # the empty model probes as no model: only an ID is sent
   if token is not None and not _verify_takes_token(target.verify_persona):
+    source = credential_source or "-e"
+    reason = f"the harness plugin cannot take a token from {source}"
     print(
-      f"Note: persona '{display}': its harness plugin cannot take a token from -e, "
-      f"so the endpoint ({_scrub_endpoint_userinfo(endpoint)}) is not verified; "
-      f"launching unverified.",
+      shown(
+        f"Note: persona '{display}': its harness plugin cannot take a token from {source}, "
+        f"so the endpoint ({_scrub_endpoint_userinfo(endpoint)}) is not verified; "
+        f"launching unverified."
+      ),
       file=sys.stderr,
     )
-    outcome = PersonaProbeOutcome.not_applicable("the harness plugin cannot take a token from -e")
+    outcome = PersonaProbeOutcome.not_applicable(reason)
   else:
     try:
       if token is not None:
@@ -7139,7 +7205,9 @@ def _persona_probe_error(
         )
     except Exception:
       if logger is not None:
-        logger.debug("persona '%s': verify probe raised; inconclusive", display, exc_info=True)
+        logger.debug(
+          "persona '%s': verify probe raised; inconclusive", display, exc_info=token is None
+        )
       outcome = PersonaProbeOutcome.inconclusive("the probe itself failed")
   # ⚑ On THIS path endpoint and model are read off the COLLAPSED launch snapshot,
   # and `settings_merge.merge` drops the level a value won at — so name the
@@ -7157,23 +7225,25 @@ def _persona_probe_error(
     f"or agent.default, from a settings file or the persona-grata store)"
   )
   if outcome.verdict is PersonaProbeVerdict.REJECTED:
-    return (
+    return shown(
       f"Error: persona '{display}' cannot be loaded — the endpoint "
       f"{outcome.refusal_phrase(endpoint)}."
-      f"{outcome.evidence_block(resolved_from=resolved_from)}"
+      f"{outcome.evidence_block(resolved_from=resolved_from, credential_source=credential_source)}"
     )
   if outcome.verdict is PersonaProbeVerdict.INCONCLUSIVE:
     print(
-      f"Warning: persona '{display}': could not verify the endpoint "
-      f"({_scrub_endpoint_userinfo(endpoint)}) — {outcome.reason}; launching unverified."
-      f"{outcome.evidence_block(resolved_from=resolved_from)}",
+      shown(
+        f"Warning: persona '{display}': could not verify the endpoint "
+        f"({_scrub_endpoint_userinfo(endpoint)}) — {outcome.reason}; launching unverified."
+        f"{outcome.evidence_block(resolved_from=resolved_from, credential_source=credential_source)}"
+      ),
       file=sys.stderr,
     )
   elif outcome.verdict is PersonaProbeVerdict.NOT_APPLICABLE and logger is not None:
     logger.debug(
       "persona '%s': no verify probe was possible (%s); launching unprobed",
       display,
-      outcome.reason,
+      shown(outcome.reason or ""),
     )
   elif (
     outcome.verdict is PersonaProbeVerdict.PASS
@@ -7266,6 +7336,33 @@ def _resolve_codex_persona_provider(
   )
 
 
+def _prepare_persona_load(
+  agent_id: str,
+  keyspace_endpoint: str | None,
+  *,
+  target=None,
+  bundle=None,
+) -> "tuple[str | None, str | None, CodexModelProvider | None]":
+  """Check loadability without consulting credential material or probing."""
+  display = display_agent_ref(agent_id)
+  if bundle is not None and bundle.reject_reason is not None:
+    return (
+      None,
+      (
+        f"Error: persona '{display}' cannot be loaded — "
+        f"{bundle.reject_reason}.\n"
+        f"  Its persona-store entry exists but yielded no usable values, "
+        f"and nothing is cached from a previous launch.\n"
+        f"  Fix the store config named above, then retry."
+      ),
+      None,
+    )
+  wiring = _persona_wiring(target)
+  if wiring is not None and keyspace_endpoint is None:
+    return None, _persona_no_endpoint_error(agent_id, wiring), None
+  return keyspace_endpoint, None, None
+
+
 def _preflight_persona_load(
   agent_id: str,
   secret_paths,
@@ -7280,8 +7377,8 @@ def _preflight_persona_load(
 ) -> "tuple[str | None, str | None, CodexModelProvider | None]":
   """Resolve a persona's LOADABILITY — a TRUE pre-flight.
 
-  Called ONLY for a persona (``harness_of(agent_id) != agent_id``), BEFORE any
-  persona artifact is created.  Returns ``(endpoint, error, provider)``: the
+  Called for a selected persona before any persona artifact is created.
+  Returns ``(endpoint, error, provider)``: the
   resolved endpoint URL, an actionable message when the persona cannot be loaded,
   and — for a CONFIG-FILE harness (codex) only — the
   :class:`~kanibako.vscode.vscode_config.CodexModelProvider` INC 3 wires into
@@ -7294,9 +7391,8 @@ def _preflight_persona_load(
   so there is nothing to adopt and nothing to write back to
   ``agents/<node>/agent.yaml``.
 
-  ⚑ ``probe`` is opt-in and set ONLY by the launch: the create path keeps its own
-  WARN-ONLY probe [Jei:2026-08-05], so a create must not inherit this one's hard
-  error on a rejected token.
+  Compatibility callers may request a probe; create retains its separate
+  warning-only probe [Jei:2026-08-05].
 
   *cli_env* is the launch's parsed ``-e`` map (only ``start`` has ``-e``).  A
   non-empty ``-e`` value for the token var satisfies the token gate and is the
@@ -7307,34 +7403,11 @@ def _preflight_persona_load(
   See ``llm-docs/kanibako/commands/start.py.md``, "``_preflight_persona_load`` — a
   persona's LOADABILITY", for the two harness gates and what each input means.
   """
+  prepared = _prepare_persona_load(agent_id, keyspace_endpoint, target=target, bundle=bundle)
   wiring = _persona_wiring(target)
+  if prepared[1] is not None or wiring is None or keyspace_endpoint is None:
+    return prepared
   display = display_agent_ref(agent_id)
-
-  # The store REFUSED its own config: hard error naming the cause VERBATIM.
-  # ⚑ ``no_reader`` deliberately does NOT come here — see the docstring.  This
-  # is the whole reason the two are separate values rather than one reason
-  # string: collapsing them would refuse every keyspace-configured goose
-  # persona that owns a store directory.
-  if bundle is not None and bundle.reject_reason is not None:
-    return (
-      None,
-      (
-        f"Error: persona '{display}' cannot be loaded — "
-        f"{bundle.reject_reason}.\n"
-        f"  Its persona-store entry exists but yielded no usable values, "
-        f"and nothing is cached from a previous launch.\n"
-        f"  Fix the store config named above, then retry."
-      ),
-      None,
-    )
-
-  # A harness that declares no persona block gets no persona check: no endpoint
-  # refusal, no token gate, no verify probe [Jei:2026-10-12].
-  if wiring is None:
-    return keyspace_endpoint, None, None
-
-  if keyspace_endpoint is None:
-    return None, _persona_no_endpoint_error(agent_id, wiring), None
 
   if wiring.endpoint_delivery == "config_file":
     return _preflight_config_file_persona(
@@ -7363,6 +7436,182 @@ def _preflight_persona_load(
     logger=logger,
     cli_env=cli_env,
   )
+
+
+def _resolved_persona_secret_table(deliveries, active_agent: str, env) -> "PersonaSecretTable":
+  """Adapt returned credential decisions; neither arbitrate nor collapse again."""
+  from kanibako.settings.config_keys import agent_node_of
+
+  state: dict[str, object] = {}
+  for var, credential in deliveries.credential_states.items():
+    if credential.kind == "keyless-null":
+      state[var] = None
+    elif credential.kind == "file":
+      state[var] = credential.declaration.host_src
+  declared = tuple(
+    sorted(
+      var
+      for var, keys in deliveries.active_secret_names.items()
+      if any(agent_node_of(key) == active_agent for key in keys)
+    )
+  )
+  return PersonaSecretTable(state, declared, dict(env))
+
+
+def _preflight_resolved_persona_load(
+  agent_id: str,
+  deliveries,
+  keyspace_endpoint: str | None,
+  logger,
+  *,
+  target,
+  env: "Mapping[str, str]",
+  cli_env: "Mapping[str, str]",
+  probe_model: str | None,
+  provider_model: str | None,
+  bundle=None,
+) -> "tuple[str | None, str | None, CodexModelProvider | None]":
+  """Gate legacy final states; a surviving PG credential still needs its fetch/probe."""
+  prepared = _prepare_persona_load(agent_id, keyspace_endpoint, target=target, bundle=bundle)
+  wiring = _persona_wiring(target)
+  if prepared[1] is not None or wiring is None or keyspace_endpoint is None:
+    return prepared
+  table = _resolved_persona_secret_table(deliveries, agent_id, env)
+  config_file = wiring.endpoint_delivery == "config_file"
+  var = _resolve_codex_persona_env_key(table, wiring) if config_file else wiring.token_var
+  state = deliveries.credential_states.get(var) if var else None
+  keyless = deliveries.keyless_persona is not None and (
+    (not var and not table.declared) or (bool(var) and (state is None or state.kind == "absent"))
+  )
+  pg = state is not None and state.kind == "pg"
+  display = display_agent_ref(agent_id)
+  if pg or keyless:
+    provider = (
+      _resolve_codex_persona_provider(
+        agent_id, keyspace_endpoint, var or "", _provider_model(target, provider_model), wiring
+      )
+      if config_file
+      else None
+    )
+    if pg:
+      return keyspace_endpoint, None, provider
+  else:
+    cli_values = {
+      name: cli_env[name]
+      for name, credential in deliveries.credential_states.items()
+      if credential.kind in ("cli-value", "cli-blank-suppressed")
+    }
+    endpoint, error, provider = _preflight_persona_load(
+      agent_id,
+      table,
+      keyspace_endpoint,
+      logger,
+      target=target,
+      keyspace_model=provider_model,
+      cli_env=cli_values,
+    )
+    if error is not None:
+      return endpoint, error, provider
+    if state is not None and state.kind == "cli-blank-suppressed":
+      if config_file:
+        _warn_e_suppressed_credential(display, var)
+      return endpoint, None, provider
+  token = cli_env[var] if var and state is not None and state.kind == "cli-value" else None
+  pointer = table.get(var) if var else None
+  error = _persona_probe_error(
+    target,
+    keyspace_endpoint,
+    pointer if isinstance(pointer, str) else None,
+    probe_model,
+    display,
+    logger,
+    env=env,
+    token=token,
+  )
+  return (None, error, None) if error is not None else (keyspace_endpoint, None, provider)
+
+
+def _prepare_resolved_persona_delivery(
+  agent_id: str,
+  deliveries,
+  keyspace_endpoint: str | None,
+  logger,
+  *,
+  target,
+  env: "Mapping[str, str]",
+  cli_env: "Mapping[str, str]",
+  probe_model: str | None,
+  provider_model: str | None,
+  bundle=None,
+) -> "tuple[tuple[str | None, str | None, CodexModelProvider | None], SecretPayload]":
+  """Fetch final PG winners once; probe the active credential without publishing payload."""
+  from kanibako.secret_delivery import SecretPayload, SecretValue
+  from kanibako.settings.config_io import fetch_persona_secret
+
+  prepared = _preflight_resolved_persona_load(
+    agent_id,
+    deliveries,
+    keyspace_endpoint,
+    logger,
+    target=target,
+    env=env,
+    cli_env=cli_env,
+    probe_model=probe_model,
+    provider_model=provider_model,
+    bundle=bundle,
+  )
+  endpoint, error, provider = prepared
+  if error is not None:
+    return prepared, SecretPayload()
+  values: list[SecretValue] = []
+  for name, state in deliveries.credential_states.items():
+    if state.kind != "pg":
+      continue
+    declaration = state.declaration
+    source = declaration.persona_credential if declaration is not None else None
+    failure = "invalid PG credential source"
+    if source is not None and source.var == name and not source.keyless:
+      try:
+        token = fetch_persona_secret(source.registered_name, root=source.store_root)
+        if (
+          isinstance(token, str)
+          and token.strip()
+          and not any(char in token for char in "\x00\r\n")
+        ):
+          values.append(SecretValue(name, token.encode("utf-8")))
+          continue
+        failure = "PG credential must be nonempty single-line UTF-8 text"
+      except Exception:
+        failure = (
+          "PG credential retrieval failed; check the registered agent and its secret manager"
+        )
+    return (
+      None,
+      f"Error: persona '{display_agent_ref(agent_id)}' cannot be loaded — {failure}.",
+      None,
+    ), SecretPayload()
+  payload = SecretPayload(tuple(values))
+  wiring = _persona_wiring(target)
+  var = (
+    provider.env_key if provider is not None else wiring.token_var if wiring is not None else None
+  )
+  state = deliveries.credential_states.get(var) if var else None
+  if state is not None and state.kind == "pg" and endpoint is not None:
+    token = next(entry.value.decode("utf-8") for entry in payload.values if entry.name == var)
+    error = _persona_probe_error(
+      target,
+      endpoint,
+      None,
+      probe_model,
+      display_agent_ref(agent_id),
+      logger,
+      env=env,
+      token=token,
+      credential_source="(persona-grata credential)",
+    )
+    if error is not None:
+      return (None, error, None), SecretPayload()
+  return prepared, payload
 
 
 class _ESuppresses:
@@ -7763,6 +8012,8 @@ def _effective_behavior_for_display(
   selection_level: "Mapping[str, object] | None",
   node_name=None,
   agent_cfg_path=None,
+  agent_identity: AgentIdentity | None = None,
+  persona_values: "Mapping[str, str | None] | None" = None,
 ) -> dict[str, str]:
   """Effective agent BEHAVIOR state for the ``config --effective`` DISPLAY.
 
@@ -7817,18 +8068,10 @@ def _effective_behavior_for_display(
   # would spell one agent's slot two ways.
   active = node_name if node_name is not None else agent_node_case(target.name)
 
-  # DISPLAY == LAUNCH: the same persona-store tier the launch resolves against
-  # (:func:`_persona_values_for`), read here for the same node. Without it this
-  # view would fall back to whatever the agent FILE happens to hold, so a
-  # persona value that is live-only (an ``env.<VAR>`` passthrough today, and
-  # endpoint/model/secret_path once the persist is retired) would be invisible
-  # in ``--effective`` while shaping every launch — the precise drift this
-  # function's own docstring promises not to have. ``None`` for a bare agent.
-  #
-  # (The no-descriptor early return above is untouched: it predates the
-  # snapshot path and returns the raw file state. A persona requires a harness
-  # plugin, and every one of those declares descriptors, so it cannot reach it.)
-  persona_values = _persona_values_for(active, target)
+  # Captured identity plus None means no live tier; only omitted input uses the legacy reader.
+  if agent_identity is None and persona_values is None:
+    persona_values = _persona_values_for(active, target)
+  valid_agents = identity_valid_agents(agent_identity)
 
   # DISPLAY == LAUNCH: the box's files, ctx and floors from the ONE input builder
   # (so a behavior value spelled ``{meta.workset.path}/…`` or ``{workset.auth.path}/…``
@@ -7840,6 +8083,7 @@ def _effective_behavior_for_display(
     std=std,
     proj=proj,
     agent_name=active,
+    agent_identity=agent_identity,
     system_path=system_settings_path,
   )
   snapshot = settings_launch.build_launch_snapshot(
@@ -7850,6 +8094,7 @@ def _effective_behavior_for_display(
     agent_behavior_floor=agent_behavior_floor,
     default_categories=dict(inputs.system_floor),
     persona_values=persona_values,
+    valid_agents=valid_agents,
     cli_level=selection_level,
   )
   state = settings_launch.effective_behavior(snapshot, active_agent=active)
@@ -7871,12 +8116,13 @@ def _resolve_box_auth_source(
   agent_cfg_path,
   selection_level: "Mapping[str, object] | None",
   agent_identity: AgentIdentity | None = None,
+  persona_values: "Mapping[str, str | None] | None" = None,
 ):
   """Resolve credential sharing through the launch snapshot's auth chain.
 
-  Resolved identity supplies plugin metadata, node paths, and vocabulary without a
-  PG lookup. Omission retains legacy node-derived floors. Stored settings override
-  the floors; workset sharing outranks global sharing.
+  Identity supplies plugin metadata, paths, and vocabulary; *persona_values* carries
+  captured values without a PG lookup. Omission retains legacy floors. Stored
+  settings win; workset sharing outranks global sharing.
 
   *selection_level* is required: credential paths include {system.agent}, so use the
   launch's selection (the stamp for a running box), never today's stored default.
@@ -7894,10 +8140,12 @@ def _resolve_box_auth_source(
     system_path=system_settings_path,
   )
   # Registered names never address the legacy persona layout.
-  _auth_persona_values = None
+  _auth_persona_values = persona_values
   try:
-    if (agent_identity is None or agent_identity.registered_name is None) and (
-      harness_of(agent_name) != agent_name
+    if (
+      _auth_persona_values is None
+      and (agent_identity is None or agent_identity.registered_name is None)
+      and harness_of(agent_name) != agent_name
     ):
       from kanibako.targets import resolve_target
 
@@ -7909,13 +8157,7 @@ def _resolve_box_auth_source(
       )
   except Exception:
     _auth_persona_values = None
-  valid_agents = None
-  if agent_identity is not None and agent_identity.registered_name is not None:
-    from kanibako.settings.settings_prefs import default_valid_agents
-
-    valid_agents = default_valid_agents().with_harnesses(
-      {agent_identity.node: agent_identity.target_name}
-    )
+  valid_agents = identity_valid_agents(agent_identity)
   snapshot = settings_launch.build_launch_snapshot(
     **inputs.as_kwargs(),
     agent_name=agent_name,
@@ -7940,17 +8182,14 @@ def _resolve_box_launch_decisions(
   agent_identity: AgentIdentity | None = None,
   persona_values: "Mapping[str, str | None] | None" = None,
   cli_env: "Mapping[str, str] | None" = None,
+  resolve_secrets: bool = True,
 ) -> "tuple[AuthSource, str | None, str | None, dict[str, object]]":
   """Resolve the launch's per-box decisions off ONE snapshot.
 
-  *cli_env* is the launch's parsed ``-e`` map. It reaches ONLY the verify probe's
-  env (:attr:`PersonaSecretTable.env`), which nothing writes to disk.
-
-  Auth SOURCE + persona endpoint + persona model + the launch's per-VAR
-  ``secret_path`` table (:class:`PersonaSecretTable`) — the single-source
-  consolidation of the auth resolve and the behavior resolve, read off the SAME
-  expanded snapshot so there is
-  no duplicate build.  The table keeps a present ``null`` (a keyless declaration).
+  Auth source, endpoint, and stored/provider model share one snapshot.
+  *resolve_secrets=False* leaves the fourth return empty for launch/reattach:
+  only the final launch deliveries may decide credential state. Compatibility
+  callers keep the legacy table, including null and *cli_env* probe values.
 
   The *model* is the effective read: a model id; ``""`` for an empty model; or
   ``None`` when no model is set, the persona's ``model: null`` and a
@@ -7991,13 +8230,7 @@ def _resolve_box_launch_decisions(
     if target is not None and isinstance(descriptors, list)
     else {}
   )
-  valid_agents = None
-  if agent_identity is not None and agent_identity.registered_name is not None:
-    from kanibako.settings.settings_prefs import default_valid_agents
-
-    valid_agents = default_valid_agents().with_harnesses(
-      {agent_identity.node: agent_identity.target_name}
-    )
+  valid_agents = identity_valid_agents(agent_identity)
   snapshot = settings_launch.build_launch_snapshot(
     **inputs.as_kwargs(),
     agent_name=agent_name,
@@ -8031,11 +8264,10 @@ def _resolve_box_launch_decisions(
     model = effective.get("model")
     if model:
       model = model.strip() or None
-  secret_paths = _persona_secret_table(
-    snapshot,
-    agent_name,
-    inputs.ctx,
-    cli_env=cli_env,
+  secret_paths = (
+    _persona_secret_table(snapshot, agent_name, inputs.ctx, cli_env=cli_env)
+    if resolve_secrets
+    else {}
   )
   return auth_src, endpoint, model, secret_paths
 
@@ -8185,11 +8417,17 @@ def _merge_default_categories(
       merged[dest] = entry
 
 
-def _box_scalars(std, proj, agent_id: str, system_path, cli_overrides) -> KanibakoConfig:
-  """The box scalars of *proj*'s launch, resolved under the selected *agent_id*.
-
-  Reads *agent_id*'s settings file, as the launch snapshot does.
-  """
+def _box_scalars(
+  std,
+  proj,
+  agent_id: str,
+  system_path,
+  cli_overrides,
+  *,
+  agent_identity: AgentIdentity | None = None,
+  persona_values: "Mapping[str, str | None] | None" = None,
+) -> KanibakoConfig:
+  """Resolve captured scalars; omitted values keep file-only reads."""
   from kanibako.settings.settings_launch import ResolveSubject, resolve_inputs
 
   return load_merged_config(
@@ -8199,10 +8437,12 @@ def _box_scalars(std, proj, agent_id: str, system_path, cli_overrides) -> Kaniba
       std=std,
       proj=proj,
       agent_name=agent_id,
+      agent_identity=agent_identity,
       system_path=system_path,
     ),
     agent_name=agent_id,
     agent_path=agent_settings_path(std.agents, agent_id),
+    persona_values=persona_values,
   )
 
 
@@ -8215,8 +8455,11 @@ def _resolve_launch_snapshot(
   agent_cfg_path,
   desc,
   install,
+  agent_identity: AgentIdentity | None = None,
   target=None,
   persona_values: "Mapping[str, str | None] | None" = None,
+  persona_credential: PersonaCredential | None = None,
+  required_var: str | None = None,
   socket_path=None,
   log_path=None,
   budget_path=None,
@@ -8232,33 +8475,22 @@ def _resolve_launch_snapshot(
   narrow_bind_dests: "frozenset[str] | None" = None,
   written_out: "list | None" = None,
 ):
-  """Build the ONE launch snapshot + what this launch DELIVERS from it.
+  """Build the ONE launch snapshot and return ``(snapshot, deliveries)``.
 
-  Returns ``(snapshot, deliveries)``.  ⚑ The
-  :class:`~kanibako.settings.settings_categories.LaunchDeliveries` carrier is a
-  RETURN VALUE and not a snapshot leaf on purpose: ``meta.assembly.*`` is a CLOSED
-  set of DECLARED leaves, and an undeclared one would install silently.  That is
-  also why the collapse's ``declared_by`` rides out on it.
+  ``LaunchDeliveries`` carries provenance and credential state outside the snapshot:
+  ``meta.assembly.*`` is closed. No second cross-scope reconciliation runs.
 
-  ⚑ THERE IS NO SECOND, CROSS-SCOPE ``reconcile`` PASS ANY MORE (cutover 6-R3).
+  Only the main launch supplies *cli_env*, *realize*, or flag-bearing *cli_level*;
+  stored maps and displays take selection only. *cli_level* is required because
+  every resolve, including image/helpers, folds its selection through the auth chain.
+  Omitted *narrow_bind_dests* leaves no second mount map beside the snapshot.
 
-  ⚑ *cli_env*, *realize* and a *cli_level* carrying FLAG values belong to ONE
-  launch, so only the main launch call may pass them — a resolve whose product is a
-  stored map or a display takes at most the selection-only level.  *cli_level* is
-  a REQUIRED keyword (P3): every resolve folds the auth chain (it rides the
-  :func:`~kanibako.settings.settings_launch.resolve_inputs` inputs), so each passes
-  the selection it has — the image / helper resolves included.
+  *written_out* receives labeled levels for :func:`_env_key_origins`. Optional
+  *persona_credential* stays plaintext-free; only cascade-eligible metadata reaches
+  the delivery arbitration. *required_var* names its explicit absence slot.
 
-  *narrow_bind_dests* is a NARROW caller's own table: omitted, a
-  whole-box resolve emits from ``meta.assembly.bindings`` and has no second map to
-  reach for.
-
-  *written_out*, when given, receives the cascade's labeled levels
-  (``build_launch_snapshot``'s), so a later refusal can tell a settings file's
-  value from one the persona store or kanibako set (:func:`_env_key_origins`).
-
-  See ``llm-docs/kanibako/commands/start.py.md``, "``_resolve_launch_snapshot`` —
-  the ONE launch resolve, and what gates each parameter", for every parameter.
+  Parameter contracts: ``llm-docs/kanibako/commands/start.py.md``,
+  "``_resolve_launch_snapshot`` — the ONE launch resolve, and what gates each parameter".
   """
   from kanibako.settings import settings_launch
   from kanibako.launch.templates import agent_template_defaults
@@ -8275,11 +8507,25 @@ def _resolve_launch_snapshot(
   )
   from kanibako.settings.settings_resolve import SettingsError
 
+  if persona_credential is not None:
+    settings_launch._check_persona_credential_node(persona_credential, agent_name)
+    if agent_identity is not None and (
+      agent_identity.node != agent_name
+      or agent_identity.registered_name is None
+      or agent_node_case(agent_identity.registered_name)
+      != agent_node_case(persona_credential.registered_name)
+    ):
+      raise SettingsError(
+        f"PG credential for '{persona_credential.registered_name}' "
+        "does not match the launch agent identity"
+      )
+
   inputs = settings_launch.resolve_inputs(
     subject=settings_launch.ResolveSubject.BOX,
     std=std,
     proj=proj,
     agent_name=agent_name,
+    agent_identity=agent_identity,
     system_path=system_settings_path,
   )
   ctx = inputs.ctx
@@ -8609,8 +8855,10 @@ def _resolve_launch_snapshot(
   # enrichment below names the same list the build applied.
   prefs = inputs.prefs
 
+  valid_agents = identity_valid_agents(agent_identity)
   dest_keys: dict[tuple[str, ...], str] = {}
   written: list = [] if written_out is None else written_out
+  eligible_credentials: list[PersonaCredential] = []
   snapshot = settings_launch.build_launch_snapshot(
     **inputs.as_kwargs(),
     agent_name=agent_name,
@@ -8620,6 +8868,9 @@ def _resolve_launch_snapshot(
     default_categories=default_categories,
     agent_partial=agent_partial,
     persona_values=persona_values,
+    persona_credential=persona_credential,
+    persona_credential_out=eligible_credentials,
+    valid_agents=valid_agents,
     # ⚑ EVERY RESOLVE folds the auth chain (it rides *inputs*), so every caller
     # carries the §1A selection it has: the chain's ``meta.box.auth.workset_path``
     # is ``{workset.auth.path}/{system.agent}`` (spec §2c). A no-agent box has
@@ -8630,6 +8881,7 @@ def _resolve_launch_snapshot(
     descriptor=desc,
     written_out=written,
   )
+  eligible_credential = eligible_credentials[0] if eligible_credentials else None
   env_origins = _env_key_origins(
     agent_name=agent_name,
     persona_values=persona_values,
@@ -8660,6 +8912,7 @@ def _resolve_launch_snapshot(
       snapshot,
       active_agent=agent_name,
       box_ctx=ctx,
+      persona_credential=eligible_credential,
     )
   except SettingsError as exc:
     # A malformed CATEGORY shape raises here naming the DECLARATION key
@@ -8744,6 +8997,13 @@ def _resolve_launch_snapshot(
       ),
       declared_by=declared_by,
       dest_keys=dest_keys,
+      cli_env=cli_env,
+      required_var=required_var,
+      keyless_persona=(
+        eligible_credential
+        if eligible_credential is not None and eligible_credential.var is None
+        else None
+      ),
       convenience_sources=settings_launch.convenience_bind_sources(
         default_categories,
         snapshot,
@@ -8764,6 +9024,8 @@ class StoredBoxAgent(NamedTuple):
   target: "Target | None"
   agent_cfg: object
   agent_cfg_path: Path
+  persona_values: "Mapping[str, str | None] | None" = None
+  persona_credential: PersonaCredential | None = None
 
 
 def stored_box_agent(std: "StandardPaths", proj: "ProjectPaths") -> StoredBoxAgent:
@@ -8779,25 +9041,38 @@ def stored_box_agent(std: "StandardPaths", proj: "ProjectPaths") -> StoredBoxAge
   target = None
   try:
     selection = select_agent(std=std, proj=proj)
-    target = resolve_target(harness_of(selection.node)) if selection.node else None
+    target = resolve_target(selection.identity.target_name) if selection.has_agent else None
   except Exception:
+    selection = None
     target = None
-  # ⚑ The NODE name keys both ``agent.<node>.*`` and ``agents/<node>/``; a node is
-  # lowercase (keyspec §0 "An agent's canonical case is carried by its _name_"), so
-  # the folded spelling names the file the launch opens.
-  node = (
-    with_harness(selection.node, agent_node_case(target.name))
-    if target is not None and selection is not None
-    else GENERAL_SLOT
-  )
+  node = selection.node if selection is not None else GENERAL_SLOT
+  valid_agents = identity_valid_agents(selection.identity if selection is not None else None)
   agent_cfg_path = agent_settings_path(std.agents, node)
   if target is not None and not agent_cfg_path.exists():
     agent_cfg: object = target.generate_agent_config()
   elif agent_cfg_path.exists():
-    agent_cfg = agent_record(agent_cfg_path, node=node, purpose=ReadPurpose.RESOLVE)
+    agent_cfg = agent_record(
+      agent_cfg_path, node=node, purpose=ReadPurpose.RESOLVE, valid_agents=valid_agents
+    )
   else:
     agent_cfg = None
-  return StoredBoxAgent(selection, node, target, agent_cfg, agent_cfg_path)
+  bundle = _selected_persona_bundle(selection, target)
+  persona_values = bundle.to_persona_values() or None if bundle is not None else None
+  persona_credential = None
+  registered = selection.registered_persona if selection is not None else None
+  if registered is not None and target is not None:
+    from kanibako.settings.settings_categories import PersonaCredential
+
+    assert registered.identity.registered_name is not None
+    persona_credential = PersonaCredential(
+      registered.identity.registered_name,
+      registered.store_root,
+      registered.auth_env,
+      registered.keyless,
+    )
+  return StoredBoxAgent(
+    selection, node, target, agent_cfg, agent_cfg_path, persona_values, persona_credential
+  )
 
 
 def resolve_stored_box_snapshot(
@@ -8818,8 +9093,13 @@ def resolve_stored_box_snapshot(
     desc=None,
     install=None,
     target=agent.target,
-    # The SAME persona-store tier the launch resolves against.
-    persona_values=_persona_values_for(agent.node, agent.target),
+    agent_identity=agent.selection.identity if agent.selection is not None else None,
+    persona_values=(
+      _persona_values_for(agent.node, agent.target)
+      if agent.selection is None and agent.persona_values is None
+      else agent.persona_values
+    ),
+    persona_credential=agent.persona_credential,
     guarantee_create=False,
     # SELECTION ONLY: a per-run value flag must not describe stored configuration.
     cli_level=agent.selection.selection_level if agent.selection is not None else None,
@@ -9436,6 +9716,7 @@ def _seed_box_home(
   logger,
   suppress_oauth: bool = False,
   selection_level: "Mapping[str, object] | None",
+  agent_identity: AgentIdentity | None = None,
 ) -> None:
   """Apply the one-time home seed for a freshly-created box (seed-at-create).
 
@@ -9484,6 +9765,7 @@ def _seed_box_home(
     std=std,
     proj=proj,
     agent_name=agent_id,
+    agent_identity=agent_identity,
     target=target,
     global_config_path=system_settings_path,
     agent_config_path=agent_cfg_path,
@@ -9513,6 +9795,7 @@ def _sync_box_at_create(
   logger,
   deliver_creds: bool = True,
   selection_level: "Mapping[str, object] | None",
+  agent_identity: AgentIdentity | None = None,
 ) -> None:
   """Write every ``synced`` copy ONCE at create, UNGATED — the SIBLING of the seed.
 
@@ -9548,6 +9831,7 @@ def _sync_box_at_create(
     std=std,
     proj=proj,
     agent_name=agent_name,
+    agent_identity=agent_identity,
     system_settings_path=global_config_path,
     agent_cfg_path=agent_config_path,
     desc=desc,
@@ -9793,49 +10077,53 @@ def _install_box_handbook(
   install_box_handbook_template(dest, roots)
 
 
-def persona_create_verdict(std, config, proj, *, explicit_agent: str | None = None) -> str | None:
-  """The persona LOAD-OR-ERROR verdict for the `box create` path.
+class PreparedCreateAgent(NamedTuple):
+  """One create's selection and live projection; never stored in its journal."""
 
-  A read-only pre-check the caller runs BEFORE the lifecycle-journal write-entry.
-  The create guard MUST precede the journal entry (an abort after the entry would
-  leave a pending entry whose recovery replays the seed).  So `run_create` calls
-  this FIRST; a non-``None`` return is the
-  actionable error message → the caller prints it and refuses to create, with NO
-  journal entry / seed.  Returns ``None`` for a bare / non-persona / no-agent box
-  (nothing to gate).
+  selection: AgentSelection | None
+  target: Target | None
+  persona_bundle: PersonaBundle | None
 
-  Read-only: resolves the agent → endpoint against a THROWAWAY config copy and
-  runs the same :func:`_preflight_persona_load` the launch uses; it never writes
-  (the first-use generate happens inside :func:`seed_new_box`).
+
+def prepare_create_agent(std, proj, *, explicit_agent: str | None = None) -> PreparedCreateAgent:
+  """Capture create's input before writes; only an absent default permits template-only seeding."""
+  from kanibako.errors import AgentNoDefaultError, AgentUnsetError
+  from kanibako.settings.agent_select import select_agent
+
+  try:
+    selection = select_agent(std=std, proj=proj, explicit_agent=explicit_agent)
+  except (AgentNoDefaultError, AgentUnsetError):
+    return PreparedCreateAgent(None, None, None)
+  target = resolve_target(selection.identity.target_name) if selection.has_agent else None
+  return PreparedCreateAgent(selection, target, _selected_persona_bundle(selection, target))
+
+
+def persona_create_verdict(
+  std,
+  config,
+  proj,
+  *,
+  explicit_agent: str | None = None,
+  prepared: PreparedCreateAgent | None = None,
+) -> str | None:
+  """Check loadability before the create journal; return an error or ``None``.
+
+  ``prepared`` shares one selection/projection with the later seed. Omission prepares
+  this call's input. Broken configuration propagates; an absent default or a bare,
+  non-persona, or no-agent selection has no persona gate. Nothing is written.
   """
   logger = get_logger("start")
   system_settings_path = std.settings
-  selection = None
-  try:
-    from kanibako.settings.agent_select import select_agent
-
-    selection = select_agent(
-      std=std,
-      proj=proj,
-      explicit_agent=explicit_agent,
-    )
-    agent_name = selection.node
-    target = resolve_target(harness_of(agent_name)) if agent_name else None
-  except Exception:  # no-agent / unresolved → nothing persona to gate.
+  if prepared is None:
+    prepared = prepare_create_agent(std, proj, explicit_agent=explicit_agent)
+  selection, target, persona_bundle = prepared
+  if target is None or selection is None:
     return None
-  if target is None:
-    return None
-  agent_id = with_harness(agent_name, agent_node_case(target.name))
-  if harness_of(agent_id) == agent_id:
+  agent_identity = selection.identity
+  agent_id = agent_identity.node
+  if agent_identity.registered_name is None and harness_of(agent_id) == agent_id:
     return None  # bare — no persona gate.
   agent_cfg_path = agent_settings_path(std.agents, agent_id)
-  # The persona store, read ONCE for this verdict exactly as the launch reads
-  # it. ⚑ NOT optional: the create path used to see a persona's endpoint and
-  # token because the create-side store IMPORT had just persisted them into
-  # ``agents/<node>/agent.yaml``. That persist is gone (the store is a live
-  # input now), so without this the verdict would resolve NO endpoint for a
-  # perfectly good store persona and refuse every such create.
-  persona_bundle = _persona_bundle_for(agent_id, target)
   persona_values = (
     persona_bundle.to_persona_values() or None if persona_bundle is not None else None
   )
@@ -9848,11 +10136,14 @@ def persona_create_verdict(std, config, proj, *, explicit_agent: str | None = No
     agent_cfg_path=agent_cfg_path,
     persona_values=persona_values,
     selection_level=selection.selection_level if selection else None,
+    agent_identity=agent_identity,
   )
   # ⚑ ``probe=False``: the create path runs its OWN warn-only probe in
   # ``box/_parser._check_persona_store_for_create`` [Jei:2026-08-05]. Setting
   # it here would turn a create with a rejected token into a refusal, which is
   # exactly the unification that ruling forbids.
+  if getattr(selection, "registered_persona", None) is not None:
+    return _prepare_persona_load(agent_id, endpoint, target=target, bundle=persona_bundle)[1]
   _ep, error, _provider = _preflight_persona_load(
     agent_id,
     secret_paths,
@@ -9866,51 +10157,30 @@ def persona_create_verdict(std, config, proj, *, explicit_agent: str | None = No
   return error
 
 
-def seed_new_box(std, config, proj, *, explicit_agent: str | None = None) -> None:
-  """Seed a freshly-created box's home at CREATE time (`box create` entry).
+def seed_new_box(
+  std,
+  config,
+  proj,
+  *,
+  explicit_agent: str | None = None,
+  prepared: PreparedCreateAgent | None = None,
+) -> None:
+  """Seed a fresh or recovering create from its pre-journal input, without image work.
 
-  The keyspace spec seeds the box home ONCE, atomically with registration, at
-  `create` — not at first launch.  `run_create` (and any other create path)
-  calls this right after the resolver returns ``proj.is_new`` True.  It builds
-  the minimal-sufficient seed context — the agent-resolution chain the seed
-  needs (active agent → target/descriptor, the agent config path, and the
-  effective group-auth gate) — WITHOUT the launch-only image pull/build, then
-  delegates to the shared :func:`_seed_box_home` and its SIBLING
-  :func:`_sync_box_at_create` (the once-at-create, UNGATED ``synced`` write).
-
-  A no-op-safe entry: a no-agent box (no resolvable target) still seeds its
-  base/workset template layers (the agent layer + cred seed are skipped).
+  ``run_create`` passes ``prepared`` to retain the verdict's selection/projection;
+  standalone callers prepare once here. The home seed and its separate, ungated
+  sync precede registration. An absent default or no-agent selection seeds only
+  base/workset templates; broken configuration never falls through to that path.
   """
   logger = get_logger("start")
   system_settings_path = std.settings
 
-  # Resolve the active agent → target/descriptor (config/settings only; no
-  # image work).  A box with no resolvable agent seeds template-only.
-  target = None
+  if prepared is None:
+    prepared = prepare_create_agent(std, proj, explicit_agent=explicit_agent)
+  selection, target, persona_bundle = prepared
   desc = None
-  agent_name = ""
-  selection = None
-  try:
-    from kanibako.settings.agent_select import select_agent
-
-    selection = select_agent(
-      std=std,
-      proj=proj,
-      explicit_agent=explicit_agent,
-    )
-    agent_name = selection.node
-    target = resolve_target(harness_of(agent_name)) if agent_name else None
-  except Exception:  # pragma: no cover - no-agent / unresolved → template-only
-    logger.debug("seed_new_box: no agent resolved; template-only seed", exc_info=True)
-    target = None
-
-  # NODE-name (persona identity) keys the agents/<node>/ dir + agent.<node>.*
-  # slot; with_harness swaps in the actually-resolved target's NODE (fallback-safe),
-  # persona preserved. Bare + as-requested -> node == harness == that node.
-  # ⚑ ``agent_node_case``, not ``target.name``: the declared name keeps its case,
-  # the node is lowercase (keyspec §0 "An agent's canonical case is carried by its
-  # _name_") — the hoisted site above says why at length.
-  agent_id = with_harness(agent_name, agent_node_case(target.name)) if target else GENERAL_SLOT
+  agent_identity = selection.identity if target is not None and selection is not None else None
+  agent_id = agent_identity.node if agent_identity is not None else GENERAL_SLOT
   agent_cfg_path = agent_settings_path(std.agents, agent_id)
   # Load or GENERATE the agent config IN MEMORY (mirrors the launch path) — the
   # WRITE + share shim are deferred until after the persona load-or-error
@@ -9931,8 +10201,6 @@ def seed_new_box(std, config, proj, *, explicit_agent: str | None = None) -> Non
   if target is not None:
     desc = target.descriptor
 
-  # The persona store, read ONCE for this seed (see :func:`persona_create_verdict`).
-  persona_bundle = _persona_bundle_for(agent_id, target)
   persona_values = (
     persona_bundle.to_persona_values() or None if persona_bundle is not None else None
   )
@@ -9952,6 +10220,7 @@ def seed_new_box(std, config, proj, *, explicit_agent: str | None = None) -> Non
     # persists a persona's endpoint into the agent file any more.
     persona_values=persona_values,
     selection_level=selection.selection_level if selection else None,
+    agent_identity=agent_identity,
   )
 
   # PERSONA LOAD-OR-ERROR (A + B3) — the SAME gate the launch path runs, before
@@ -9963,19 +10232,25 @@ def seed_new_box(std, config, proj, *, explicit_agent: str | None = None) -> Non
   # gate must run so an unloadable persona is rejected at CREATE, symmetric with
   # the launch path.
   agent_cfg_dirty = target is not None and not agent_cfg_exists
-  if target is not None and harness_of(agent_id) != agent_id:
-    active_endpoint, persona_error, _provider = _preflight_persona_load(
-      agent_id,
-      secret_paths,
-      active_endpoint,
-      logger,
-      target=target,
-      keyspace_model=active_model,
-      # ``probe=False`` for the same reason as the create verdict: the
-      # create path's probe is warn-only and lives in the store check.
-      bundle=persona_bundle,
-      probe=False,
-    )
+  if target is not None and (
+    (agent_identity is not None and agent_identity.registered_name is not None)
+    or harness_of(agent_id) != agent_id
+  ):
+    if getattr(selection, "registered_persona", None) is not None:
+      active_endpoint, persona_error, _provider = _prepare_persona_load(
+        agent_id, active_endpoint, target=target, bundle=persona_bundle
+      )
+    else:
+      active_endpoint, persona_error, _provider = _preflight_persona_load(
+        agent_id,
+        secret_paths,
+        active_endpoint,
+        logger,
+        target=target,
+        keyspace_model=active_model,
+        bundle=persona_bundle,
+        probe=False,
+      )
     if persona_error is not None:
       raise KanibakoError(persona_error)
 
@@ -9986,7 +10261,7 @@ def seed_new_box(std, config, proj, *, explicit_agent: str | None = None) -> Non
   if target is not None and agent_cfg_dirty:
     assert seed_agent_cfg is not None  # target set ⇒ config built above.
     agent_file.save(agent_cfg_path, seed_agent_cfg)
-  ensure_persona_share_symlinks(std, agent_id, target)
+  ensure_persona_share_symlinks(std, agent_id, target, agent_identity=agent_identity)
 
   _seed_box_home(
     std=std,
@@ -10000,6 +10275,7 @@ def seed_new_box(std, config, proj, *, explicit_agent: str | None = None) -> Non
     logger=logger,
     suppress_oauth=suppress_oauth,
     selection_level=selection.selection_level if selection else None,
+    agent_identity=agent_identity,
   )
   # The create-time ``synced`` write, the seed's SIBLING (see
   # :func:`_sync_box_at_create`).
@@ -10018,6 +10294,7 @@ def seed_new_box(std, config, proj, *, explicit_agent: str | None = None) -> Non
     logger=logger,
     deliver_creds=auth_src.creds_shared,
     selection_level=selection.selection_level if selection else None,
+    agent_identity=agent_identity,
   )
 
 
@@ -10363,6 +10640,7 @@ def _apply_init_seeds(
   logger,
   deliver_creds: bool = True,
   selection_level: "Mapping[str, object] | None",
+  agent_identity: AgentIdentity | None = None,
 ) -> "KeyStore":
   """Copy configured copy-once-at-init seeds into the new project's shell dir.
 
@@ -10465,6 +10743,7 @@ def _apply_init_seeds(
     std=std,
     proj=proj,
     agent_name=agent_name,
+    agent_identity=agent_identity,
     system_settings_path=global_config_path,
     agent_cfg_path=agent_config_path,
     desc=None,
@@ -11459,6 +11738,7 @@ def _run_setup_command(
   extra_mounts: list,
   tmpfs_masks,
   container_env: dict[str, str],
+  target_name: str | None,
 ) -> int:
   """Run a target's one-time interactive setup command in a fresh box.
 
@@ -11485,7 +11765,7 @@ def _run_setup_command(
     enable_vault=proj.vault_enabled(),
     env=container_env,
     name=container_name,
-    labels=box_labels(proj),
+    labels=launch_labels(box_labels(proj), target_name),
     entrypoint=setup_entrypoint,
     cli_args=setup_args or None,
     detach=False,

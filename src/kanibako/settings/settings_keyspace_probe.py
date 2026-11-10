@@ -87,7 +87,7 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any, Collection, Final, Iterator, Mapping
+from typing import Any, Callable, Collection, Final, Iterator, Mapping
 
 from kanibako.settings.settings_keyspace import (
   ConcedingLeafMap,
@@ -332,14 +332,18 @@ def _probe_file() -> str:
   return os.environ.get(ENV_FILE) or DEFAULT_PROBE_FILE
 
 
-def observe(store: Mapping[str, Any], *, origin: str) -> None:
+def observe(
+  store: Mapping[str, Any],
+  *,
+  origin: str,
+  oracle: Callable[[str], KeyJudgment] = keyspace_verdict,
+) -> None:
   """Record the undeclared paths in *store*. NO-OP when disarmed; never raises.
 
-  *origin* names the seam that produced *store*, so a row can be attributed without
-  a frame walk. Under pytest the row also carries ``PYTEST_CURRENT_TEST``, which is
-  what makes "which test files surface them" answerable — and it is READ from the
-  environment rather than derived, precisely because a measurement must not reach
-  into its caller.
+  *origin* names the producing seam; ``PYTEST_CURRENT_TEST`` identifies the test
+  through the environment, without a frame walk. *oracle* is the resolve's judgment;
+  omission uses the memoized global oracle. A resolve-local vocabulary never enters
+  that process-wide cache. Measurement and enforcement must receive the same oracle.
 
   ⚑ ONE ROW PER OBSERVATION, INCLUDING A CLEAN ONE. A probe that wrote only findings
   could not tell "the seam resolved a hundred clean snapshots" from "the seam was
@@ -349,7 +353,7 @@ def observe(store: Mapping[str, Any], *, origin: str) -> None:
   if not probe_enabled():
     return
   try:
-    findings = undeclared_store_paths(store, oracle=keyspace_verdict)
+    findings = undeclared_store_paths(store, oracle=oracle)
     row = {
       "origin": origin,
       "test": os.environ.get("PYTEST_CURRENT_TEST", ""),

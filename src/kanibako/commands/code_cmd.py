@@ -592,42 +592,41 @@ def _wire_docker_path(wrapper_path) -> int | None:
 
 
 def _seed_remote_attached_config(engine, container_name: str) -> None:
-  """Best-effort seed of the LOCAL attached-container config keyed by the
-  REMOTE box's image.  NEVER raises (zero-launch-delta).
+  """Seed the local image-shared config without blocking remote attach.
 
-  STAMP-ONLY agent resolution (``KANIBAKO_AGENT`` via the RemoteEngine): there
-  is no LOCAL box to run the merged-config cascade against, so a pre-stamp
-  remote box simply seeds no extension (the workspace folder still seeds).
-
-  ⚑ Like the local leg, each STEP owns its reporting and the blanket catch is
-  NOT where a foreseen failure is handled:
-
-  * image resolution — ``RemoteEngine.container_image`` returns ``None`` on a
-    failed probe, which SKIPS the seed;
-  * agent + extension resolution — the inner ``except`` below, extension
-    ``None``;
-  * the WRITE — :func:`_write_attached_config`, which WARNS on ``OSError``.
-
-  What is left for this catch is the UNFORESEEN: a bug in the seed, or an
-  ``OSError`` from the podman probe inside ``container_image`` (the tunnel or
-  the binary gone since ``preflight_engine``).  Neither names a condition the
-  user can act on, so both stay at debug — and the catch stays blanket so a
-  seed bug can never cost the user their editor.
+  Creation metadata pins subsequent probes to one container ID. A present target
+  selects its extension directly; empty or invalid targets never use the legacy
+  stamp. Only an absent target permits stamp parsing, without local PG/settings.
+  Unreadable metadata permits image/workspace seeding only. Image failure skips
+  the seed; extension failure keeps the workspace; writes warn on OSError through
+  _write_attached_config. Unexpected failures stay debug-only.
   """
   from kanibako.agent_ref import harness_of
   from kanibako.launch.creds_watcher import running_box_agent
 
   try:
-    image_ref = engine.container_image(container_name)
+    try:
+      metadata = engine.inspect_creation_metadata(container_name)
+    except Exception:
+      metadata = None
+    probe_id = metadata[0] if metadata is not None else container_name
+    image_ref = engine.container_image(probe_id)
     if image_ref is None:
       return
     extension = None
-    try:
-      node = running_box_agent(engine, container_name)
-      if node is not None:
-        extension = _extension_for_agent(harness_of(node))
-    except Exception:
-      extension = None
+    if metadata is not None:
+      try:
+        labels = metadata[1]
+        if "kanibako.target" in labels:
+          target_name = labels["kanibako.target"]
+          if target_name:
+            extension = _extension_for_agent(target_name)
+        else:
+          node = running_box_agent(engine, probe_id)
+          if node is not None:
+            extension = _extension_for_agent(harness_of(node))
+      except Exception:
+        extension = None
     path = attached_container_config_path(
       image_ref,
       user_config_home(),

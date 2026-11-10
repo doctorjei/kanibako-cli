@@ -52,6 +52,7 @@ from pathlib import Path
 from kanibako.errors import KanibakoError
 from kanibako.log import get_logger
 from kanibako.runtime.container import (
+  creation_metadata_from_inspect,
   env_from_inspect,
   image_ref_or_none,
   running_from_inspect,
@@ -433,17 +434,11 @@ def read_context_entry(name: str) -> dict[str, str]:
 
 
 class RemoteEngine:
-  """The subset of :class:`~kanibako.runtime.container.ContainerRuntime` the attach
-  seed path needs, driven by ``podman --remote --url unix://<local.sock>``.
+  """The attach-seed engine subset, using ``podman --remote --url unix://<local.sock>``.
 
-  Built on the podman remote argv prefix dialing the LOCAL end of the ssh
-  tunnel (:func:`ensure_tunnel`) — podman never execs ssh here (the golang
-  ``ssh:`` client is bypassed entirely).  Does NOT touch
-  :class:`ContainerRuntime` — it does share that module's ``inspect`` parsers
-  (:func:`~kanibako.runtime.container.image_ref_or_none`,
-  :func:`~kanibako.runtime.container.running_from_inspect`,
-  :func:`~kanibako.runtime.container.env_from_inspect`), so both legs read the
-  engine's answers by one rule.
+  Dials the LOCAL end of :func:`ensure_tunnel`'s ssh tunnel; podman never execs
+  ssh, bypassing its golang ``ssh:`` client. Shares the inspect parsers in
+  :mod:`kanibako.runtime.container`, never a :class:`ContainerRuntime` instance.
   """
 
   def __init__(self, url: str, *, podman: str | None = None) -> None:
@@ -484,6 +479,16 @@ class RemoteEngine:
     """Whether the remote container *name* is currently running."""
     running, _ = self.running_with_stderr(name)
     return running
+
+  def inspect_creation_metadata(self, name: str) -> tuple[str, dict[str, str]] | None:
+    """Read ID and creation labels together, or ``None`` when unreadable."""
+    try:
+      result = self._run(
+        ["inspect", "--format", "[{{json .Id}},{{json .Config.Labels}}]", name],
+      )
+    except OSError:
+      return None
+    return creation_metadata_from_inspect(result)
 
   def inspect_env(self, name: str, key: str) -> str | None:
     """The value of env var *key* on remote container *name*, or None."""

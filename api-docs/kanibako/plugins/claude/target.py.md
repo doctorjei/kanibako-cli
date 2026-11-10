@@ -57,6 +57,7 @@ class ClaudeTarget(Target):
     def default_category_binds(self) -> CategoryBindDefaults
     def default_envs(self) -> dict[str, str]
     def check_auth(self, *, box_home: Path | None=None, delivered: frozenset[str]=frozenset()) -> bool
-    def prepare_host(self, install: AgentInstall, *, auto_auth: bool, data_path: Path) -> None
+    def prepare_host_binary(self, install: AgentInstall, *, data_path: Path) -> None
+    def refresh_host_auth(self, install: AgentInstall, *, data_path: Path) -> None
     def setting_descriptors(self) -> list[TargetSetting]
 ```

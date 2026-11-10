@@ -598,6 +598,96 @@ class TestBuildEffectiveState:
     assert "SEKRIT" not in repr(result)
 
 
+@pytest.mark.usefixtures("config_file")
+class TestCapturedScalarInput:
+  def test_registered_values_reach_scalars_without_store_access(
+    self, tmp_path, std, config, project_dir, monkeypatch
+  ):
+    from kanibako import persona_store
+    from kanibako.agent_ref import AgentIdentity
+    from kanibako.commands import start
+    from kanibako.settings import config_io
+    from kanibako.settings.agent_config import agent_settings_path
+    from kanibako.settings.config_interface import identity_valid_agents
+    from kanibako.settings.paths import resolve_project
+    from kanibako.settings.settings_launch import (
+      ResolveSubject,
+      build_launch_snapshot,
+      resolve_inputs,
+      snapshot_leaf,
+    )
+
+    proj = resolve_project(std, config, str(project_dir), initialize=True)
+    identity = AgentIdentity(
+      node="navigator",
+      registered_name="Navigator",
+      persona="Guide",
+      harness="Claude",
+      target_name="claude",
+      entry_path=tmp_path / "captured-PG" / "Navigator",
+    )
+    agent = agent_settings_path(std.agents, identity.node)
+    config_io.dump_doc(std.settings, {"agent": {"default": {"model": "default-image"}}})
+    config_io.dump_doc(
+      agent,
+      {
+        "self": {"transform": "tweakcc"},
+        "box": {"image": "{agent.navigator.model}/{meta.box.path}"},
+      },
+    )
+    before = {p: p.read_bytes() for p in (std.settings, agent)}
+    for name in (
+      "read_registered_persona",
+      "read_persona_bundle",
+      "project_registered_persona",
+      "resolve_secret_path",
+    ):
+      monkeypatch.setattr(persona_store, name, lambda *a, **kw: pytest.fail("persona I/O"))
+    monkeypatch.setattr(config_io, "fetch_persona_secret", lambda *a, **kw: pytest.fail("fetch"))
+    monkeypatch.setattr(start, "_persona_values_for", lambda *a, **kw: pytest.fail("rediscovery"))
+    for model in ("first-image", "second-image"):
+      values = {"model": model}
+      inputs = resolve_inputs(
+        subject=ResolveSubject.BOX,
+        std=std,
+        proj=proj,
+        agent_name=identity.node,
+        agent_identity=identity,
+        system_path=std.settings,
+      )
+      snapshot = build_launch_snapshot(
+        **inputs.as_kwargs(),
+        agent_name=identity.node,
+        agent_path=agent,
+        valid_agents=identity_valid_agents(identity),
+        persona_values=values,
+      )
+      actual = start._box_scalars(
+        std,
+        proj,
+        identity.node,
+        std.settings,
+        None,
+        agent_identity=identity,
+        persona_values=values,
+      )
+      assert actual.box_image == snapshot_leaf(snapshot, "box.image")
+      assert actual.box_image == f"{model}/{snapshot_leaf(snapshot, 'meta.box.path')}"
+      assert values == {"model": model}
+    file_only = start._box_scalars(
+      std, proj, identity.node, std.settings, None, agent_identity=identity
+    )
+    file_snapshot = build_launch_snapshot(
+      **inputs.as_kwargs(),
+      agent_name=identity.node,
+      agent_path=agent,
+      valid_agents=identity_valid_agents(identity),
+    )
+    assert file_only.box_image == snapshot_leaf(file_snapshot, "box.image")
+    assert not file_only.box_image.startswith(("first-image/", "second-image/"))
+    assert {p: p.read_bytes() for p in before} == before
+
+
 class TestDisplayAnswersLikeTheLaunch:
   """The ``--effective`` behavior read resolves an anchor-spelled value as the launch does."""
 

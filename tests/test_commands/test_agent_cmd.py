@@ -141,6 +141,182 @@ class TestRunList:
     assert "claude" in out
 
 
+@pytest.fixture
+def registered_list_env(empty_agent_env, tmp_path, monkeypatch):
+  from types import SimpleNamespace
+
+  from kanibako import cli, persona_store
+  from kanibako.plugins.claude.target import ClaudeTarget
+  from kanibako.settings import config_io
+
+  adir = agents_dir(empty_agent_env)
+  path = agent_settings_path(adir, "scout")
+  config_io.dump_doc(path, {"self": {"model": "stored-model"}})
+  root = tmp_path / "captured-pg"
+  entry = root / "Scout"
+  data = {
+    "agent": {
+      "persona": {"name": "Guide"},
+      "harness": {
+        "name": "claude",
+        "config_store": {"model": "live-model"},
+        "auth_var": "TOKEN",
+      },
+      "secret": "synthetic-manager",
+    }
+  }
+  locate = MagicMock(return_value=root)
+  names = MagicMock(return_value={"Scout": entry})
+  load = MagicMock(return_value=(entry, data))
+  fetch = MagicMock(side_effect=AssertionError("credential fetch"))
+  project = MagicMock(side_effect=AssertionError("stored list projected values"))
+  legacy = MagicMock(side_effect=AssertionError("stored list read legacy values"))
+  monkeypatch.setattr(config_io, "persona_store_location", locate)
+  monkeypatch.setattr(config_io, "persona_store_agents", names)
+  monkeypatch.setattr(config_io, "load_persona_agent", load)
+  monkeypatch.setattr(config_io, "fetch_persona_secret", fetch)
+  monkeypatch.setattr(persona_store, "project_registered_persona", project)
+  monkeypatch.setattr(persona_store, "read_persona_bundle", legacy)
+  monkeypatch.setattr("kanibako.targets.discover_targets", lambda: {"claude": ClaudeTarget})
+  monkeypatch.setattr(cli, "_setup_nudge", lambda *args: None)
+  return SimpleNamespace(
+    adir=adir,
+    path=path,
+    root=root,
+    data=data,
+    locate=locate,
+    names=names,
+    load=load,
+    fetch=fetch,
+    project=project,
+    legacy=legacy,
+  )
+
+
+class TestRegisteredListRecords:
+  @staticmethod
+  def _cli(capsys, *args):
+    from kanibako.cli import main
+
+    with pytest.raises(SystemExit) as result:
+      main(["agent", *args])
+    captured = capsys.readouterr()
+    return result.value.code, captured.out, captured.err
+
+  @pytest.mark.parametrize("invalid", [False, True])
+  def test_list_and_get_judge_the_same_registered_file(self, registered_list_env, capsys, invalid):
+    from kanibako.settings.config_io import dump_doc
+
+    env = registered_list_env
+    doc = {"self": {"model": "stored-model"}}
+    if invalid:
+      doc["self"]["provider"] = "foreign-provider"
+    dump_doc(env.path, doc)
+    before = env.path.read_bytes()
+    rc, out, err = self._cli(capsys, "list")
+    assert rc == int(invalid)
+    if invalid:
+      assert out == ""
+      assert "provider" in err and "agent.scout" in err
+    else:
+      assert "scout" in out and "stored-model" in out
+      assert "live-model" not in out and err == ""
+    env.locate.assert_called_once_with()
+    env.names.assert_called_once_with(root=env.root)
+    env.load.assert_called_once_with("Scout", root=env.root)
+    rc, out, err = self._cli(capsys, "get", "Scout", "model")
+    assert rc == int(invalid)
+    if invalid:
+      assert out == ""
+      assert "provider" in err and "agent.scout" in err
+    else:
+      assert out.strip() == "stored-model" and err == ""
+    assert env.names.call_count == env.load.call_count == 2
+    assert env.path.read_bytes() == before
+    env.fetch.assert_not_called()
+    env.project.assert_not_called()
+    env.legacy.assert_not_called()
+
+  def test_a_later_refused_record_prints_no_earlier_rows(self, registered_list_env, capsys):
+    from kanibako.settings.config_io import dump_doc
+
+    env = registered_list_env
+    earlier = agent_settings_path(env.adir, "claude")
+    dump_doc(earlier, {"self": {"model": "earlier-model"}})
+    dump_doc(env.path, {"self": {"provider": "foreign-provider"}})
+    before = {path: path.read_bytes() for path in (earlier, env.path)}
+    rc, out, err = self._cli(capsys, "list")
+    assert rc == 1 and out == ""
+    assert "provider" in err and "scout" in err
+    assert {path: path.read_bytes() for path in before} == before
+    env.names.assert_called_once_with(root=env.root)
+    env.load.assert_called_once_with("Scout", root=env.root)
+    env.fetch.assert_not_called()
+    env.project.assert_not_called()
+
+  def test_quiet_never_reads_records_or_a_broken_store(self, registered_list_env, capsys):
+    from kanibako.errors import ConfigError
+    from kanibako.settings.config_io import dump_doc
+
+    env = registered_list_env
+    dump_doc(env.path, {"self": {"provider": "foreign-provider"}})
+    env.locate.side_effect = ConfigError("broken PG store")
+    before = env.path.read_bytes()
+    assert self._cli(capsys, "list", "--quiet") == (0, "scout\n", "")
+    assert env.path.read_bytes() == before
+    env.locate.assert_not_called()
+    env.names.assert_not_called()
+    env.load.assert_not_called()
+    env.fetch.assert_not_called()
+    env.project.assert_not_called()
+
+  @pytest.mark.parametrize("node", ["claude", "Guide+claude", "shell"])
+  def test_native_and_legacy_lists_never_read_pg(self, empty_agent_env, monkeypatch, capsys, node):
+    from kanibako import cli, persona_store
+    from kanibako.plugins.claude.target import ClaudeTarget
+    from kanibako.settings import config_io
+
+    path = agent_settings_path(agents_dir(empty_agent_env), node)
+    config_io.dump_doc(path, {"self": {"model": "stored-model"}})
+    before = path.read_bytes()
+    trap = MagicMock(side_effect=AssertionError("PG access"))
+    monkeypatch.setattr(config_io, "persona_store_location", trap)
+    monkeypatch.setattr(config_io, "fetch_persona_secret", trap)
+    monkeypatch.setattr(persona_store, "project_registered_persona", trap)
+    monkeypatch.setattr(persona_store, "read_persona_bundle", trap)
+    monkeypatch.setattr("kanibako.targets.discover_targets", lambda: {"claude": ClaudeTarget})
+    monkeypatch.setattr(cli, "_setup_nudge", lambda *args: None)
+    rc, out, err = self._cli(capsys, "list")
+    assert rc == 0 and err == ""
+    assert node in out and "stored-model" in out
+    assert path.read_bytes() == before
+    trap.assert_not_called()
+
+  @pytest.mark.parametrize("unavailable", ["broken", "absent", "uninstalled"])
+  def test_unavailable_input_keeps_stored_listing(self, registered_list_env, capsys, unavailable):
+    from kanibako.errors import ConfigError
+    from kanibako.settings.config_io import dump_doc
+
+    env = registered_list_env
+    if unavailable == "broken":
+      env.names.side_effect = ConfigError("broken PG store")
+    elif unavailable == "absent":
+      env.names.return_value = {}
+    else:
+      env.data["agent"]["harness"]["name"] = "uninstalled"
+    dump_doc(env.path, {"self": {"model": "stored-model", "provider": "conceded"}})
+    before = env.path.read_bytes()
+    rc, out, err = self._cli(capsys, "list")
+    assert rc == 0 and err == ""
+    assert "scout" in out and "stored-model" in out and "live-model" not in out
+    env.names.assert_called_once_with(root=env.root)
+    assert env.load.call_count == int(unavailable == "uninstalled")
+    assert env.path.read_bytes() == before
+    env.fetch.assert_not_called()
+    env.project.assert_not_called()
+    env.legacy.assert_not_called()
+
+
 # ---------------------------------------------------------------------------
 # agent info
 # ---------------------------------------------------------------------------
@@ -2061,6 +2237,139 @@ class TestRunReauth:
       project_home=proj.shell_path,
       suppress_oauth=True,
     )
+
+  @pytest.mark.parametrize(
+    "kind, persona_endpoint, override, expected_endpoint, expect_sync",
+    [
+      ("registered", "https://third-party.invalid", (), "https://third-party.invalid", False),
+      (
+        "registered",
+        "https://third-party.invalid",
+        ("https://user.invalid",),
+        "https://user.invalid",
+        False,
+      ),
+      ("registered", "https://third-party.invalid", (None,), None, True),
+      ("native", None, (), None, True),
+      ("legacy", "https://legacy.invalid", (), "https://legacy.invalid", False),
+      ("legacy", "https://legacy.invalid", (None,), None, True),
+    ],
+  )
+  def test_reauth_resolves_live_endpoint_before_credential_filtering(
+    self, tmp_path, kind, persona_endpoint, override, expected_endpoint, expect_sync
+  ):
+    from types import SimpleNamespace
+
+    from kanibako.agent_ref import AgentIdentity
+    from kanibako.commands import agent_cmd, start
+    from kanibako.persona_store import PersonaBundle, RegisteredPersona, project_registered_persona
+    from kanibako.plugins.claude import ClaudeTarget
+    from kanibako.settings import config_io, settings_launch
+    from kanibako.settings.agent_select import AgentSelection
+    from kanibako.settings.settings_resolve import ResolveCtx
+    from kanibako.targets import credsync
+    from kanibako.targets.base import Cadence
+
+    node = {"registered": "trailguide", "native": "claude", "legacy": "guide℘claude"}[kind]
+    identity = AgentIdentity(
+      node=node,
+      registered_name="TrailGuide" if kind == "registered" else None,
+      persona="Guide" if kind != "native" else None,
+      harness="claude",
+      target_name="claude",
+      entry_path=tmp_path / "pg-entry" if kind == "registered" else None,
+    )
+    registered = (
+      RegisteredPersona(
+        identity,
+        tmp_path / "captured-store",
+        {"env": {"ANTHROPIC_BASE_URL": persona_endpoint} if persona_endpoint else {}},
+        "ANTHROPIC_AUTH_TOKEN",
+        False,
+      )
+      if kind == "registered"
+      else None
+    )
+    selection = AgentSelection(identity, "explicit", registered_persona=registered)
+    std = SimpleNamespace(settings=None, agents=tmp_path / "agents")
+    proj = SimpleNamespace(mode=BoxMode.standalone, shell_path=tmp_path / "box-home")
+    if override:
+      config_io.dump_doc(
+        agent_settings_path(std.agents, node), {"self": {"endpoint": override[0]}}
+      )
+    inputs = settings_launch.LaunchInputs(
+      subject=settings_launch.ResolveSubject.BOX,
+      ctx=ResolveCtx(node, None, str(tmp_path / "host"), {}),
+      system_path=None,
+      system_floor={},
+      meta_runtime={},
+      meta_identity={},
+      workset_anchor={},
+      auth_chain={
+        "meta.box.agent.auth.share_support": True,
+        "system.auth.share_allowed": True,
+        "box.auth.global_enabled": True,
+      },
+      cascade_box_path=None,
+      cascade_workset_path=None,
+      prefs=(),
+      agent_identity=identity,
+    )
+    target = ClaudeTarget()
+    decisions = []
+    resolve_decisions = start._resolve_box_launch_decisions
+
+    def record_decisions(**kwargs):
+      result = resolve_decisions(**kwargs)
+      decisions.append(result)
+      return result
+
+    with (
+      patch.object(agent_cmd, "_config_file", return_value=None),
+      patch("kanibako.settings.config.load_config", return_value=object()),
+      patch("kanibako.settings.paths.load_std_paths", return_value=std),
+      patch("kanibako.settings.paths.resolve_box_target", return_value=proj),
+      patch("kanibako.settings.agent_select.select_agent", return_value=selection) as select,
+      patch("kanibako.targets.resolve_target", return_value=target),
+      patch.object(settings_launch, "resolve_inputs", return_value=inputs),
+      patch.object(start, "_resolve_box_launch_decisions", side_effect=record_decisions),
+      patch.object(target, "check_auth", return_value=True),
+      patch(
+        "kanibako.persona_store.project_registered_persona", wraps=project_registered_persona
+      ) as project,
+      patch(
+        "kanibako.persona_store.read_persona_bundle",
+        return_value=PersonaBundle(endpoint=persona_endpoint),
+      ) as legacy,
+      patch.object(config_io, "load_persona_agent", side_effect=AssertionError("PG reread")),
+      patch.object(
+        config_io, "persona_store_agents", side_effect=AssertionError("PG rediscovery")
+      ),
+      patch.object(
+        config_io, "fetch_persona_secret", side_effect=AssertionError("credential fetch")
+      ),
+      patch.object(credsync, "_create_workset_source_dirs"),
+      patch.object(credsync, "_sync_workset_dir_from_global"),
+      patch.object(credsync, "_box_from_source") as deliver,
+    ):
+      assert (
+        agent_cmd.run_reauth(argparse.Namespace(agent="TrailGuide", project=None, box=None)) == 0
+      )
+
+    select.assert_called_once()
+    assert len(decisions) == 1
+    assert decisions[0][1] == expected_endpoint
+    assert project.call_count == (1 if kind == "registered" else 0)
+    assert legacy.call_count == (1 if kind == "legacy" else 0)
+    if registered is not None:
+      assert project.call_args.args == (registered, target)
+    deliver.assert_called_once()
+    delivered_descriptor = deliver.call_args.args[1]
+    retained = [
+      spec.host_rel for spec in delivered_descriptor.cred_files if spec.cadence is Cadence.SYNC
+    ]
+    assert retained == ([".claude/.credentials.json"] if expect_sync else [])
+    assert not proj.shell_path.exists()
 
   def _run_private(self, tmp_path: Path, plant):
     """reauth on a PRIVATE box whose credential file *plant* sets up; rc, target."""

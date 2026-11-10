@@ -1,11 +1,8 @@
 # The Config Verb Engine — get / set / show / reset
 
-Every noun command (`box` / `workset` / `agent` / `system`) runs its `config` verbs through this
-one module, so a key behaves the same way whichever noun the user typed it at. It owns the
-argument grammar, the dispatch order over the key FAMILIES, the write-time guards (scope
-direction, retired routes, value shape), the set-time resolution probe, and the two display
-modes. It decides nothing about WHAT a key is — the closed keyspace, the routing tables and the
-refusal wordings live in `config_keys`, and the file-and-slot rule lives in `config_dest`.
+All nouns (`box` / `workset` / `agent` / `system`) share grammar, family dispatch, write guards
+(scope direction, retired routes, value shape), set-time probe, and both display modes.
+`config_keys` owns keyspace, routing tables, and refusals; `config_dest` owns file/slot placement.
 
 Authority: spec `~/canon/workbook/specs/settings-keyspace-1.8.0.md` §0 (closed keyspace, directional enforcement, read
 verbs), §2a (categories + value types), §2b (`meta.box.agent.*`), §2h (`pref.*` requests).
@@ -27,9 +24,9 @@ verbs), §2a (categories + value types), §2b (`meta.box.agent.*`), §2h (`pref.
 
 ### Why `--null` is a FLAG and not a magic value token
 
-`config set` stores scalars VERBATIM — nothing in it YAML- or literal-parses a value (only
-`KEY_TYPES` bools coerce, and `None` is null, as in a file) — so no
-rule turns the string `"null"` into `None`, and one for this route alone would be a dialect:
+`config set` stores scalars VERBATIM, without YAML/literal parsing (`KEY_TYPES` bools coerce;
+`None` is null, as in a file). It never turns `"null"` into `None`; doing so for this route alone
+would be a dialect:
 `box.env.X=null` and `box.image=null` are legitimate strings. The flag says what is meant,
 applies to EVERY key whose leaf accepts the present-`None` terminal, and cannot collide with
 data. It is the CLI spelling of §2h's suppression request
@@ -98,6 +95,13 @@ settings file and IS swept, as part of the nested scope tables.
 
 ## Functions
 
+`addressed_agent_input(raw_key)` unwraps a pref and classifies its node once, retaining captured
+PG input and unavailable diagnosis; other addresses return `None`. `addressed_agent_identity`
+projects it. `project_agent_input(resolved, target)` projects existing registered/legacy values
+after target choice, returning values and plaintext-free credential metadata without fetching.
+Unavailable input yields neither; projection failures propagate. Wrappers retain diagnosis as
+`target_error`. Full-key gates still use `identity_valid_agents`, never permissive vocabulary.
+
 ```parse_config_arg(arg: str | None, *, set_null: bool = False) -> tuple[ConfigAction, str, str | None]```
 Parse a single positional config argument into `(action, key, value)`.
 
@@ -111,7 +115,7 @@ Parse a single positional config argument into `(action, key, value)`.
 UNDOES a `--null`). See "Why `--null` is a FLAG" above.
 
 
-```_pref_value_error(canonical, value, *, config_path, command_scope, system_settings_path, system_path, agent_path, workset_path, box_path, agent_name, set_target) -> str | None```
+```_pref_value_error(canonical, value, *, config_path, command_scope, system_settings_path, system_path, agent_path, workset_path, box_path, agent_name, set_target, valid_agents=None, persona_values=None, persona_credential=None) -> str | None```
 Validate a pref's VALUE against the shape + resolution of its TARGET key.
 
 ⚑ **THE VALUE IS VALIDATED AT THE TARGET PATH, NEVER AT THE `pref.*` PATH.** A pref's key
@@ -262,25 +266,22 @@ The command's target: *proj* ⇒ `BOX`, *ws* ⇒ `WORKSET`, neither ⇒ `SYSTEM`
 without *std*. Supplied identity travels through `resolve_inputs` into set-time descriptor
 lookup: `target_name` selects the plugin, the node selects the settings file. No PG read.
 
-```_set_time_snapshot(*, target, agent_name, agent_path, config_path=None, command_scope=None, system_settings_path=None, system_path=None, workset_path=None, box_path=None) -> tuple[Any, Any]```
-The set-time cascade, merged and not expanded, with the `ResolveCtx` to expand it:
-`(snapshot, ctx)`. With a *target* its tier files (`system_path`, `cascade_workset_path`,
-`cascade_box_path`), its `ctx` and its four floor fragments (`auth_chain`, `meta_runtime`,
-`meta_identity`, `workset_anchor`) are what the snapshot reads. ⚑ The fold restates
-`settings_launch.build_launch_snapshot`'s floor order — a second carrier, kept because that builder
-expands strictly and runs `refuse_read_time_faults`, while set time needs the merged UNEXPANDED
-snapshot to splice the candidate in and expand leniently, and the file arguments after *agent_path*
-are unused. Without one, the command's own file is backfilled into its slot (below) and no box or
-working-set anchor exists.
+```_set_time_snapshot(*, target, agent_name, agent_path, config_path=None, command_scope=None, system_settings_path=None, system_path=None, workset_path=None, box_path=None, valid_agents=None, persona_values=None, persona_credential=None) -> tuple[Any, Any]```
+The unexpanded cascade and context. A target supplies files, floors, and local vocabulary;
+explicit vocabulary, even empty, wins. Both target and fallback assembly receive captured
+`persona_values`/`persona_credential`, never read PG, and preserve file-over-persona precedence.
+Unreadable agent files retain repair behavior. The fallback keeps every supplied tier and fills
+the command's file slot without fabricating anchors or collecting unreadable prefs; NARROW adds
+no launch refusals.
 
-```_target_scope_anchors(target, *, agent_path, agent_name) -> dict[str, object]```
+```_target_scope_anchors(target, *, agent_path, agent_name, persona_values=None, persona_credential=None) -> dict[str, object]```
 The `{meta.workset.path}`/`{meta.box.path}` directories *target*'s own snapshot resolves, read from the same
 snapshot the E3 probe judges, so a scope file that moves a root (`workset.boxes`) moves the anchor
 the bare-relative refusal (keyspec §2a "A path key's stored value") names. A root the target
 lacks, or that does not resolve, is absent; a cascade
 that cannot be assembled yields `{}` (the refusal is issued either way, naming the ref spelling).
 
-```_category_set_lookups(config_path, *, canonical, command_scope=None, system_settings_path=None, system_path=None, agent_path=None, workset_path=None, box_path=None, agent_name="", target=None)```
+```_category_set_lookups(config_path, *, canonical, command_scope=None, system_settings_path=None, system_path=None, agent_path=None, workset_path=None, box_path=None, agent_name="", target=None, valid_agents=None, persona_values=None, persona_credential=None)```
 The set-time lookups over ONE merged cascade snapshot (`_set_time_snapshot`): `(resolves, raw_bind)`.
 
 Built for a `config set` at *config_path* (the COMMAND-scope file): the E3 RESOLUTION probe (Q9,
@@ -371,12 +372,13 @@ no source-only RAW category repoint, and the write verbs refuse all six BY NAME 
 
 ## The verbs
 
-```get_config_value(key, *, global_config_path, project_toml=None, env_global=None, env_project=None, system_settings_path=None, agents_root=None, command_scope=None, active_agent=None, cascade_system_path=None, cascade_workset_path=None, node_store=True, std=None, proj=None, ws=None) -> str | None```
+```get_config_value(key, *, global_config_path, project_toml=None, env_global=None, env_project=None, system_settings_path=None, agents_root=None, command_scope=None, active_agent=None, cascade_system_path=None, cascade_workset_path=None, node_store=True, std=None, proj=None, ws=None, cascade_agent_identity=None, cascade_persona_values=None, cascade_persona_credential=None, target_error=None) -> str | None```
 Read one config value STORED AT THIS NOUN, or `None` when it is not set there.
 
-*active_agent* is the box's resolved agent NODE, needed ONLY to redirect a BARE agent behavior
-key at box scope to its `pref.agent.<active>.<key>` request (see `box_agent_redirect_key`).
-Absent/unknown ⇒ no redirect.
+*active_agent* redirects a box's bare behavior key to `pref.agent.<active>.<key>` through
+`box_agent_redirect_key`; absent/unknown means no redirect. *cascade_agent_identity*
+provides local vocabulary; projected live inputs serve defect checks, not stored reads.
+`target_error` warns and skips full-target construction without blocking the read.
 
 *system_settings_path*, when supplied (the SYSTEM scope), is the file used for SETTINGS reads
 (`system.agent` + agent settings) — i.e. `{config.settings}` = `global/settings.yaml`. When `None`
@@ -490,7 +492,7 @@ site the write side uses is what makes `_read_dest`'s one documented divergence 
 docstring nothing exercised.
 
 
-```set_config_value(key, value, *, config_path, env_path=None, system_settings_path=None, cascade_system_path=None, cascade_agent_path=None, cascade_workset_path=None, cascade_box_path=None, cascade_agent_name="", command_scope=None, agents_root=None, std=None, proj=None, ws=None, target_error=None, force=False, node_store=True) -> str```
+```set_config_value(key, value, *, config_path, env_path=None, system_settings_path=None, cascade_system_path=None, cascade_agent_path=None, cascade_workset_path=None, cascade_box_path=None, cascade_agent_name="", command_scope=None, agents_root=None, std=None, proj=None, ws=None, target_error=None, cascade_agent_identity=None, force=False, node_store=True, cascade_persona_values=None, cascade_persona_credential=None) -> str```
 Write a config value to the appropriate store; returns a message or an error, NEVER raises.
 
 *config_path* is the `box.yaml`/`workset.yaml` (for box/workset) or `kanibako.cfg` (for system).
@@ -499,29 +501,18 @@ agent settings) are written to — `{config.settings}` = `global/settings.yaml` 
 of the `kanibako.cfg` CONFIG file. When `None` (box/workset) writes go to `config_path`
 as before. Returns a human-readable confirmation message.
 
-The `cascade_*` kwargs supply the FULL launch cascade (every scope's settings file + the active
-agent name) for the set-time E3 resolution probe ([Jei:2026-06-29] (b)): the three set handlers
-(`box/_parser.py` / `workset_cmd.py` / `system_cmd.py`) already hold this context and thread it
-here so a cross-scope `@`-ref resolves at set-time exactly as it would at launch. They are
-additive; absent, the command-scope file is still placed in its true slot. (The older wording
-said they are "only consulted on the category path" — that has not been true since DS-BL1 = (a)
-retired the category set route; `_probes_at_set_time` decides which keys reach the probe now.)
+`cascade_*` supplies files, node, identity, and projected persona values/credential metadata.
+Identity governs vocabulary and matching-node null defaults; every probe/defect scan retains
+the live pair, including fallback. Null builds no target; default/pseudo tiers stay unchanged.
+System/agent wrappers remain separate. `_probes_at_set_time` selects expanded values.
 
-*std* with *proj* (a box), *ws* (a working set) or neither (the system scope) names the COMMAND's
-TARGET (spec §2a): `_set_time_target` builds its `resolve_inputs` once, before the value checks, and
-the bare-relative refusal's anchor (keyspec §2a "A path key's stored value") and the E3 probe both
-read that target's snapshot and its tier files. `box set` and the two create-time writes pass the
-box, `workset set` the working set, `system set` and `agent set` the system scope. A `--null`
-builds no target (there is no value to resolve). A target that cannot be built (`KanibakoError`,
-e.g. a dotted `pref:` entry in the box's own file) does NOT refuse the write — spec §2a keeps
-`config set` usable to fix a broken config — so the value is judged against the TARGET-LESS
-snapshot, which can only refuse more, never accept more; a refusal then ends with the build error,
-naming why an anchor was missing. ⚑ That holds because the caller still threads its tier files, so
-the target-less fallback reads the same files as the target and differs only by the floors — a box
-caller that dropped its workset tier let a system-level value show through a dangling workset one,
-and the fallback accepted what the box refuses. `system set`, which does not hold `std`, passes the
-error from loading it as *target_error* and gets the same rule. ⚑ `reset_config_value` runs no
-set-time value validation, so it takes no target.
+*std* with *proj*, *ws*, or neither names the command's box, workset, or system target.
+`_set_time_target` builds it once; anchors and E3 probes share its snapshot inputs.
+`--null` builds no target. A build `KanibakoError` or caller-supplied `target_error`
+permits targetless repair rather than blocking the write; dependency refusals include the cause.
+The fallback retains supplied tiers and live input but omits target floors and prefs.
+Dropping a tier could expose a lower value and accept a broken dependency.
+`reset_config_value` validates no new value and builds no set-time target.
 
 *command_scope* is the scope the `config set` was issued at (block B4). It drives the §0
 directional-write guard (`_scope_direction_error`): a write is permitted for a key of the command
@@ -787,8 +778,9 @@ is seeded and registered, so the refusal says the box exists with its other flag
 was saved, and the cure: per-run on the next launch, or set the owning `env` key; for a
 `secret_path` owner (a PATH key), change the file it points at, or remove it and set `box.env.VAR`.
 
-```reset_config_value(key, *, config_path, env_path=None, system_settings_path=None, command_scope=None, cascade_system_path=None, cascade_agent_path=None, cascade_workset_path=None, cascade_box_path=None, cascade_agent_name="", agents_root=None, node_store=True) -> str```
-Remove an override for a single key; returns a confirmation or an error, NEVER raises.
+```reset_config_value(key, *, config_path, env_path=None, system_settings_path=None, command_scope=None, cascade_system_path=None, cascade_agent_path=None, cascade_workset_path=None, cascade_box_path=None, cascade_agent_name="", agents_root=None, node_store=True, cascade_agent_identity=None, cascade_persona_values=None, cascade_persona_credential=None, target_error=None) -> str```
+Remove one override. Live inputs reach effective reporting; `target_error` warns and skips
+that report, never the removal. Returns a confirmation/error, never raises.
 
 *system_settings_path*, when supplied (SYSTEM scope), is where SETTINGS (`system.agent` + agent
 settings) are removed from (`{config.settings}` = `global/settings.yaml`); when `None`
@@ -800,11 +792,10 @@ a reset is permitted for a key of the command scope's OWN namespace or of any sc
 (containment order, spec §0); an UPWARD reset (and any `meta.*` reset) is REFUSED. When `None`
 the guard is skipped.
 
-The `cascade_*` kwargs supply the FULL launch cascade (every scope's settings file + the active
-agent name) — the SAME context `set_config_value` receives — so the honest cleared-message can
-append the now-effective value + its source tier AFTER the removal (residuals item 1, F7 "where
-cheap"). They are additive and consulted ONLY for that message; a caller that omits them still
-gets the correct cleared-only form.
+The `cascade_*` paths/name supply the post-removal cascade for the cleared-message's effective
+value and tier (F7). *cascade_agent_identity* supplies vocabulary for key judgment,persona
+routing,and that confirmation. Omitted inputs preserve existing behavior; failed resolution
+still leaves a successful removal with its cleared-only message.
 
 ⚑ There is NO `default_categories` FLOOR registry parameter: with both bind reset routes retired
 (R-9), no reachable branch has a reverted-to FLOOR bind value to name.
@@ -915,12 +906,12 @@ does not resolve cleanly post-reset — the cleared-only form is kept (evidence 
 rather than guess a wrong value, the exact lie being fixed).
 
 
-```effective_value(canonical, sections, leaf, *, agent_name, system_path, agent_path, workset_path, box_path, floor=None, inputs=None) -> tuple[str, str] | None```
+```effective_value(canonical, sections, leaf, *, agent_name, system_path, agent_path, workset_path, box_path, floor=None, inputs=None, valid_agents=None, persona_values=None, persona_credential=None) -> tuple[str, str] | None```
 The cascade-effective `(value, source_tier)` for *canonical*, else `None`.
 
-It runs the launch's first two phases, `fold_floor` and then `assemble_cascade` over the four
-settings files (`ReadPurpose.NARROW`), then a lenient expand, and reads `(*sections, leaf)`. There
-is no second resolver, so the tier is the one the cascade actually resolves.
+It folds the floor, assembles four settings files (`ReadPurpose.NARROW`), expands leniently,
+and reads `(*sections, leaf)`. Assembly and expansion share caller vocabulary, or
+`_set_time_valid_agents(inputs)`; identity vocabulary stays local. The cascade supplies the tier.
 
 **Two callers, wanting opposite things from the floor:**
 - `reset_config_value` passes neither *floor* nor *inputs*, and calls after the file is written, so
@@ -934,16 +925,14 @@ Without *inputs*, the path tier comes from `_path_tier_split()`, the set-time pr
 the failure arm differs: if it raises, this returns `None` where the probe falls back to an empty
 floor. An "effective" computed without the path tier would name a value the cascade never resolves.
 
-**Source tier:** the first `cascade.written` level that holds the key, named from `cascade.tiers`,
-most specific first: `box`, `workset`, `agent`, `agent.default`, `system`, `base` (prefs carry
-their scope's name). A `base` leaf equal to the folded floor's is `FLOOR_TIER` (`"built-in
-default"`), unless the key is a path-tier value, which keeps `base`. Levels are read with the
-UNBOUND `dict` ops (S3), never the bound `.get`.
+**Source tier:** the first written level holding the key,with live `persona store` between
+`agent` and `agent.default`. Prefs carry their scope's name. A `base` leaf equal to the
+folded floor is `FLOOR_TIER`,except path-tier values keep `base`. Reads use UNBOUND `dict` ops.
 
-**Returns `None` when** all four paths are `None`; no level holds the key; the merged value is a
+**Returns `None` when** all four paths and live values are absent;no level holds the key;the merged value is a
 `Bind`, `KeyStore`, list, or present `None`; the lenient expand records an error for *canonical*
 (a dangling ref or a cycle); the expanded value is one of those shapes; or it expands to `""`.
-**Raises** `SettingsError` when the files do not read.
+File-read errors propagate.
 
 ⚑ **The empty arm is this function's own, not the renderer's.** `render_stored_scalar` is total and
 spells a stored `""` as `""` (spec §2h: `""` is a terminal value, not unset), so this tests the
@@ -1047,13 +1036,13 @@ Display config values — overrides only, or the full resolved view. Returns an 
 * *effective=False*: show only overrides at this level.
 * *effective=True*: show all resolved values including inherited defaults.
 
-*category_snapshot* (BOX scope, `--effective` only) is the resolved launch `KeyStore`. When
-supplied, the PATH-DELIVERY categories are rendered too: each binding, and each ABSTRACT declaration
-paired with the `binding_derivations.*` binding it produces (spec §0 — "`--effective` shows BOTH the
-declaration and the derived binding and a user can see WHY a mount exists"). *category_error*
-carries a collision message when the snapshot could not be resolved, so `config show --effective`
-REPORTS a mount collision (`MIGRATION.md` § *Mount collisions are now hard errors (a working config
-can start failing)*) rather than dying on it — it is the migration's own detection recipe.
+*category_snapshot* is the captured launch `KeyStore`. Effective BOX scalars reuse it through
+`settings_launch.box_scalar_config` without resolving again, retaining live values and nulls.
+Other nouns, absent snapshots, and *category_error* retain the existing scalar resolve.
+Path-delivery categories pair each ABSTRACT declaration with its `binding_derivations.*` binding
+(spec §0), showing why the mount exists. *category_error* reports failed resolution, including
+collisions (`MIGRATION.md` § *Mount collisions are now hard errors (a working config can start
+failing)*), rather than claiming a complete snapshot.
 
 ⚑ **ONE SCOPE.** The workset / system / agent `config show --effective` verbs still render no
 category key at all: that display predates the keystore and reads `load_merged_config`. Extending
@@ -1068,11 +1057,9 @@ file IS its config file — the settings display reads *config_path*.
 
 ⚑⚑ **THE NOUN'S SETTINGS FILE IS READ AS THE CASCADE READS IT** (`_noun_stored_view`:
 `read_settings_files(((scope, path),), purpose=ReadPurpose.DISPLAY)[0].view` at *command_scope*'s
-level): every block below that shows a table the cascade could drop takes that view, never the
-path. The box scalars read *config_path*, whose `box:` table the cascade never drops at the box.
-That view is what the launch's own seams judge a file by, so a table the launch drops — an `agent:`
-table in a box's settings file, a `system:` table in a workset's file, a `pref:` table in the
-system settings file — gets no row here either. Read raw, the box case would print the table's
+level). Tables use that view; effective scalars use the captured snapshot or existing resolve.
+The box's `box:` table survives. Dropped tables — `agent:` in box settings, `system:` in workset
+settings, or `pref:` in system settings — get no rows. Read raw, the box case would print the table's
 leaves as overrides and a dotted entry in it as undeclared, under the launch's own warning that the
 table is ignored: one file, two readers, two answers. The read NAMES THE FILE, so the dropped table
 is announced here as spec §0 requires (*"with a warning naming the file and key"*) — plain

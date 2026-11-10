@@ -1,10 +1,9 @@
 # ClaudeTarget — the Claude Code plugin's `Target`
 
-`target.py` is what `kanibako-agent-claude` implements against the `Target` ABC in
-`kanibako.targets.base`. Like goose and codex, claude is descriptor-bearing: launch argv, env,
-delivery binds, credential sync, and the behavior floor live in the shipped `claude-defaults.yaml`,
-and this class does only what a YAML file cannot — find the host binary, run host-side updates and
-auth, read and probe personas, and merge credential content.
+`target.py` implements `Target` (`kanibako.targets.base`) for `kanibako-agent-claude`.
+The descriptor's launch argv, env, binds, credential sync, and behavior floor live in
+`claude-defaults.yaml`, as for goose/codex. This class supplies operations YAML cannot:
+host detection, updates/auth, persona reads/probes, and credential merging.
 
 **Authority:** `~/canon/workbook/specs/settings-keyspace-1.8.0.md` §2d (`agent.claude.*`, the
 `synced` category view, plugin-declared env vars).
@@ -26,13 +25,14 @@ path, so nested-container mount sources are real files; `launcher` is recorded a
 
 ## Host preparation
 
-Every host exec runs with `DISABLE_AUTOUPDATER=1` (`_autoupdater_disabled_env`), so claude's
-background updater never repoints the version being bound mid-launch.
+`prepare_host_binary` waits for `claude update` (`_UPDATE_TIMEOUT`, 300 s), stabilizing the
+installation and launcher. `refresh_host_auth` calls `kanibako.auth_browser.auto_refresh_auth`
+without updating. Inherited `prepare_host` runs binary preparation, then auth when *auto_auth*
+permits. A phase-only plugin requires core's phase composition before publication.
 
-`prepare_host` runs the one update in the launch window: a synchronous `claude update`
-(`_UPDATE_TIMEOUT`, 300 s), then, when *auto_auth* is set, `kanibako.auth_browser.auto_refresh_auth`.
-Both steps are best-effort; failures are logged, never raised. It ignores *data_path*: the OAuth
-session store derives from `system.state`, so do not thread it back into the auth call.
+Both phases skip missing launchers and log/swallow failures. Every host exec disables background
+updates (`_autoupdater_disabled_env`, `DISABLE_AUTOUPDATER=1`). *data_path* is ignored: the OAuth jar
+derives from `system.state`, never the caller's data directory.
 
 `check_auth` runs `claude auth status --json` and reads `loggedIn`. If logged out, it runs
 `claude auth login` interactively and re-checks. A missing launcher, an exec error, a nonzero status

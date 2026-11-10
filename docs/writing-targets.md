@@ -49,15 +49,12 @@ class MyTarget(Target):
     def descriptor(self) -> PluginDescriptor | None: ...  # the declarative contract
 ```
 
-⚑ **`name` is the agent's NAME and it is kept verbatim; the store directory is its NODE.** Spell
-it however your agent spells itself — a capital is fine and is shown to the user. Kanibako builds
-the node by lowercasing it, and the node is what spells `<data>/agents/<agent>/` and the
-`agent.<agent>.*` cascade slot. So a plugin named `MyAgent` stores under the node `myagent`, and a
-second plugin calling itself `myagent` claims that node too. What happens then is the ordinary
-discovery precedence (see *Plugin discovery* in the README): within one route the second
-is refused with a warning naming both spellings, because order inside a route is arbitrary;
-between the two routes the entry point wins, because entry points register first and the
-module-scan fallback only fills a node nothing has claimed yet.
+⚑ **`name` stays verbatim for display; its lowercase NODE locates the store.** `MyAgent` uses
+`<data>/agents/myagent/` and `agent.myagent.*`; a plugin named `myagent` claims the same node.
+Ordinary discovery precedence applies (README, *Plugin discovery*): within one route the second
+claim is refused with a warning naming both spellings, because route order is arbitrary.
+Between routes, entry points win: they register first, and module scanning fills only unclaimed
+nodes.
 
 Optional overrides (sensible defaults provided by the base class):
 
@@ -66,7 +63,9 @@ Optional overrides (sensible defaults provided by the base class):
 | `has_binary` | `True` | Set `False` for a pure pip/python tool with no host binary |
 | `check_auth(*, box_home=None, delivered=frozenset())` | `True` | Validate the login before launch; `box_login_present()` checks the box |
 | `checks_box_login` | `False` | `True` when your `check_auth` judges the box; `agent reauth` then syncs the box before checking |
-| `prepare_host(install, *, auto_auth, data_path)` | no-op | Touch the host before mounts (binary update, auth refresh) — set `descriptor.host_prep=True` to enable |
+| `prepare_host(install, *, auto_auth, data_path)` | compose phases | Direct-call composition; launch uses phase hooks |
+| `prepare_host_binary(install, *, data_path)` | no-op | Stabilize the host installation |
+| `refresh_host_auth(install, *, data_path)` | no-op | Refresh authorized host credentials |
 | `default_common()` | `{}` | Declare default `agent.<agent>.common` / `agent.<agent>.caches` binds |
 | `default_category_binds()` | `{}` | Declare default reference-sourced binds in any agent-scope category |
 | `default_seeds()` | `{}` | Declare default `agent.<agent>.seeded` copy-once seeds |
@@ -96,7 +95,7 @@ class PluginDescriptor:
                                                  #  settings keys — see default_envs())
     cred_files: tuple[CredFileSpec, ...] = ()    # credential/config file lifecycle
     login_vars: tuple[str, ...] = ()             # env VARs any one of which, delivered, is a login
-    host_prep: bool = False                      # call prepare_host() before mounts
+    host_prep: bool = False                      # retained; launch calls phase hooks
     init_dirs: tuple[str, ...] = ()              # home-relative dirs to mkdir (e.g. (".codex",))
 ```
 
@@ -389,10 +388,10 @@ when it still fails.  Default `False`.
 
 ### `prepare_host(install, *, auto_auth, data_path) -> None`
 
-Plugin-owned pre-launch host work, run before mounts are built (enable it with
-`descriptor.host_prep=True`).  Use it for agent-specific host preparation such
-as a synchronous binary-update gate or host auth refresh.  Must not crash the
-launch — log and swallow failures.
+Launch calls `prepare_host_binary` before mounts, then authorized `refresh_host_auth` after
+the final credential verdict. Both take `(install, *, data_path)` and must log/swallow failures.
+`prepare_host` composes them for direct callers, honoring `auto_auth`; launch requires
+phase-capable plugins. Their core floor must match before publication.
 
 ### `default_common()` / `default_seeds()` / `default_category_binds()`
 

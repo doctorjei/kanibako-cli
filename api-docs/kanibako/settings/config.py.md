@@ -56,8 +56,10 @@ def system_helpers_leaf_int(leaf: str, value: object, settings_path: Path | None
 def read_setup_completed(settings_path: Path | None) -> str | None
 def setup_compat_gate(settings_path: Path | None, legacy_config: Path | None=None) -> str | None
 def resolve_agent(*, explicit_agent: str | None, requested: str | None=None) -> str
+def resolve_named_agent_input(name: str) -> AgentResolution
 def resolve_named_agent_identity(name: str) -> AgentIdentity
-def resolve_agent_identity(*, explicit_agent: str | None, requested: str | None=None) -> AgentIdentity
+def resolve_agent_input(*, explicit_agent: str | None, requested: str | None=None) -> AgentResolution
+def resolve_agent_identity(*, explicit_agent: str | None, requested: str | None=None, registered_persona_out: list[RegisteredPersona] | None=None) -> AgentIdentity
 def null_path_keys_error(path: Path, keys: Iterable[str], *, cure: str=ERR_CONFIG_NULL_PATH_CURE, head: 'str | None'=None, read_head: str=ERR_CONFIG_NULL_PATH_HEAD) -> 'str | None'
 def refuses_null_path_key(canonical: str) -> bool
 def usable_box_store_value(value: object) -> bool
@@ -75,6 +77,7 @@ def _present_scalar_fields(path: Path) -> dict[str, object]
 def _typed_box_scalar(defaults: KanibakoConfig, field_name: str, value: object) -> object
 def _system_settings_path(global_path: Path) -> Path | None
 def _split_config_key(flat_key: str) -> tuple[str, str]
+def _legacy_agent_identity(name: str) -> AgentIdentity
 def _flatten_leaves(data: dict, prefix: str='', *, with_nodes: bool=False) -> dict[str, object]
 def _flatten_dotted(data: dict, prefix: str='') -> dict[str, str]
 def _agent_of(key: str) -> str
@@ -97,6 +100,14 @@ class KanibakoConfig:
 @dataclass(frozen=True)
 class BootstrapConfig:
     config_paths: Mapping[str, str] = field(default_factory=dict)
+
+    def __post_init__(self) -> None
+
+@dataclass(frozen=True)
+class AgentResolution:
+    identity: AgentIdentity
+    registered_persona: RegisteredPersona | None = field(default=None, repr=False, compare=False)
+    unavailable: Exception | None = field(default=None, repr=False, compare=False)
 
     def __post_init__(self) -> None
 

@@ -58,6 +58,7 @@ class RemoteEngine:
     def version(self) -> subprocess.CompletedProcess[str]
     def running_with_stderr(self, name: str) -> tuple[bool, str]
     def is_running(self, name: str) -> bool
+    def inspect_creation_metadata(self, name: str) -> tuple[str, dict[str, str]] | None
     def inspect_env(self, name: str, key: str) -> str | None
     def container_image(self, name: str) -> str | None
 

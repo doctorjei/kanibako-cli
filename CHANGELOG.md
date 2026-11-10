@@ -10,6 +10,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Select registered Persona Grata agents through its public API. Winning manager
+  credentials use a one-shot inherited pipe, closed before the existing entrypoint
+  starts. Ordinary harness and file-secret delivery remain unchanged.
+
+### Fixed
+
+- Box creation stops on invalid agent configuration before recording or seeding the box.
+- Effective box display preserves live persona values in scalar fields.
+- Box configuration validates references and reports reset values using live persona input.
+- System config commands retain live persona input when validating named-agent settings.
+- Named-agent validation and label displays use live persona values.
+- Workset configuration validates persona-backed references without storing live values.
+- By-value persona probe diagnostics redact exact credentials, including short values;
+  probe exceptions omit tracebacks. Encoded or derived credential echoes remain outside
+  this protection.
+- Preserve user-owned files blocking inherited agent-store links instead of failing during share setup.
+- Remote VS Code extension suggestions follow the container's creation-time target;
+  image and legacy-stamp reads use the same container ID. Older containers retain
+  stamp fallback; local agent settings never choose the remote extension.
+
 ### Changed
 
 - **A blank `-e VAR=` now suppresses the credential instead of being ignored.** On

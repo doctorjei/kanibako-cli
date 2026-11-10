@@ -17,8 +17,9 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from enum import Enum
+from functools import partial
 from pathlib import Path
-from typing import Any, Iterable, Sequence
+from typing import Any, Callable, Iterable, Sequence
 
 from kanibako.agent_ref import agent_address_node, agent_segment_case, display_agent_ref
 from kanibako.errors import ConfigError
@@ -64,14 +65,20 @@ from kanibako.settings.settings_keyspace import (
   TERMINAL_CATEGORY_TAILS,
   Judgment,
   KeyClass,
+  KeyJudgment,
   is_terminal_category_key,
   key_class,
   pref_allowlist_entry,
   display_store_path,
   undeclared_store_paths,
 )
-from kanibako.settings.settings_keyspace_probe import keyspace_verdict
-from kanibako.settings.settings_prefs import PREF_LEGAL_LEVELS, PREF_ROOT, refuse_pref_table
+from kanibako.settings.settings_keyspace_probe import ANY_AGENT, keyspace_verdict
+from kanibako.settings.settings_prefs import (
+  AgentNames,
+  PREF_LEGAL_LEVELS,
+  PREF_ROOT,
+  refuse_pref_table,
+)
 from kanibako.settings.settings_resolve import (
   SET_TARGETS_ITS_OWN_FILE,
   SettingsError,
@@ -1094,7 +1101,11 @@ def read_settings_files(
   )
 
 
-def refuse_undeclared_per_file(files: Iterable[SettingsFile]) -> None:
+def refuse_undeclared_per_file(
+  files: Iterable[SettingsFile],
+  *,
+  oracle: Callable[[str], KeyJudgment] = keyspace_verdict,
+) -> None:
   """RAISE for the first (most-specific) file whose OWN view carries an undeclared entry.
 
   Stage (h)'s carrier, of ALREADY-READ files so each caller can place it after its own
@@ -1106,7 +1117,7 @@ def refuse_undeclared_per_file(files: Iterable[SettingsFile]) -> None:
   for level in _H_AUDITED_LEVELS:
     f = by_level.get(level)
     if f is not None:
-      refuse_undeclared_entries(f.view, level=level, path=f.path, stored=f.stored)
+      refuse_undeclared_entries(f.view, level=level, path=f.path, stored=f.stored, oracle=oracle)
 
 
 def refuse_undeclared_entries(
@@ -1115,6 +1126,7 @@ def refuse_undeclared_entries(
   level: str,
   path: Path | None,
   stored: Any = None,
+  oracle: Callable[[str], KeyJudgment] = keyspace_verdict,
 ) -> None:
   """RAISE when *view* carries an undeclared entry, naming EVERY such key and *path*.
 
@@ -1128,7 +1140,7 @@ def refuse_undeclared_entries(
   """
   if not isinstance(view, dict):
     return
-  found = undeclared_store_paths(view, oracle=keyspace_verdict)
+  found = undeclared_store_paths(view, oracle=oracle)
   if not found:
     return
   # ⚑ retired_cure FIRST: a retired spelling is the more specific fault.
@@ -1884,23 +1896,25 @@ def _agent_shape_input(agent_file: SettingsFile | None) -> Any:
   return {k: v for k, v in agent_file.stored.items() if str(k) not in drop_set}
 
 
-def agent_record(path: Path, *, node: str, purpose: ReadPurpose) -> AgentConfig:
-  """Read agent *node*'s settings file at *path* for *purpose* and return its record.
+def agent_record(
+  path: Path,
+  *,
+  node: str,
+  purpose: ReadPurpose,
+  valid_agents: AgentNames | None = None,
+) -> AgentConfig:
+  """Read *node*'s settings file at *path* for *purpose*, returning an empty record if absent.
 
-  THE ONE READER of the agent file (design 2C): one :func:`read_settings_files` read, the
-  file's shape judged by ``agent_file.level_table`` — the same view the launch's
-  :func:`agent_file_partial` takes — and the record built from that level
-  (``agent_file.record``, which refuses every undeclared entry; its ``workset:`` / ``box:``
-  tables are audited as the scope files' are). Every reader — the launch,
-  ``agent show`` / ``info`` / ``list`` / ``get`` — takes the record from here, so one file
-  gets one verdict. The repair door (``agent_file.clear_overrides``) never calls this.
-  Returns an empty record if the file does not exist.
+  THE ONE READER (design 2C): :func:`read_settings_files` reads once;
+  ``agent_file.level_table`` judges the same shape :func:`agent_file_partial` takes;
+  ``agent_file.record`` and the contained-scope audit refuse undeclared entries.
+  Both use *valid_agents*'s leaf map when supplied, otherwise their legacy judges.
+  Every record reader takes this route; repair (``agent_file.clear_overrides``) does not.
 
-  *node* is the agent whose file this is; a store folder named after the file's alias
-  (``self``) is refused, and so is a present folder named for the reserved all-agents tier
-  (``default``, spec §2d), whose settings live in the system file. Two questions: whether a
-  name is a legal KEY SEGMENT (``default`` is), and whether a folder is that agent's STORE.
-  ``config_dest._missing_store_error`` answers the second for an ABSENT store.
+  A folder named for the file alias (``self``), or a present folder named for the reserved
+  all-agents tier (``default``, spec §2d), refuses: that tier's settings live in the system
+  file. A legal KEY SEGMENT is not necessarily an agent STORE;
+  ``config_dest._missing_store_error`` judges an ABSENT store.
   """
   from kanibako.settings.config_dest import _reserved_tier_store_sentence
   from kanibako.settings.config_keys import AGENT_DEFAULT_SUB
@@ -1927,8 +1941,13 @@ def agent_record(path: Path, *, node: str, purpose: ReadPurpose) -> AgentConfig:
     subject=node,
   )
   level = level_table(_agent_shape_input(read), sub_key=node, node=node, path=path)
-  cfg = record(level, node=node)
-  refuse_undeclared_entries(level.contained, level=_AGENT_FILE_LEVEL, path=path)
+  cfg = record(level, node=node, valid_agents=valid_agents)
+  oracle = (
+    keyspace_verdict
+    if valid_agents is None
+    else partial(key_class, valid_agents=ANY_AGENT, agent_leaf_map=valid_agents.leaf_map)
+  )
+  refuse_undeclared_entries(level.contained, level=_AGENT_FILE_LEVEL, path=path, oracle=oracle)
   return cfg
 
 

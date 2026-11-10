@@ -440,6 +440,7 @@ def test_remote_happy_path_uses_context_uri_and_seeds_remote_image(
   engine = MagicMock()
   engine.running_with_stderr.return_value = (True, "")
   engine.version.return_value = MagicMock(returncode=0, stderr="")
+  engine.inspect_creation_metadata.return_value = ("remote-id", {})
   engine.container_image.return_value = "ghcr.io/doctorjei/remote-img:latest"
   engine.inspect_env.return_value = "claude"
 
@@ -485,7 +486,9 @@ def test_remote_happy_path_uses_context_uri_and_seeds_remote_image(
   # Seed keyed by the REMOTE image, extension from the REMOTE stamp.
   assert "remote-img" in seen["image_keyed_path"]
   assert seen["extension"] == "anthropic.claude-code"
-  engine.inspect_env.assert_called_with("kanibako-mybox", "KANIBAKO_AGENT")
+  engine.inspect_env.assert_called_with("remote-id", "KANIBAKO_AGENT")
+  engine.inspect_creation_metadata.assert_called_once_with("kanibako-mybox")
+  engine.container_image.assert_called_once_with("remote-id")
   # Engine pre-flight ran before the lifecycle leg.
   engine.version.assert_called_once()
   # The ssh tunnel was ensured (to the LOCAL forwarded socket) before the
@@ -547,6 +550,7 @@ def test_remote_start_argv_is_detached_warm_only_print_container(
   engine = MagicMock()
   engine.running_with_stderr.return_value = (True, "")
   engine.version.return_value = MagicMock(returncode=0, stderr="")
+  engine.inspect_creation_metadata.return_value = ("remote-id", {})
   engine.container_image.return_value = "ghcr.io/x/img:latest"
   engine.inspect_env.return_value = "claude"
   with (
@@ -664,3 +668,68 @@ def test_remote_preflight_failure_surfaces_podman_stderr(
   assert rc == 1
   m_life.assert_not_called()  # pre-flight aborts before the lifecycle leg
   assert "connection refused" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+  "failure", ["metadata", "metadata-error", "image", "image-error", "env", "plugin"]
+)
+def test_remote_seed_probe_failures_never_block_attach(
+  failure, tmp_path, monkeypatch, _both_present
+):
+  _wire_ok(tmp_path, monkeypatch)
+  started = MagicMock(returncode=0, stdout="kanibako-mybox\n", stderr="")
+  engine = MagicMock()
+  engine.running_with_stderr.return_value = (True, "")
+  engine.inspect_creation_metadata.return_value = ("remote-id", {})
+  engine.container_image.return_value = "remote-image"
+  engine.inspect_env.return_value = "claude"
+  if failure == "metadata":
+    engine.inspect_creation_metadata.return_value = None
+  elif failure == "metadata-error":
+    engine.inspect_creation_metadata.side_effect = OSError("metadata unavailable")
+  elif failure == "image":
+    engine.container_image.return_value = None
+  elif failure == "image-error":
+    engine.container_image.side_effect = OSError("image unavailable")
+  elif failure == "env":
+    engine.inspect_env.side_effect = OSError("env unavailable")
+  else:
+    engine.inspect_creation_metadata.return_value = ("remote-id", {"kanibako.target": "missing"})
+
+  with (
+    patch("kanibako.vscode.vscode_remote.probe_remote", return_value=1000),
+    patch("kanibako.vscode.vscode_remote.ensure_tunnel"),
+    patch("kanibako.vscode.vscode_remote.preflight_engine"),
+    patch("kanibako.vscode.vscode_remote.remote_run_kanibako", return_value=started),
+    patch("kanibako.vscode.vscode_remote.RemoteEngine", return_value=engine),
+    patch("kanibako.vscode.vscode_remote.ensure_docker_context_meta"),
+    patch(
+      "kanibako.commands.code_cmd._extension_for_agent", side_effect=KeyError("missing")
+    ) as m_ext,
+    patch("kanibako.commands.code_cmd.seed_attached_container_config") as m_seed,
+    patch("kanibako.commands.code_cmd.subprocess.run") as m_run,
+  ):
+    rc = run_code(_args(project="mybox", remote="host"))
+  assert rc == 0
+  m_run.assert_called_once()
+  assert m_run.call_args.args[0][:2] == ["/usr/bin/code", "--folder-uri"]
+  engine.inspect_creation_metadata.assert_called_once_with("kanibako-mybox")
+  probe_id = "kanibako-mybox" if failure.startswith("metadata") else "remote-id"
+  engine.container_image.assert_called_once_with(probe_id)
+  if failure.startswith("image"):
+    m_seed.assert_not_called()
+    engine.inspect_env.assert_not_called()
+  else:
+    m_seed.assert_called_once()
+    assert m_seed.call_args.kwargs == {
+      "workspace_folder": "/home/agent/workspace",
+      "extension": None,
+    }
+  if failure == "env":
+    engine.inspect_env.assert_called_once_with("remote-id", "KANIBAKO_AGENT")
+  else:
+    engine.inspect_env.assert_not_called()
+  if failure == "plugin":
+    m_ext.assert_called_once_with("missing")
+  else:
+    m_ext.assert_not_called()

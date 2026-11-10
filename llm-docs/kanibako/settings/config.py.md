@@ -707,38 +707,31 @@ string is a NON-BLOCKING advisory the caller prints to stderr before continuing.
 ```resolve_agent(*, explicit_agent: str | None, requested: str | None = None) -> str```
 Return `resolve_agent_identity`'s node without another lookup.
 
+```resolve_named_agent_input(name: str) -> AgentResolution```
+Classify once after grammar validation. Shell returns before discovery; composites retain
+legacy addressing. A bare installed plugin wins without PG access; other bare names read
+public PG once. Registered node, persona, name, entry path, and captured root survive.
+Registry spelling canonicalizes the target and its captured payload together.
+
+`AgentResolution` carries identity, optional `registered_persona`, and optional `unavailable`
+diagnosis. Mismatched payload/identity is refused. Missing plugins, broken PG, and discovery
+failures remain addressable with their diagnosis; malformed names raise immediately.
+Consumers must forward that diagnosis into repair handling, not infer usable live input or
+relax installed-plugin vocabulary. PG entries never become kanibako settings paths.
+Project the captured payload after target choice through `project_registered_persona`;
+existing preparation derives its plaintext-free credential. Neither step rediscovers PG.
+
 ```resolve_named_agent_identity(name: str) -> AgentIdentity```
-Address a legacy name without discovering plugins, reading settings, or consulting PG.
-`agent_address_node` owns node normalization: `+` becomes `℘`, the harness folds, and a
-composite persona keeps its case. The identity retains the raw harness spelling for
-strict diagnostics; registered name and entry path remain None. Addressable pseudo-agents
-carry neither persona nor harness. An unavailable or broken plugin cannot prevent this
-addressing operation, but malformed names still raise `ConfigError`.
+Project the addressed result without requiring launch eligibility.
 
-This is preparation, not registered-selector activation. It neither chooses a PG/native
-collision winner nor treats a PG entry path as a kanibako settings path.
+```resolve_agent_input(*, explicit_agent: str | None, requested: str | None = None) -> AgentResolution```
+Choose the first PRESENT argument, classify it once, and raise its unavailable diagnosis.
+Only `None` means absence; missing both arguments raises `AgentUnsetError`. The cascade
+and present-null refusal belong to `select_agent`.
 
-```resolve_agent_identity(*, explicit_agent: str | None, requested: str | None = None) -> AgentIdentity```
-The strict launch wrapper chooses the first PRESENT argument: *explicit_agent* over
-*requested*. `None` alone means absence; `""` reaches the shared address grammar and
-refuses rather than falling through. `select_agent` supplies the settings winner from
-the launch cascade; no cascade is read here.
-
-The wrapper obtains one addressed identity, then validates its target against the full
-`discover_targets` registry. Legacy harness/node spelling becomes the registry spelling;
-composite persona case stays unchanged. An independent registered identity retains its
-node, persona, registered name, and entry path; only harness/target spelling canonicalizes.
-This branch accepts injected identities but adds no production PG read.
-
-Missing targets raise `AgentNotInstalledError`, preserving the raw harness diagnostic and
-install/list cures. Discovery and identity failures propagate; they never become a
-syntactic fallback. Target imports stay lazy because discovery imports paths/config.
-
-The shell address returns before discovery; `default` remains reserved, and `general`
-is an ordinary name requiring an installed target. If both arguments are absent,
-`AgentUnsetError` names `kanibako setup` without consulting discovery or its count.
-Present-null selection never reaches this wrapper: `select_agent` raises the distinct
-`AgentNoDefaultError` because unset and no-default require different cures.
+```resolve_agent_identity(*, explicit_agent: str | None, requested: str | None = None, registered_persona_out: list[RegisteredPersona] | None = None) -> AgentIdentity```
+Project the launch result; the optional collector receives its same captured payload.
+No credential fetch, file write, snapshot lookup, or global cache occurs.
 
 
 ```_flatten_leaves(data: dict, prefix: str = "", *, with_nodes: bool = False) -> dict[str, object]```

@@ -339,21 +339,29 @@ def running_box_agent(runtime, container_name: str) -> str | None:
 def box_writeback_context(std, proj, agent: str):
   """Resolve a stamped node's target and credential-sharing source once.
 
-  The identity selects the plugin; its node keys settings and the narrow selection
-  level. Settings refusals propagate to the caller's channel; stop/watch stay tolerant.
+  Captured input supplies plugin identity and live auth values. Its node keys settings
+  and selection. Settings refusals reach the caller; stop/watch stay tolerant.
   """
   from kanibako.commands.start import _resolve_box_auth_source
+  from kanibako.persona_store import project_registered_persona
   from kanibako.settings.agent_config import agent_settings_path
-  from kanibako.settings.config import resolve_agent_identity
+  from kanibako.settings.config import resolve_agent_input
   from kanibako.targets import resolve_target
 
-  identity = resolve_agent_identity(explicit_agent=agent)
+  resolved = resolve_agent_input(explicit_agent=agent)
+  identity = resolved.identity
   target = resolve_target(identity.target_name)
+  persona_values = (
+    project_registered_persona(resolved.registered_persona, target).to_persona_values()
+    if resolved.registered_persona is not None
+    else None
+  )
   auth_src = _resolve_box_auth_source(
     std=std,
     proj=proj,
     agent_name=identity.node,
     agent_identity=identity,
+    persona_values=persona_values,
     system_settings_path=std.settings,
     agent_cfg_path=agent_settings_path(std.agents, identity.node),
     selection_level={"system.agent": identity.node},

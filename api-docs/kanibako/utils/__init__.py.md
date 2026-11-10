@@ -16,6 +16,7 @@ LABEL_WORKSET = 'kanibako.workset'
 LABEL_BOX = 'kanibako.box'
 LABEL_WORKSET_KUID = 'kanibako.workset_kuid'
 LABEL_HELPER = 'kanibako.helper'
+LABEL_TARGET = 'kanibako.target'
 ```
 
 ## Functions
@@ -36,6 +37,7 @@ def render_socket_identity(box: str, workset: str) -> str | None
 def container_name_for_box_name(name: str, workset: str) -> str | None
 def container_name_segments(proj: ProjectPaths) -> tuple[str, str]
 def container_name_for(proj: ProjectPaths) -> str | None
+def launch_labels(identity_labels: Mapping[str, str], target_name: str | None) -> dict[str, str]
 def box_labels(proj: ProjectPaths, helper_num: int | None=None) -> dict[str, str]
 def box_container(runtime: ContainerRuntime, proj: ProjectPaths, *, check: bool=False) -> str | None
 def box_container_named(runtime: ContainerRuntime, box: str, workset: str, *, check: bool=False) -> str | None

@@ -664,40 +664,17 @@ class ClaudeTarget(Target):
     except Exception:
       return False
 
-  def prepare_host(self, install: AgentInstall, *, auto_auth: bool, data_path: Path) -> None:
-    """Update the host Claude binary, then refresh host auth.
+  def prepare_host_binary(self, install: AgentInstall, *, data_path: Path) -> None:
+    """Synchronously stabilize the contract launcher; log failures without raising.
 
-    Owns all the Claude-specific host work that must happen before mounts
-    are built:
-
-    1. **Synchronous update gate.** Run ``claude update`` and wait for it,
-       so the host binary + ``~/.local/bin/claude`` symlink are at a stable
-       version BEFORE we bind them.  With the background auto-updater
-       disabled (``DISABLE_AUTOUPDATER=1`` on every exec we own + in the
-       container), this is the only update in our launch window — no async
-       race.  A foreground ``claude update`` is expected to block until the
-       install + symlink repoint complete.
-    2. **Auto auth refresh** (when *auto_auth* is set) with the updater
-       disabled, so this host exec doesn't wake the background updater.
-
-    This method MUST NOT crash the launch: every step is best-effort and
-    failures are logged, not raised.
-
-    ⚑ *data_path* is the ABC's parameter and this plugin reads none of it: the
-    OAuth session store it used to locate derives from ``system.state`` itself
-    (keyspec §2g system.state), so the jar is ``kanibako.browser_state``'s to
-    find.  Do not thread it back through the auth call.
+    DISABLE_AUTOUPDATER suppresses background updates, not this explicit update.
     """
-    # Anchor to the contract launcher; never let $PATH choose the binary we
-    # exec on the host.
     if not (_LAUNCHER.exists() or _LAUNCHER.is_symlink()):
       return
     claude_path = str(_LAUNCHER)
 
     host_env = _autoupdater_disabled_env()
 
-    # 1. Synchronous update gate.  DISABLE_AUTOUPDATER does not disable an
-    # *explicit* update; it only suppresses the async background updater.
     try:
       result = subprocess.run(
         [claude_path, "update"],
@@ -723,21 +700,26 @@ class ClaudeTarget(Target):
       # FileNotFoundError / Exec format error on a corrupt binary, etc.
       logger.debug("claude update could not run: %s", exc)
 
-    # 2. Automated OAuth refresh (best-effort), with the updater disabled.
-    if auto_auth:
-      try:
-        from kanibako.auth_browser import auto_refresh_auth
+  def refresh_host_auth(self, install: AgentInstall, *, data_path: Path) -> None:
+    """Refresh auth without updates; browser_state locates its jar from system.state.
 
-        auto_result = auto_refresh_auth(
-          str(install.binary),
-          env=host_env,
-        )
-        if auto_result.success:
-          logger.info("Auto-auth succeeded")
-        else:
-          logger.debug("Auto-auth skipped: %s", auto_result.error)
-      except Exception as exc:
-        logger.debug("Auto-auth failed: %s", exc)
+    data_path is unused. Failures are logged, never raised.
+    """
+    if not (_LAUNCHER.exists() or _LAUNCHER.is_symlink()):
+      return
+    try:
+      from kanibako.auth_browser import auto_refresh_auth
+
+      auto_result = auto_refresh_auth(
+        str(install.binary),
+        env=_autoupdater_disabled_env(),
+      )
+      if auto_result.success:
+        logger.info("Auto-auth succeeded")
+      else:
+        logger.debug("Auto-auth skipped: %s", auto_result.error)
+    except Exception as exc:
+      logger.debug("Auto-auth failed: %s", exc)
 
   def setting_descriptors(self) -> list[TargetSetting]:
     """Declare Claude Code runtime settings.

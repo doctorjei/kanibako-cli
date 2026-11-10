@@ -1,15 +1,15 @@
 # The Persona-Grata Store — discovery, pointer resolve, and the LIVE launch bundle
 
 `read_registered_persona` reads PG's public `AgentStore` through `config_io` before
-target selection. `RegisteredPersona` carries independent `AgentIdentity`, native
-configuration, and keyless state; PG owns credential lookup by registered name.
-Resolved persona/harness names follow kanibako spelling/reservation rules. The target
-is the harness node, not the registered name. Nothing persists.
+target selection. `RegisteredPersona` carries independent `AgentIdentity`, native config,
+keyless state, and exact selected `store_root`, never rediscovered or reconstructed from
+`entry_path`. PG owns credential lookup by registered name. Persona/harness names follow
+kanibako spelling/reservation rules; the target is the harness node. Nothing persists.
 
-`project_registered_persona` returns a live `PersonaBundle` through the matching target
-without I/O, mutation, re-read, or credential fetch. Names match case-insensitively;
-ambiguity refuses. Paths come from PG, including renamed entries and symlinks, never
-names. Codex keyless accepts empty native `env_key`; Claude's placeholder stays environment data.
+`project_registered_persona` projects without I/O, mutation, re-read, or credential fetch.
+Keyless preserves native auth names, including Codex's empty `env_key`, and Claude's
+placeholder env. Names match case-insensitively; ambiguity refuses. PG paths preserve
+renamed entries and symlinks, never derive from names.
 
 Selection and delivery still use the legacy reader below. Registered-name activation
 waits for identity consumers and manager pipe delivery. `persona-resolution-model.md`

@@ -1231,7 +1231,13 @@ class TestPersistentMode:
       assert rc == 0
       kwargs = m.runtime.run.call_args.kwargs
     labels = kwargs["labels"]
-    assert set(labels) == {"kanibako.workset", "kanibako.box", "kanibako.workset_kuid"}
+    assert set(labels) == {
+      "kanibako.workset",
+      "kanibako.box",
+      "kanibako.workset_kuid",
+      "kanibako.target",
+    }
+    assert labels["kanibako.target"] == "claude"
     assert kwargs["name"] == f"kb-{labels['kanibako.workset']}-{labels['kanibako.box']}"
 
   def test_a_live_labeled_container_is_reattached_by_its_own_name(self, start_mocks):
@@ -4229,6 +4235,125 @@ class TestAgentStamp:
       )
       env = m.runtime.run.call_args.kwargs["env"]
       assert "KANIBAKO_AGENT" not in env
+
+
+class TestCreationTargetLabels:
+  @pytest.fixture(autouse=True)
+  def _no_watcher(self):
+    with patch("kanibako.commands.start._spawn_creds_watcher"):
+      yield
+
+  @pytest.mark.parametrize("node,target_name", [("claude", "Goose"), ("scout", "Claude")])
+  @pytest.mark.parametrize("setup", [False, True])
+  def test_creation_uses_selected_target_not_node_plugin_or_env(
+    self, start_mocks, node, target_name, setup
+  ):
+    from dataclasses import replace
+
+    from kanibako.settings.settings_launch import AuthSource
+
+    with (
+      start_mocks() as m,
+      patch(
+        "kanibako.settings.settings_launch.resolve_auth_source",
+        return_value=AuthSource("global", True, False, False, None),
+      ),
+    ):
+      selected = replace(
+        m.resolve_agent.return_value.identity,
+        node=node,
+        registered_name=node,
+        target_name=target_name,
+      )
+      m.resolve_agent.return_value = replace(m.resolve_agent.return_value, identity=selected)
+      if setup:
+        m.target.check_auth.return_value = False
+        m.target.setup_entrypoint = "configure"
+        m.target.setup_args = ["login"]
+      rc = _run_container(
+        project_dir=None,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        persistent=True,
+        detach=True,
+        cli_env=["KANIBAKO_AGENT=contradictory+codex"],
+      )
+      assert rc == 0
+      assert m.runtime.run.call_count == (2 if setup else 1)
+      for call in m.runtime.run.call_args_list:
+        assert call.kwargs["labels"]["kanibako.target"] == target_name
+        assert call.kwargs["env"]["KANIBAKO_AGENT"] == "contradictory+codex"
+      m.resolve_agent.assert_called_once()
+      m.resolve_target.assert_called_once_with(target_name)
+      if setup:
+        assert m.runtime.run.call_args_list[0].kwargs["entrypoint"] == "configure"
+        m.target.check_auth.assert_called_once()
+
+  def test_main_passes_its_selected_identity_to_the_hub(self, start_mocks):
+    from dataclasses import replace
+
+    with start_mocks() as m:
+      identity = replace(
+        m.resolve_agent.return_value.identity, registered_name="claude", target_name="Goose"
+      )
+      m.resolve_agent.return_value = replace(m.resolve_agent.return_value, identity=identity)
+      m.agent_cfg.state["allow_helpers"] = "true"
+      with patch("kanibako.commands.start._start_helper_hub") as hub:
+        assert (
+          _run_container(
+            project_dir=None,
+            entrypoint=None,
+            image_override=None,
+            new_session=False,
+            safe_mode=False,
+            resume_mode=False,
+            extra_args=[],
+            persistent=True,
+            detach=True,
+          )
+          == 0
+        )
+      assert hub.call_args.kwargs["agent_identity"] is identity
+      assert m.runtime.run.call_args.kwargs["labels"]["kanibako.target"] == "Goose"
+      m.resolve_agent.assert_called_once()
+
+  @pytest.mark.parametrize("mode", ["no-agent", "shell", "entrypoint", "shell-command"])
+  def test_empty_and_shell_target_are_distinct(self, start_mocks, mode):
+    from tests.support.agent_selection import agent_selection
+
+    with start_mocks() as m:
+      if mode in ("no-agent", "shell"):
+        m.resolve_agent.return_value = agent_selection(
+          node="" if mode == "no-agent" else "shell", source="settings"
+        )
+      if mode == "shell":
+        from kanibako.targets.shell import ShellTarget
+
+        m.resolve_target.return_value = ShellTarget()
+      rc = _run_container(
+        project_dir=None,
+        entrypoint="sh" if mode == "entrypoint" else None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        resume_mode=False,
+        extra_args=[],
+        persistent=True,
+        detach=True,
+        box_shell_mode=mode == "shell-command",
+      )
+      assert rc == 0
+      assert m.runtime.run.call_args.kwargs["labels"]["kanibako.target"] == (
+        "shell" if mode == "shell" else ""
+      )
+      if mode in ("entrypoint", "shell-command"):
+        m.resolve_agent.assert_not_called()
+      if mode != "shell":
+        m.resolve_target.assert_not_called()
 
 
 class TestAllowHelpersGate:

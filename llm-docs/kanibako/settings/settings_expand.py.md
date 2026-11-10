@@ -5,8 +5,8 @@ merged `KeyStore` snapshot produced by `kanibako.settings.settings_merge` and re
 every `@`-ref (CONFIG, on both bind sides) and every host-side `$VAR` / `~` (ENVIRONMENT) to
 terminals — TRANSITIVELY, as a fixpoint, with cycle detection.
 
-It is PURE: no file, env or clock access, same input → same output, and it NEVER mutates the input
-snapshot (S19). It builds and returns a FRESH `KeyStore`.
+It returns a FRESH `KeyStore` without mutating the input (S19). `valid_agents` supplies per-call
+vocabulary; omission retains legacy discovery. Empty supplied vocabulary never triggers discovery.
 
 ⚑ **A reference resolves to a DECLARED key or it does not resolve at all.** The keyspace is closed:
 this pass never fabricates a default for a name it cannot find. An absent referent propagates
@@ -50,9 +50,8 @@ What this module adds are the three things the single-expression engine lacks (b
 ## The per-leaf case enumeration
 
 `expand(snapshot, ctx, *, collect_errors=False, null_sources=None, refs_read=None, dest_keys=None,
-derive=None)` takes the raw merged store `settings_merge.merge` returns (refs / vars / `~` intact)
-and a `ResolveCtx` carrying the host-side expansion namespace — `host_home`, `xdg`, `agent_name`,
-`workset_name` — consumed for host-side `$VAR` / `~`. The optional parameters:
+derive=None, valid_agents=None)` takes `settings_merge.merge`'s raw store (refs / vars / `~` intact)
+and a `ResolveCtx` with host-side `host_home`, `xdg`, `agent_name`, and `workset_name`. Options:
 
 * `collect_errors` — LENIENT mode (below).
 * `null_sources` — filled with the E2 side table (`NullSources`, below).
@@ -61,9 +60,11 @@ and a `ResolveCtx` carrying the host-side expansion namespace — `host_home`, `
 * `dest_keys` — filled with `DestKeys`: a bind entry's arm path plus its STORED destination → the
   arm key it was filed under, so a reader holding the stored destination finds the entry without
   expanding it a second time.
-* `derive` — a `Derive` callback answering a reference to a key the caller materializes after this
-  pass (`settings_launch.post_expand_keys`). It is asked only when the snapshot lacks the key, and
-  returns `__MISSING__` for a key it does not derive.
+* `derive` — a `Derive` callback for absent keys materialized after this pass
+  (`settings_launch.post_expand_keys`); `__MISSING__` means not derived.
+* `valid_agents` — `AgentNames` forwarded unchanged into per-pass state. Lenient absence reasons use
+  `settings_prefs.key_reason`; strict classification uses `key_class` with `ANY_AGENT` and the supplied
+  `leaf_map`, retaining membership-neutral `keyspace_verdict` semantics. No global cache is changed.
 
 Per leaf:
 
@@ -177,9 +178,8 @@ NOT in the memo; the `chain` argument detects a cycle before the memo would, on 
 `None` and `_ABSENT` are both VALID memo values (a present-None terminal and a legitimately-absent
 ref), so absence from the memo is tested with `in`, never by comparing against a sentinel value.
 
-`_Expander` holds this per-pass state — the source snapshot, the ctx, and the memo. There is one
-instance per `expand` call, so there is no cross-call state; the snapshot is read-only within it
-(S19) and the fresh tree is built by `run`.
+Each `expand` call owns one `_Expander`: read-only source snapshot, ctx, vocabulary, and memo.
+`run` builds the fresh tree (S19); no state crosses calls.
 
 ## LENIENT (error-COLLECTING) mode
 

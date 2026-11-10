@@ -723,8 +723,8 @@ establishes the invariant, and the launch-time gate then correctly no-ops.
 * **`install` is `target.detect()` — a HOST FILESYSTEM PROBE** (agent name · host binary · install
   root · launcher), nothing to do with the container image. `detect()` returns `None` when the agent
   is not installed on the host, which is a legitimate state.
-* **The launch RE-DETECTS after `prepare_host()`** (the auto-updater), so the create-time and
-  launch-time bind maps are not guaranteed identical. The later gated pass covers the difference.
+* **Connect's create sync uses the post-update native install.** Launch may use a transformed
+  binary; the later gated pass covers that bind-map difference.
 
 ⚑ **The SELECTION only, never the full CLI level (§1A)** on the create-side resolve: the create path's
 flags are not the launch's, and the ephemeral ones (`-M`/`-N`/`-C`/`-R`) carry no bind. The selection
@@ -908,10 +908,9 @@ otherwise split the env assignment into extra `env` operands and degrade the pro
 
 ## `_resolve_box_launch_decisions` — auth SOURCE + persona endpoint + persona model, off ONE snapshot
 
-`build_launch_snapshot` accepts BOTH the auth 3-tier `auth_chain` floor AND the plugin's behavior
-floor (`agent_behavior_floor`) in a single call, so the box's sharing decision
-(`settings_launch.AuthSource`, `resolve_auth_source`) and its active-node `agent.<node>.endpoint`
-(`effective_behavior`) are read off the SAME expanded snapshot — no duplicate build.
+The focused snapshot resolves sharing, endpoint, and stored/provider model together. Main launch
+and reattach pass `resolve_secrets=False`; compatibility callers retain the legacy fourth-return
+`PersonaSecretTable` and its optional `cli_env`.
 
 * **`auth_src`** — the credential-SHARING SOURCE (tier/source + enables), threaded to every
   credsync/gate consumer.
@@ -921,10 +920,9 @@ floor (`agent_behavior_floor`) in a single call, so the box's sharing decision
   resolved `str` id; `""`, the empty model; or `None` for no model — unset (incl. no descriptors /
   no target), `null`, or whitespace-only alike.
 
-The plugin's behavior floor folds in as `agent.<node>.<key>` (core's floor is not passed — its
-`endpoint` is `<None>`, which the pick omits like an absent key) and the per-agent FILE state as the
-active `agent.<node>` slot; the §2d active-over-default pick yields the endpoint for the NODE. A target
-with no declared settings contributes no floor → endpoint `None`.
+The plugin floor and higher-priority agent file both name `agent.<node>`; §2d's active-over-default
+pick reads the node. Core's endpoint is `<None>` and omitted. A target without declared settings
+contributes no floor, yielding endpoint `None`.
 
 ### Why the model read excludes the harness default
 
@@ -952,8 +950,8 @@ rides the LAUNCH snapshot only, where it reaches argv and the container env and 
 
 ## `_preflight_persona_load` — a persona's LOADABILITY, resolved before any artifact exists
 
-A TRUE pre-flight: called ONLY for a persona (`harness_of(agent_id) != agent_id`), BEFORE any persona
-artifact is created. Returns `(endpoint, error, provider)`:
+A selected persona's preflight runs before any persona artifact is created.
+Returns `(endpoint, error, provider)`:
 
 * **endpoint** — the resolved endpoint URL on success (`error` None); `None` when unloadable;
 * **error** — an actionable message when the persona cannot be loaded (unresolved endpoint, or
@@ -1002,19 +1000,19 @@ it carries the store's own verdict on itself:
 ⚑ That is why the two are separate values rather than one reason string: collapsing them would refuse
 every keyspace-configured goose persona that owns a store directory.
 
-**`probe`** runs the PER-LAUNCH verify probe once endpoint and token both resolve
-(`_persona_probe_error`). A non-empty `-e` value for the token var (**`cli_env`**, launch only)
-satisfies the token gate and is the token the probe sends. A BLANK or whitespace-only one is the
-opposite of ignored: it SUPPRESSES the shadowed credential — no read, stat, fetch, stage, mount or
-export — with the token gate and `verify_persona` both skipped, and the launch reported UNVERIFIED,
-never PASS (approved canon P5). `probe` is opt-in and
-set ONLY by the launch: the create path keeps its own
-WARN-ONLY probe [Jei:2026-08-05]. The bundle's `env` — the persona STORE's own block, not the
-collapsed `env` family — rides along so the harness can rewrite a tier alias the way its runtime
-will. See `Target.verify_persona` in the `targets/base.py` llm-doc for the measured false `REJECTED`
-that requires it, **and for the residual hole it does not close:** a mapping at the agent-file,
-workset or box rung (or a keyspace-only persona) is not in the bundle, and the collapse that would
-carry it is folded only by the whole-box resolve, which runs after this pre-flight.
+**`probe=False`** retains compatibility/create checks. Launch prepares metadata and binaries,
+validates/transforms, resolves final deliveries, then checks browser and credential gates before
+host auth or artifacts. Vault creation adds no arbitration.
+
+`LaunchDeliveries` distinguishes file, null, mask, absence, CLI blank/value, and PG. Dynamic
+names filter to the active node; keyless-without-VAR keeps empty provider env_key. Probe env/model
+include `-e`/`-M`; provider model stays stored. `_prepare_resolved_persona_delivery` fetches PG
+winners once by registered name/captured root and probes those values. Failure returns no payload.
+Exact-token diagnostics redact values, not encoded echoes. Reattach skips retrieval.
+
+`_pg_secret_pipe_shim` receives once before the final existing PID-1 command, closes its pipes,
+and execs with values in memory. No broker or lifetime wrapper; native/empty argv is unchanged.
+`_assemble_launch_env` emits only ordinary file mounts and their CLI override INFO.
 
 🛑 **THE REJECTED MESSAGE NAMES WHAT WAS REFUSED, NEVER WHAT TO FIX.** The probe cannot tell a dead
 credential from a live one that lacks model entitlement, and a 401/403 does not say which input was at
@@ -1068,25 +1066,26 @@ still reach the collision table in `settings_categories`.
 
 ### What it is
 
-The single launch-time CATEGORY resolve. It aggregates every runtime `default_categories` table (core,
-kani, kickoff, the core env stamps, rom and canon, the agent template sources, channels, and the
-agent's adapted tables, plus a narrow caller's injected table and the CONDITIONAL helper and image
-tables) into ONE floor through `_merge_default_categories`, folds in the resolved `system.*` tier so
-`@`-refs resolve from the snapshot (`inputs.system_floor` from `settings_launch.resolve_inputs`, built
-by `settings/paths.system_path_floor` — the same floor `commands/workset_cmd` uses), represents the
-agent's descriptor delivery binds via `agent_default_partial`, and runs
-`assemble_levels → merge → expand` ONCE via `settings.settings_launch.build_launch_snapshot`. The
-expanded snapshot is adapted to `CategoryEntry` ONCE, and that ONE list feeds every consumer.
+`agent_identity` carries metadata/path floors and vocabulary through main, scalar, image,
+helper, budget, and stored judgments without PG reads. Display captures values/credential once;
+captured absence forbids rereads. Omission keeps legacy parsing.
 
-It returns `(snapshot, deliveries)`: the mount set, the seed and sync lists and the environment live IN
-the snapshot under `meta.assembly.*`; the `LaunchDeliveries` carrier holds the rest (above).
+Optional plaintext-free `persona_credential` must match the active node and any supplied registered
+identity. `build_launch_snapshot` returns eligible metadata separately; only that reaches the
+category adapter and `launch_deliveries`, with `cli_env` and optional `required_var`. The latter
+names an explicit absence slot. Keyless-without-VAR context creates no name or entry. No PG
+material is read.
 
-⚑ **The carrier is a RETURN VALUE and not a snapshot leaf on purpose** — `meta.assembly.*` is a CLOSED
-set of DECLARED leaves, and an undeclared one would install silently.
+`_merge_default_categories` combines core, kani, kickoff, core env, rom, canon, templates, channels,
+adapted agent tables, and narrow/helper/image inputs. `resolve_inputs` supplies `system_floor`
+through `settings/paths.system_path_floor`, also used by `workset_cmd`, for `@`-refs.
+`agent_default_partial` represents descriptor binds; `build_launch_snapshot` assembles, merges,
+and expands one snapshot before category adaptation.
 
-⚑ AGENT_CRITICAL delivery binds flow through the snapshot's `agent.<agent>.bindings.*` subtree
-(single-route), emitted by `_emit_category_mounts` under its `must_exist` policy — NOT a parallel
-`descriptor_mounts` route or a parallel agent emitter.
+The returned `(snapshot, deliveries)` keeps mounts, seeds, syncs, and env under closed
+`meta.assembly.*` keys; provenance and final credential states ride `LaunchDeliveries`, never a
+new leaf or second arbitration. AGENT_CRITICAL binds use `agent.<agent>.bindings.*` and
+`_emit_category_mounts`'s `must_exist` policy, never a parallel descriptor/agent emitter.
 
 ### The four plugin-declared tables are ADAPTED TO THE ACTIVE NODE before they fold
 
@@ -1189,10 +1188,11 @@ interrupted-create recovery.
 
 ### `_seed_box_home` — three ordered, create-if-absent steps
 
-It is the SINGLE seed implementation, shared by `box create` (`seed_new_box`) and `_run_container`'s
-`if proj.is_new:` block (a `workset connect` member's first launch). It is NEVER run on a relaunch of
-an existing box. The three steps are ordered and create-if-absent, so a re-create into a leftover dir
-never clobbers user content:
+`prepare_create_agent` captures selection/target/bundle before journaling; verdict and
+`seed_new_box` reuse it. Recovery prepares its recorded selector once; live input never persists.
+Seed/sync and shares keep node-rooted identity; inheritance uses `identity.target_name`,
+never PG's entry path. Existing paths/non-directory ancestors stay with consumers.
+PG create skips legacy reads. Relaunches never seed; create-if-absent preserves content:
 
 1. the descriptor's one-time credential seed (descriptor-bearing targets only);
 2. the configured copy-once-at-init `seeded` category rows — INCLUDING the layered `seeded[~/]` trio
@@ -1288,19 +1288,18 @@ Contracts the signature cannot carry:
   The path is READ BACK from the ONE declaration of the slot (`core-defaults.yaml` `kickoff.box_dest`,
   the source of core's own bind) — the variable and the bind MUST name the same file. The per-agent
   FINAL slot is each plugin's own `agent.<agent>.env.KANIBAKO_DIRECTIVE_FINAL`.
-* **`KANIBAKO_AGENT`** is the resolved agent stamped ON THE CONTAINER and never in durable config (that
-  is what keeps `--agent` ephemeral): a later `kanibako start` against the running box, `stop`'s
-  writeback and the creds watcher all read it back rather than re-running the selection cascade. It
-  carries the NODE identity (full persona), NOT the harness, in the OUTSIDE spelling (`+`, via
-  `display_agent_ref`), because an env var is a place a HUMAN looks. 🛑 **Readers CANONICALIZE, THEN
-  derive**, through `agent_ref.agent_address_node` (a plain-shell box is stamped `shell`, which the
-  claimant grammar refuses; the harness folds to node case, keyspec §0
-  "An agent's canonical case is carried by its _name_") — `harness_of` splits on `℘` alone, so
-  deriving from the raw stamp returns the whole string and `resolve_target` hunts a plugin that
-  does not exist (in `stop.py`, under a blanket catch: writeback stops SILENTLY). Emitted only when
-  a TARGET resolved: `kanibako shell` and an explicit-entrypoint launch resolve none and leave the
-  variable unset, while a plain-shell BOX (`system.agent: shell`, keyspec §2b) resolves
-  `ShellTarget` and is stamped `shell`.
+* **`KANIBAKO_AGENT`** stamps the selected NODE, not its harness, in human-facing `+` spelling
+  (`display_agent_ref`); never persist it (`--agent` is ephemeral). Reattach, stop writeback,
+  and the creds watcher read the stamp instead of selecting again. **Canonicalize with
+  `agent_ref.agent_address_node` before deriving:** `harness_of` splits only on `℘`; raw `+`
+  yields a nonexistent plugin and silently stops writeback under stop's blanket catch.
+  Harness case follows node case (keyspec “An agent's canonical case is carried by its _name_”).
+  A plain-shell box stamps `shell` (refused by the claimant grammar); `kanibako shell` and
+  explicit-entrypoint launches select no target and omit the stamp.
+  This overridable env stamp is not target provenance: main/setup creation labels and the
+  helper context carry the selected `AgentIdentity.target_name` separately. `launch_labels`
+  maps no identity to an empty target; `shell` stays explicit. Helper lookup keeps identity-only
+  `box_labels`, so target changes cannot hide old containers. No second selection or PG lookup.
 * **`KANIBAKO_AGENT_MARKERS_DIR`** is UNCONDITIONAL: the supervised path and the warm-up panel watch
   both enumerate the dir every agent session's start hook writes its per-PID marker into, and the
   supervisor reads the SAME dir via `--agent-markers-dir`.

@@ -707,6 +707,114 @@ class TestTargetSettings:
 # ---------------------------------------------------------------------------
 
 
+class TestCapturedBoxScalarDisplay:
+  @pytest.mark.parametrize("file_model", [None, "file:image"])
+  def test_effective_scalars_reuse_live_snapshot(self, tmp_path, monkeypatch, capsys, file_model):
+    from kanibako.settings import config_io, settings_launch as sl
+    from kanibako.settings.settings_resolve import ResolveCtx
+
+    box = tmp_path / BOX_META_FILE
+    dump_doc(box, {"box": {"image": "{agent.claude.model}"}})
+    agent = tmp_path / "agent.yaml"
+    if file_model is not None:
+      dump_doc(agent, {"self": {"model": file_model}})
+    live = {"model": "live:image"}
+    snapshot = sl.build_launch_snapshot(
+      agent_name="claude",
+      ctx=ResolveCtx(agent_name="claude", workset_name=None, host_home=str(tmp_path), xdg={}),
+      system_path=None,
+      agent_path=agent if file_model is not None else None,
+      workset_path=None,
+      box_path=box,
+      persona_values=live,
+    )
+    expected = file_model or "live:image"
+    assert sl.snapshot_leaf(snapshot, "box.image") == expected
+    before = {path: path.read_bytes() for path in (box, agent) if path.exists()}
+    live["model"] = "later:image"
+    for target in (
+      "kanibako.persona_store.read_registered_persona",
+      "kanibako.persona_store.read_persona_bundle",
+    ):
+      monkeypatch.setattr(target, lambda *a, **k: pytest.fail("PG reread"))
+    monkeypatch.setattr(config_io, "fetch_persona_secret", lambda *a, **k: pytest.fail("fetch"))
+    show_config(
+      command_scope=ConfigLevel.box,
+      global_config_path=tmp_path / CONFIG_FILENAME,
+      config_path=box,
+      effective=True,
+      category_snapshot=snapshot,
+      agent_name="claude",
+      agent_path=agent if file_model is not None else None,
+    )
+    assert f"box_image = {expected}" in capsys.readouterr().out
+    assert {path: path.read_bytes() for path in before} == before
+    assert not (tmp_path / CONFIG_FILENAME).exists()
+
+  def test_snapshot_scalars_do_not_read_changed_files_or_rebuild(
+    self, tmp_path, monkeypatch, capsys
+  ):
+    from kanibako.settings import settings_launch as sl
+    from kanibako.settings.keystore import KeyStore
+
+    box = tmp_path / BOX_META_FILE
+    dump_doc(box, {"box": {"image": "later:image"}})
+    snapshot = KeyStore()
+    snapshot.insert_segments(("box", "image"), "captured:image")
+    snapshot.insert_segments(("box", "shell"), "")
+    snapshot.insert_segments(("box", "share_images"), False)
+    snapshot.insert_segments(("box", "enable_vault"), None)
+    monkeypatch.setattr(sl, "build_launch_snapshot", lambda **kw: pytest.fail("second resolve"))
+    show_config(
+      command_scope=ConfigLevel.box,
+      global_config_path=tmp_path / CONFIG_FILENAME,
+      config_path=box,
+      effective=True,
+      category_snapshot=snapshot,
+    )
+    text = capsys.readouterr().out
+    assert "box_image = captured:image" in text
+    assert "box_shell = \n" in text
+    assert "box_share_images = False" in text
+    assert "box_enable_vault = null" in text
+    assert "later:image" not in text
+
+  @pytest.mark.parametrize("scope", [ConfigLevel.system, ConfigLevel.workset, ConfigLevel.box])
+  def test_other_nouns_and_category_errors_keep_the_original_resolve(
+    self, tmp_path, monkeypatch, capsys, scope
+  ):
+    from kanibako.settings import config_interface as ci
+    from kanibako.settings.config import KanibakoConfig
+    from kanibako.settings.keystore import KeyStore
+
+    calls = []
+
+    def merged(*args, **kwargs):
+      calls.append((args, kwargs))
+      return KanibakoConfig(box_image=None)
+
+    monkeypatch.setattr(ci, "load_merged_config", merged)
+    snapshot = KeyStore()
+    snapshot.insert_segments(("box", "image"), "not:complete")
+    error = "captured category failed" if scope is ConfigLevel.box else None
+    show_config(
+      command_scope=scope,
+      global_config_path=tmp_path / CONFIG_FILENAME,
+      config_path=tmp_path / BOX_META_FILE,
+      effective=True,
+      category_snapshot=snapshot,
+      category_error=error,
+    )
+    text = capsys.readouterr().out
+    assert len(calls) == 1
+    assert calls[0][1]["refuse_null_scalars"] is False
+    assert calls[0][0] == ((tmp_path / BOX_META_FILE) if scope is ConfigLevel.box else None,)
+    assert "box_image = null" in text
+    assert "box_image = not:complete" not in text
+    if error is not None:
+      assert error in text
+
+
 class TestShowConfig:
   """Tests for the show_config display function."""
 

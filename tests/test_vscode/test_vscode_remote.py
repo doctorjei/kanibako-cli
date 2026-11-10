@@ -564,6 +564,58 @@ def test_remote_engine_inspect_env_and_image():
     assert eng.container_image("box") == "ghcr.io/x/y:latest"
 
 
+def test_remote_engine_creation_metadata_uses_one_tunnel_inspect():
+  from subprocess import CompletedProcess
+
+  url = "unix:///run/user/1000/forwarded.sock"
+  eng = vr.RemoteEngine(url, podman="/usr/bin/podman")
+  completed = CompletedProcess([], 0, stdout='["container-ID", {"kanibako.target":"Goose"}]\n')
+  with patch("kanibako.vscode.vscode_remote.subprocess.run", return_value=completed) as run:
+    assert eng.inspect_creation_metadata("lookup-name") == (
+      "container-ID",
+      {"kanibako.target": "Goose"},
+    )
+  run.assert_called_once_with(
+    [
+      "/usr/bin/podman",
+      "--remote",
+      "--url",
+      url,
+      "inspect",
+      "--format",
+      "[{{json .Id}},{{json .Config.Labels}}]",
+      "lookup-name",
+    ],
+    capture_output=True,
+    text=True,
+  )
+
+
+def test_remote_engine_creation_metadata_shares_the_parser():
+  from kanibako.runtime import container as container_mod
+
+  assert vr.creation_metadata_from_inspect is container_mod.creation_metadata_from_inspect
+
+
+@pytest.mark.parametrize(
+  ("returncode", "stdout"),
+  [(125, '["id", {}]'), (0, "<no value>"), (0, '["id", {"kanibako.target":null}]')],
+)
+def test_remote_engine_creation_metadata_unreadable(returncode, stdout):
+  from subprocess import CompletedProcess
+
+  eng = vr.RemoteEngine("unix:///run/x.sock", podman="podman")
+  completed = CompletedProcess([], returncode, stdout=stdout, stderr="inspect failed")
+  with patch("kanibako.vscode.vscode_remote.subprocess.run", return_value=completed):
+    assert eng.inspect_creation_metadata("lookup-name") is None
+
+
+def test_remote_engine_creation_metadata_missing_binary_is_unreadable():
+  eng = vr.RemoteEngine("unix:///run/x.sock", podman="podman")
+  with patch("kanibako.vscode.vscode_remote.subprocess.run", side_effect=FileNotFoundError):
+    assert eng.inspect_creation_metadata("lookup-name") is None
+
+
 def test_remote_engine_container_image_shares_the_local_guard():
   """ONE rule for both legs — asserted by IDENTITY, not by a duplicated table.
 

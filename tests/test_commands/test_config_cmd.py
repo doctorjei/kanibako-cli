@@ -23,6 +23,38 @@ from kanibako.settings.config_io import dump_doc, load_doc
 
 
 class TestBoxConfigShow:
+  def test_captured_absent_live_tier_does_not_read_again(
+    self, std, config_file, tmp_home, monkeypatch
+  ):
+    from unittest.mock import Mock
+
+    from kanibako.commands import start
+    from kanibako.agent_ref import AgentIdentity
+    from kanibako.settings.paths import resolve_project
+    from kanibako.targets import resolve_target
+
+    proj = resolve_project(
+      std, load_config(config_file), str(tmp_home / "project"), initialize=True
+    )
+    identity = AgentIdentity("claude", None, "claude", "claude", "claude", None)
+    reader = Mock(side_effect=AssertionError("captured absence reread PG"))
+    monkeypatch.setattr(start, "_persona_values_for", reader)
+    target = resolve_target("claude")
+    state = start._effective_behavior_for_display(
+      target,
+      target.generate_agent_config(),
+      std=std,
+      proj=proj,
+      system_settings_path=std.settings,
+      selection_level={"system.agent": "claude"},
+      node_name=identity.node,
+      agent_identity=identity,
+      persona_values=None,
+    )
+    assert state["label"] == "Claude Code"
+    assert "model" not in state
+    reader.assert_not_called()
+
   def test_show_no_overrides(self, config_file, tmp_home, credentials_dir, capsys):
     from kanibako.commands.box._parser import run_show
 
@@ -2336,3 +2368,390 @@ class TestResolveConfigSubjectNamedTargetCure:
       f"\n  Or make one:    kanibako create {shlex.quote(str(ok))}"
     ), msg
     assert "--name" not in msg
+
+
+class TestBoxCapturedAgentInput:
+  @pytest.fixture
+  def registered_box(self, std, config_file, tmp_home, monkeypatch):
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+
+    from kanibako import persona_store
+    from kanibako.settings import config_interface as ci, config_io
+    from kanibako.settings.paths import box_workset_settings_paths, resolve_project
+
+    project_path = tmp_home / "captured-box"
+    project_path.mkdir()
+    proj = resolve_project(std, load_config(config_file), str(project_path), initialize=True)
+    path, workset = box_workset_settings_paths(proj)
+    doc = load_doc(path)
+    doc["pref"] = {"system": {"agent": "Scout"}}
+    dump_doc(path, doc)
+    config = {"model": "live-model", "env": {"ANTHROPIC_BASE_URL": "https://live.invalid"}}
+    data = {
+      "agent": {
+        "persona": {"name": "Guide"},
+        "harness": {"name": "claude", "config_store": config, "auth_var": "TOKEN"},
+        "secret": "synthetic-manager",
+      }
+    }
+    root = tmp_home / "captured-PG"
+    lists = Mock(return_value={"Scout": root / "Scout"})
+    loads = Mock(side_effect=lambda *_a, **_k: (root / "Scout", data))
+    project = Mock(wraps=persona_store.project_registered_persona)
+    fetch = Mock(side_effect=AssertionError("credential fetch"))
+    monkeypatch.setattr(config_io, "persona_store_location", lambda: root)
+    monkeypatch.setattr(config_io, "persona_store_agents", lists)
+    monkeypatch.setattr(config_io, "load_persona_agent", loads)
+    monkeypatch.setattr(config_io, "fetch_persona_secret", fetch)
+    monkeypatch.setattr(persona_store, "project_registered_persona", project)
+    for name in ("get_config_value", "set_config_value", "reset_config_value"):
+      monkeypatch.setattr(ci, name, Mock(wraps=getattr(ci, name)))
+    return SimpleNamespace(
+      std=std,
+      proj=proj,
+      path=path,
+      workset=workset,
+      config=config,
+      root=root,
+      lists=lists,
+      loads=loads,
+      project=project,
+      fetch=fetch,
+      ci=ci,
+    )
+
+  @staticmethod
+  def _one_input(box, engine):
+    box.lists.assert_called_once_with(root=box.root)
+    box.loads.assert_called_once_with("Scout", root=box.root)
+    box.project.assert_called_once()
+    engine.assert_called_once()
+    kwargs = engine.call_args.kwargs
+    identity = kwargs["cascade_agent_identity"]
+    assert identity.node == "scout" and identity.registered_name == "Scout"
+    assert kwargs["cascade_persona_values"]["endpoint"] == "https://live.invalid"
+    assert kwargs["cascade_persona_credential"].store_root == box.root
+    assert kwargs["target_error"] is None
+    box.fetch.assert_not_called()
+    assert not box.root.exists()
+    return kwargs
+
+  @pytest.mark.parametrize("verb", ["get", "reset"])
+  def test_registered_pref_uses_its_installed_vocabulary(self, registered_box, verb, capsys):
+    from kanibako.commands.box import _parser as box
+
+    env = registered_box
+    doc = load_doc(env.path)
+    doc["pref"]["agent"] = {"scout": {"model": "stored-model"}}
+    dump_doc(env.path, doc)
+    before = env.path.read_bytes()
+    rc = getattr(box, f"run_{verb}")(
+      argparse.Namespace(
+        args=[str(env.proj.project_path), "pref.agent.scout.model"],
+        reset_all=False,
+        force=False,
+      )
+    )
+    captured = capsys.readouterr()
+    assert rc == 0, captured.err
+    assert ("stored-model" if verb == "get" else "Cleared pref.agent.scout.model") in captured.out
+    kwargs = self._one_input(env, getattr(env.ci, f"{verb}_config_value"))
+    assert kwargs["cascade_workset_path"] == env.workset
+    if verb == "get":
+      assert kwargs["node_store"] is False
+      assert env.path.read_bytes() == before
+      assert "live-model" not in captured.out
+    else:
+      assert "model" not in load_doc(env.path).get("pref", {}).get("agent", {}).get("scout", {})
+      assert "cascade_agent_path" not in kwargs
+
+  @pytest.mark.parametrize("verb", ["get", "reset", "set"])
+  def test_foreign_leaf_refuses_without_writing(self, registered_box, verb, capsys):
+    from kanibako.commands.box import _parser as box
+
+    env = registered_box
+    before = env.path.read_bytes()
+    key = "pref.agent.scout.provider"
+    if verb == "set":
+      key += "=foreign"
+    rc = getattr(box, f"run_{verb}")(
+      argparse.Namespace(args=[str(env.proj.project_path), key], reset_all=False, force=True)
+    )
+    captured = capsys.readouterr()
+    assert rc == 1 and "provider" in captured.err
+    assert env.path.read_bytes() == before
+    env.loads.assert_called_once()
+    env.project.assert_called_once()
+    env.fetch.assert_not_called()
+
+  def test_live_reference_stays_raw_and_operations_read_fresh(self, registered_box, capsys):
+    from kanibako.commands.box._parser import run_set
+
+    env = registered_box
+    expression = "{agent.scout.model}"
+    args = argparse.Namespace(
+      args=[str(env.proj.project_path), f"box.env.MODEL={expression}"], force=False
+    )
+    assert run_set(args) == 0, capsys.readouterr().err
+    assert load_doc(env.path)["box"]["env"]["MODEL"] == expression
+    kwargs = self._one_input(env, env.ci.set_config_value)
+    assert kwargs["cascade_persona_values"]["model"] == "live-model"
+    assert kwargs["cascade_system_path"] == env.std.settings
+    assert kwargs["cascade_workset_path"] == env.workset
+    assert kwargs["cascade_box_path"] == env.path
+    agent_path = agent_settings_path(env.std.agents, "scout")
+    assert not agent_path.exists()
+    dump_doc(agent_path, {"self": {"model": "file-model"}})
+    agent_before = agent_path.read_bytes()
+    env.config["model"] = "fresh-model"
+    assert run_set(args) == 0, capsys.readouterr().err
+    fresh = env.ci.set_config_value.call_args.kwargs
+    assert fresh["cascade_persona_values"]["model"] == "fresh-model"
+    assert fresh["cascade_persona_values"] is not kwargs["cascade_persona_values"]
+    assert env.loads.call_count == env.project.call_count == 2
+    assert agent_path.read_bytes() == agent_before
+    assert load_doc(env.path)["box"]["env"]["MODEL"] == expression
+    snapshot, ctx = env.ci._set_time_snapshot(
+      target=env.ci._set_time_target(
+        std=env.std,
+        proj=env.proj,
+        ws=None,
+        system_path=env.std.settings,
+        agent_name="scout",
+        agent_identity=fresh["cascade_agent_identity"],
+      ),
+      agent_name="scout",
+      agent_path=agent_path,
+      persona_values=fresh["cascade_persona_values"],
+      persona_credential=fresh["cascade_persona_credential"],
+      valid_agents=env.ci.identity_valid_agents(fresh["cascade_agent_identity"]),
+    )
+    from kanibako.settings.settings_launch import snapshot_leaf
+
+    expanded, errors = env.ci._lenient_expand(
+      snapshot,
+      ctx,
+      "scout",
+      valid_agents=env.ci.identity_valid_agents(fresh["cascade_agent_identity"]),
+    )
+    assert not errors
+    assert snapshot_leaf(expanded, "box.env.MODEL") == "file-model"
+    env.fetch.assert_not_called()
+
+  @pytest.mark.parametrize("model", ["new-model", "", None, "absent"])
+  def test_get_retains_each_live_model_state(self, registered_box, model, capsys):
+    from kanibako.commands.box._parser import run_get
+
+    env = registered_box
+    if model == "absent":
+      env.config.pop("model")
+    else:
+      env.config["model"] = model
+    assert run_get(argparse.Namespace(args=[str(env.proj.project_path), "box.image"])) == 0
+    values = self._one_input(env, env.ci.get_config_value)["cascade_persona_values"]
+    assert ("model" not in values) if model == "absent" else values["model"] == model
+    assert "(not set)" in capsys.readouterr().err
+
+  def test_reset_effective_reporting_uses_captured_live_input(self, registered_box, capsys):
+    from kanibako.commands.box._parser import run_reset
+
+    env = registered_box
+    doc = load_doc(env.std.settings)
+    doc["box"] = {"image": "{agent.scout.model}"}
+    dump_doc(env.std.settings, doc)
+    doc = load_doc(env.path)
+    doc["box"] = {"image": "box-image"}
+    dump_doc(env.path, doc)
+    assert (
+      run_reset(
+        argparse.Namespace(
+          args=[str(env.proj.project_path), "box.image"], reset_all=False, force=False
+        )
+      )
+      == 0
+    )
+    assert "effective is now live-model (system)" in capsys.readouterr().out
+    self._one_input(env, env.ci.reset_config_value)
+
+  @pytest.mark.parametrize("verb", ["get", "reset", "set", "null"])
+  def test_broken_store_retains_diagnosis_and_repair(self, registered_box, verb, capsys, caplog):
+    from kanibako.commands.box import _parser as box
+    from kanibako.errors import ConfigError
+
+    env = registered_box
+    env.loads.side_effect = ConfigError("broken captured PG")
+    doc = load_doc(env.path)
+    doc["box"] = {"image": "stored-image"}
+    dump_doc(env.path, doc)
+    key = "box.image"
+    if verb == "set":
+      key = "pref.system.agent=shell"
+    if verb == "null":
+      key = "box.env.REPAIR"
+    method = "set" if verb == "null" else verb
+    rc = getattr(box, f"run_{method}")(
+      argparse.Namespace(
+        args=[str(env.proj.project_path), key], reset_all=False, force=True, null=verb == "null"
+      )
+    )
+    captured = capsys.readouterr()
+    assert rc == 0, captured.err
+    engine = getattr(env.ci, f"{method}_config_value")
+    assert "broken captured PG" in engine.call_args.kwargs["target_error"]
+    if method in ("get", "reset"):
+      assert "broken captured PG" in caplog.text
+    if verb == "get":
+      assert "stored-image" in captured.out
+    if verb == "reset":
+      assert "effective is now" not in captured.out
+    if verb == "set":
+      assert load_doc(env.path)["pref"]["system"]["agent"] == "shell"
+    if verb == "null":
+      assert load_doc(env.path)["box"]["env"]["REPAIR"] is None
+    env.loads.assert_called_once()
+    env.project.assert_not_called()
+    env.fetch.assert_not_called()
+
+  @pytest.mark.parametrize("force", [False, True])
+  def test_targetless_repair_keeps_identity_and_every_tier(
+    self, registered_box, force, monkeypatch, capsys
+  ):
+    from kanibako.commands.box import _parser as box
+    from kanibako.errors import ConfigError
+
+    env = registered_box
+    doc = load_doc(env.std.settings)
+    doc["box"] = {"env": {"UPSTREAM": "lower-system-value"}}
+    dump_doc(env.std.settings, doc)
+    doc = load_doc(env.workset)
+    doc["box"] = {"env": {"UPSTREAM": "{system.no_such_key}"}}
+    dump_doc(env.workset, doc)
+    before = env.path.read_bytes()
+
+    def unavailable(_name):
+      raise ConfigError("selected target unavailable")
+
+    monkeypatch.setattr(box, "resolve_target", unavailable)
+    assert (
+      box.run_set(
+        argparse.Namespace(
+          args=[str(env.proj.project_path), "box.env.CHECK={box.env.UPSTREAM}"], force=force
+        )
+      )
+      == 1
+    )
+    assert env.path.read_bytes() == before
+    captured = capsys.readouterr()
+    assert "system.no_such_key" in captured.err
+    kwargs = env.ci.set_config_value.call_args.kwargs
+    assert kwargs["cascade_agent_identity"].registered_name == "Scout"
+    assert kwargs["target_error"] == "selected target unavailable"
+    assert kwargs["cascade_system_path"] == env.std.settings
+    assert kwargs["cascade_workset_path"] == env.workset
+    assert kwargs["cascade_box_path"] == env.path
+    assert kwargs["cascade_agent_path"] == agent_settings_path(env.std.agents, "scout")
+    env.loads.assert_called_once()
+    env.project.assert_not_called()
+    env.fetch.assert_not_called()
+
+  @pytest.mark.parametrize("ref", ["claude", "guide+claude", "shell"])
+  def test_native_legacy_and_pseudo_keep_their_existing_routes(
+    self, registered_box, ref, monkeypatch, capsys
+  ):
+    from unittest.mock import Mock
+
+    from kanibako import persona_store
+    from kanibako.agent_ref import agent_address_node
+    from kanibako.commands.box._parser import run_set
+
+    env = registered_box
+    doc = load_doc(env.path)
+    doc["pref"]["system"]["agent"] = ref
+    dump_doc(env.path, doc)
+    read = Mock(return_value=persona_store.PersonaBundle(model="legacy-model"))
+    monkeypatch.setattr(persona_store, "read_persona_bundle", read)
+    monkeypatch.setattr(
+      persona_store,
+      "read_registered_persona",
+      Mock(side_effect=AssertionError("native/composite selection read PG")),
+    )
+    node = agent_address_node(ref)
+    expression = f"{{agent.{node}.model}}" if ref == "guide+claude" else "native-image"
+    key = "box.env.MODEL" if ref == "guide+claude" else "box.image"
+    assert (
+      run_set(
+        argparse.Namespace(args=[str(env.proj.project_path), f"{key}={expression}"], force=False)
+      )
+      == 0
+    ), capsys.readouterr().err
+    kwargs = env.ci.set_config_value.call_args.kwargs
+    assert kwargs["cascade_agent_identity"].node == node
+    assert kwargs["cascade_persona_credential"] is None
+    assert kwargs["target_error"] is None
+    if ref == "guide+claude":
+      read.assert_called_once()
+      assert read.call_args.args[0] == node
+      assert kwargs["cascade_persona_values"]["model"] == "legacy-model"
+      assert load_doc(env.path)["box"]["env"]["MODEL"] == expression
+    else:
+      read.assert_not_called()
+      assert kwargs["cascade_persona_values"] is None
+    env.lists.assert_not_called()
+    env.loads.assert_not_called()
+    env.project.assert_not_called()
+    env.fetch.assert_not_called()
+
+  @pytest.mark.parametrize("state", ["unset", "null"])
+  def test_no_default_keeps_full_box_anchors(
+    self, std, config_file, tmp_home, state, monkeypatch, capsys
+  ):
+    from kanibako.commands.box._parser import run_set
+    from kanibako.settings.paths import box_workset_settings_paths, resolve_project
+
+    proj = resolve_project(
+      std, load_config(config_file), str(tmp_home / "project"), initialize=True
+    )
+    doc = load_doc(std.settings) if std.settings.exists() else {}
+    if state == "null":
+      doc.setdefault("system", {})["agent"] = None
+    elif "system" in doc:
+      doc["system"].pop("agent", None)
+      if not doc["system"]:
+        del doc["system"]
+    dump_doc(std.settings, doc)
+    monkeypatch.setattr(
+      "kanibako.persona_store.read_registered_persona",
+      lambda *_a, **_k: pytest.fail("no default must not read PG"),
+    )
+    assert (
+      run_set(
+        argparse.Namespace(
+          args=[str(proj.project_path), "box.canon={meta.box.home}/canon"], force=False
+        )
+      )
+      == 0
+    ), capsys.readouterr().err
+    path, _ = box_workset_settings_paths(proj)
+    assert load_doc(path)["box"]["canon"] == "{meta.box.home}/canon"
+
+  @pytest.mark.parametrize("verb", ["show", "reset"])
+  def test_stored_show_and_reset_all_never_select(self, registered_box, verb, monkeypatch):
+    from kanibako.commands.box import _parser as box
+
+    monkeypatch.setattr(
+      "kanibako.settings.agent_select.select_agent",
+      lambda **_kwargs: pytest.fail("stored-only operation selected an agent"),
+    )
+    env = registered_box
+    assert (
+      getattr(box, f"run_{verb}")(
+        argparse.Namespace(
+          args=[str(env.proj.project_path)], effective=False, reset_all=True, force=True
+        )
+      )
+      == 0
+    )
+    env.loads.assert_not_called()
+    env.project.assert_not_called()
+    env.fetch.assert_not_called()

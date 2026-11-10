@@ -48,6 +48,147 @@ def _ctx() -> ResolveCtx:
 # --------------------------------------------------------------------------- #
 
 
+@pytest.mark.parametrize("image", [None, "", 123])
+def test_captured_box_scalar_conversion_preserves_null_empty_and_types(image, monkeypatch):
+  from kanibako.settings import settings_launch as sl
+
+  snapshot = KeyStore()
+  snapshot.insert_segments(("box", "image"), image)
+  snapshot.insert_segments(("box", "share_images"), "false")
+  snapshot.insert_segments(("box", "enable_vault"), "true")
+  snapshot.insert_segments(("box", "shell"), None)
+  monkeypatch.setattr(sl, "build_launch_snapshot", lambda **kw: pytest.fail("resolve"))
+  cfg = sl.box_scalar_config(snapshot)
+  assert cfg.box_image == (None if image is None else str(image))
+  assert cfg.box_share_images is False
+  assert cfg.box_enable_vault is True
+  assert cfg.box_shell is None
+  cfg.box_image = "changed"
+  assert sl.snapshot_leaf(snapshot, "box.image") == image
+
+
+def test_captured_box_scalar_conversion_uses_defaults_only_for_absent_keys():
+  from kanibako.settings.config import KanibakoConfig
+  from kanibako.settings.settings_launch import box_scalar_config
+
+  assert box_scalar_config(KeyStore()) == KanibakoConfig()
+
+
+@pytest.mark.usefixtures("config_file")
+class TestExplicitScalarPersonaValues:
+  @pytest.mark.parametrize("with_inputs", [False, True])
+  @pytest.mark.parametrize(
+    "values,expected",
+    [
+      (None, "absent"),
+      ({}, "absent"),
+      ({"model": "live-image"}, "live-image"),
+      ({"model": ""}, ""),
+      ({"model": None}, None),
+      ({"model": "{agent.default.model}/{$HOME}/~"}, "{agent.default.model}/{$HOME}/~"),
+    ],
+  )
+  def test_explicit_values_match_same_file_snapshot(
+    self, tmp_path, std, monkeypatch, with_inputs, values, expected
+  ):
+    from kanibako import persona_store
+    from kanibako.settings import config_io, settings_launch as sl
+    from kanibako.utils.xdg import host_xdg_map
+
+    config_io.dump_doc(std.settings, {"agent": {"default": {"model": "default-image"}}})
+    agent = agent_settings_path(std.agents, "claude")
+    config_io.dump_doc(agent, {"self": {}, "box": {"image": "{agent.claude.model}"}})
+    box = tmp_path / "box.yaml"
+    config_io.dump_doc(box, {})
+    before = {p: p.read_bytes() for p in (std.settings, agent, box)}
+    for name in (
+      "read_registered_persona",
+      "read_persona_bundle",
+      "project_registered_persona",
+      "resolve_secret_path",
+    ):
+      monkeypatch.setattr(persona_store, name, lambda *a, **kw: pytest.fail("persona I/O"))
+    monkeypatch.setattr(config_io, "fetch_persona_secret", lambda *a, **kw: pytest.fail("fetch"))
+    inputs = (
+      sl.resolve_inputs(
+        subject=sl.ResolveSubject.SYSTEM, std=std, agent_name="claude", system_path=std.settings
+      )
+      if with_inputs
+      else None
+    )
+    snapshot_args = (
+      inputs.as_kwargs()
+      if inputs is not None
+      else {
+        "ctx": ResolveCtx(
+          agent_name="claude", workset_name=None, host_home=str(Path.home()), xdg=host_xdg_map()
+        ),
+        "system_path": std.settings,
+        "workset_path": None,
+        "box_path": box,
+      }
+    )
+    snapshot = sl.build_launch_snapshot(
+      **snapshot_args, agent_name="claude", agent_path=agent, persona_values=values
+    )
+    if expected == "absent":
+      from kanibako.settings.config import KanibakoConfig
+      from kanibako.settings.kb_store import __MISSING__
+
+      assert sl.snapshot_leaf(snapshot, "box.image") is __MISSING__
+      expected = KanibakoConfig().box_image
+    else:
+      assert sl.snapshot_leaf(snapshot, "box.image") == expected
+    kwargs = {
+      "inputs": inputs,
+      "agent_name": "claude",
+      "agent_path": agent,
+      "persona_values": values,
+    }
+    displayed = sl.load_merged_config(box, refuse_null_scalars=False, **kwargs)
+    assert displayed.box_image == expected
+    if expected is None:
+      with pytest.raises(sl.SettingsError, match="box.image"):
+        sl.load_merged_config(box, **kwargs)
+      assert (
+        sl.load_merged_config(box, cli_overrides={"box_image": "cli-image"}, **kwargs).box_image
+        == "cli-image"
+      )
+    else:
+      assert sl.load_merged_config(box, **kwargs).box_image == expected
+    assert {p: p.read_bytes() for p in before} == before
+
+  @pytest.mark.parametrize("with_inputs", [False, True])
+  def test_fresh_values_and_file_precedence(self, tmp_path, std, with_inputs):
+    from kanibako.settings import config_io, settings_launch as sl
+
+    config_io.dump_doc(std.settings, {"agent": {"default": {"model": "default-image"}}})
+    agent = agent_settings_path(std.agents, "claude")
+    config_io.dump_doc(agent, {"self": {}, "box": {"image": "{agent.claude.model}"}})
+    box = tmp_path / "box.yaml"
+    config_io.dump_doc(box, {})
+    inputs = (
+      sl.resolve_inputs(
+        subject=sl.ResolveSubject.SYSTEM, std=std, agent_name="claude", system_path=std.settings
+      )
+      if with_inputs
+      else None
+    )
+    kwargs = {"inputs": inputs, "agent_name": "claude", "agent_path": agent}
+    values = {"model": "first-image"}
+    assert sl.load_merged_config(box, persona_values=values, **kwargs).box_image == "first-image"
+    assert values == {"model": "first-image"}
+    values["model"] = "second-image"
+    assert sl.load_merged_config(box, persona_values=values, **kwargs).box_image == "second-image"
+    from kanibako.settings.config import KanibakoConfig
+
+    assert sl.load_merged_config(box, **kwargs).box_image == KanibakoConfig().box_image
+    config_io.dump_doc(
+      agent, {"self": {"model": "file-image"}, "box": {"image": "{agent.claude.model}"}}
+    )
+    assert sl.load_merged_config(box, persona_values=values, **kwargs).box_image == "file-image"
+
+
 def test_behavior_floor_maps_to_scope_qualified_agent_key():
   snap = build_launch_snapshot(
     agent_name="claude",
@@ -6297,8 +6438,8 @@ def test_an_undeclared_key_in_a_settings_file_refuses_the_resolve(tmp_path):
 
 @pytest.mark.writes_undeclared(
   "box.bindings",
-  reason="the refused entry IS a null at the bare bindings namespace in a box.yaml; "
-  "the file partial and the merge both write it, and the seam refuses it.",
+  reason="The seam refuses a null at the bare bindings namespace in box.yaml; "
+  "the file partial and merge both write it.",
 )
 def test_a_null_at_the_bare_bindings_node_refuses_the_resolve(tmp_path):
   """Spec §0/§2a: a bindings reset sits AT THE ARM; a bare ``box.bindings`` is not a
@@ -8815,3 +8956,534 @@ class TestResolvedAgentIdentityFloors:
 
     identity = agent_selection(node=node, source="test").identity
     assert _agent_identity(node, identity) == _agent_identity(node)
+
+
+@pytest.mark.parametrize("supplied", ["none", "empty", "selected"])
+def test_selection_direct_call_keeps_strict_pref_judgment(tmp_path, monkeypatch, supplied):
+  from unittest.mock import Mock
+
+  from kanibako.settings import settings_launch as launch
+  from kanibako.settings.settings_prefs import AgentNames, default_valid_agents
+
+  system = _write_yaml(tmp_path / "system.yaml", {"system": {"agent": "Scout"}})
+  box = _write_yaml(tmp_path / "box.yaml", {"pref": {"agent": {"scout": {"model": "x"}}}})
+  names = default_valid_agents().with_harnesses({"scout": "claude"})
+  if supplied == "empty":
+    names = AgentNames(())
+    monkeypatch.setattr(
+      "kanibako.settings.settings_prefs.default_valid_agents",
+      Mock(side_effect=AssertionError("empty vocabulary discarded")),
+    )
+  elif supplied == "none":
+    names = None
+  monkeypatch.setattr(
+    "kanibako.persona_store.read_registered_persona", Mock(side_effect=AssertionError("PG read"))
+  )
+  before = {path: path.read_bytes() for path in (system, box)}
+  kwargs = dict(
+    ctx=_ctx(), system_path=system, workset_path=None, box_path=box, valid_agents=names
+  )
+  if supplied == "selected":
+    assert launch.resolve_selected_agent(**kwargs) == "Scout"
+  else:
+    with pytest.raises(SettingsError, match="scout"):
+      launch.resolve_selected_agent(**kwargs)
+  assert {path: path.read_bytes() for path in before} == before
+
+
+class TestExpansionCallerVocabulary:
+  @pytest.fixture(autouse=True)
+  def no_pg(self, monkeypatch):
+    from unittest.mock import Mock
+
+    for name in ("read_registered_persona", "read_persona_bundle", "resolve_secret_path"):
+      monkeypatch.setattr(
+        f"kanibako.persona_store.{name}", Mock(side_effect=AssertionError("PG read"))
+      )
+    for name in ("configure", "commit", "create", "update", "rename", "unregister"):
+      monkeypatch.setattr(
+        f"persona_grata.AgentStore.{name}", Mock(side_effect=AssertionError("PG write"))
+      )
+
+  @pytest.fixture
+  def names(self, monkeypatch):
+    from unittest.mock import Mock
+
+    names = _AgentNames(
+      {"claude", "goose"},
+      leaf_map={"claude": {"claude_only"}, "goose": {"provider"}},
+      agent_harnesses={"claude": "goose"},
+    )
+    for discovery in (
+      "kanibako.settings.settings_prefs.default_valid_agents",
+      "kanibako.settings.settings_keyspace_probe.plugin_agent_leaf_map",
+    ):
+      monkeypatch.setattr(discovery, Mock(side_effect=AssertionError("unexpected discovery")))
+    return names
+
+  @pytest.mark.writes_undeclared(
+    "agent.claude.provider",
+    reason="Registered Claude uses Goose's leaf vocabulary, not native Claude's census",
+  )
+  def test_strict_launch_shares_vocabulary_and_materializes_mirror(
+    self, tmp_path, names, monkeypatch
+  ):
+    from unittest.mock import Mock
+    from kanibako.settings import settings_launch as launch
+
+    path = _write_yaml(
+      tmp_path / "system.yaml",
+      {
+        "agent": {
+          "claude": {"provider": "local", "model": "{box.env.UNSET}"},
+          "default": {"model": "fallback"},
+        },
+        "box": {"env": {"LOCAL": "{meta.box.agent.provider}", "MODEL": "{meta.box.agent.model}"}},
+      },
+    )
+    before = path.read_bytes()
+    assemble, expand = Mock(wraps=launch.assemble_cascade), Mock(wraps=launch.expand)
+    monkeypatch.setattr(launch, "assemble_cascade", assemble)
+    monkeypatch.setattr(launch, "expand", expand)
+    snapshot = build_launch_snapshot(
+      agent_name="claude",
+      ctx=_ctx(),
+      system_path=path,
+      agent_path=None,
+      workset_path=None,
+      box_path=None,
+      valid_agents=names,
+    )
+    assert assemble.call_args.kwargs["valid_agents"] is names
+    assert expand.call_args.kwargs["valid_agents"] is names
+    assert snapshot.box.env.LOCAL == "local"
+    assert snapshot.box.env.MODEL == "fallback"
+    assert snapshot.meta.box.agent.provider == "local"
+    snapshot.meta.box.agent["provider"] = "copy"
+    assert snapshot.agent.claude.provider == "local"
+    assert path.read_bytes() == before
+
+  def test_strict_launch_refuses_foreign_registered_leaf(self, tmp_path, names):
+    from kanibako.settings.settings_resolve import SettingsError
+
+    path = _write_yaml(
+      tmp_path / "system.yaml", {"box": {"env": {"BAD": "{agent.claude.claude_only}"}}}
+    )
+    with pytest.raises(SettingsError, match="claude_only.*references no key"):
+      build_launch_snapshot(
+        agent_name="claude",
+        ctx=_ctx(),
+        system_path=path,
+        agent_path=None,
+        workset_path=None,
+        box_path=None,
+        valid_agents=names,
+      )
+
+  @pytest.mark.writes_undeclared(
+    "agent.claude.unknown_leaf",
+    reason="Injected missing harness concedes its vocabulary instead of using native Claude's",
+  )
+  def test_strict_missing_plugin_concession(self, tmp_path, names):
+    from kanibako.settings.kb_store import __MISSING__
+    from kanibako.settings.settings_launch import snapshot_leaf
+
+    missing = _AgentNames((), unreadable={"missing"}, agent_harnesses={"claude": "missing"})
+    path = _write_yaml(
+      tmp_path / "system.yaml",
+      {
+        "agent": {"claude": {"unknown_leaf": "kept"}},
+        "box": {"env": {"RESULT": "{agent.claude.unknown_leaf}"}},
+      },
+    )
+    snapshot = build_launch_snapshot(
+      agent_name="claude",
+      ctx=_ctx(),
+      system_path=path,
+      agent_path=None,
+      workset_path=None,
+      box_path=None,
+      valid_agents=missing,
+    )
+    assert snapshot.box.env.RESULT == "kept"
+    assert snapshot.agent.claude.unknown_leaf == "kept"
+    assert snapshot_leaf(snapshot, "meta.box.agent.unknown_leaf") is __MISSING__
+
+  @pytest.mark.parametrize("kind", ["empty", "list", "tuple", "set", "frozenset", "none"])
+  @pytest.mark.parametrize("selection", [False, True])
+  def test_collection_and_no_input_contract(self, kind, selection, monkeypatch):
+    from unittest.mock import Mock
+    from kanibako.settings import settings_launch as launch
+    from kanibako.settings.kb_store import __MISSING__
+
+    supplied = {
+      "empty": _AgentNames(()),
+      "list": ["claude"],
+      "tuple": ("claude",),
+      "set": {"claude"},
+      "frozenset": frozenset({"claude"}),
+      "none": None,
+    }[kind]
+    expand = Mock(wraps=launch.expand)
+    monkeypatch.setattr(launch, "expand", expand)
+    monkeypatch.setattr(
+      "kanibako.settings.settings_prefs.default_valid_agents",
+      Mock(side_effect=AssertionError("unused discovery")),
+    )
+    kwargs = dict(
+      ctx=_ctx(), system_path=None, workset_path=None, box_path=None, valid_agents=supplied
+    )
+    if selection:
+      assert launch.resolve_selected_agent(**kwargs) is __MISSING__
+    else:
+      snapshot = build_launch_snapshot(agent_name="claude", agent_path=None, **kwargs)
+      assert snapshot.box.image is not None
+    assert expand.call_args.kwargs["valid_agents"] is (supplied if kind == "empty" else None)
+
+  @pytest.mark.parametrize("value", ["{agent.default.model}", None, "{agent.claude.claude_only}"])
+  def test_selection_keeps_null_fallback_and_own_error(self, tmp_path, names, monkeypatch, value):
+    from unittest.mock import Mock
+    from kanibako.settings import settings_launch as launch
+    from kanibako.settings.settings_resolve import SettingsError
+
+    path = _write_yaml(
+      tmp_path / "system.yaml",
+      {
+        "system": {"agent": value},
+        "agent": {"default": {"model": "goose"}},
+        "box": {"env": {"UNRELATED": "{agent.claude.claude_only}"}},
+      },
+    )
+    before = path.read_bytes()
+    expand, apply = Mock(wraps=launch.expand), Mock(wraps=launch.apply_prefs)
+    assemble = Mock(wraps=launch.assemble_levels)
+    monkeypatch.setattr(launch, "expand", expand)
+    monkeypatch.setattr(launch, "apply_prefs", apply)
+    monkeypatch.setattr(launch, "assemble_levels", assemble)
+    kwargs = dict(
+      ctx=_ctx(), system_path=path, workset_path=None, box_path=None, valid_agents=names
+    )
+    if value == "{agent.claude.claude_only}":
+      with pytest.raises(SettingsError, match="selection key 'system.agent'.*claude_only"):
+        launch.resolve_selected_agent(**kwargs)
+    else:
+      assert launch.resolve_selected_agent(**kwargs) == ("goose" if value else None)
+    assert expand.call_args.kwargs["valid_agents"] is names
+    assert expand.call_args.kwargs["collect_errors"] is True
+    assert apply.call_args.kwargs["valid_agents"] is names
+    assert all(f.path is None for f in assemble.call_args.kwargs["files"] if f.level == "agent")
+    assert path.read_bytes() == before
+
+  @pytest.mark.parametrize("leaf", ["template", "canon"])
+  @pytest.mark.parametrize("empty", [False, True])
+  def test_path_refusal_keeps_local_vocabulary(self, tmp_path, names, monkeypatch, leaf, empty):
+    from unittest.mock import Mock
+    from kanibako.settings import settings_launch as launch
+    from kanibako.settings.settings_resolve import SettingsError
+
+    supplied = _AgentNames(()) if empty else names
+    path = _write_yaml(tmp_path / "system.yaml", {"agent": {"claude": {leaf: "relative"}}})
+    before = path.read_bytes()
+    walk = Mock(wraps=launch._path_key_leaves)
+    anchor = Mock(wraps=launch.path_key_anchor)
+    monkeypatch.setattr(launch, "_path_key_leaves", walk)
+    monkeypatch.setattr(launch, "path_key_anchor", anchor)
+    with pytest.raises(SettingsError) as exc:
+      build_launch_snapshot(
+        agent_name="claude",
+        ctx=_ctx(),
+        system_path=path,
+        agent_path=None,
+        workset_path=None,
+        box_path=None,
+        valid_agents=supplied,
+      )
+    message = str(exc.value)
+    assert f"agent.claude.{leaf} is set to 'relative' in {path}" in message
+    assert "BARE RELATIVE" in message
+    assert "{meta.agent.claude.path}" in message
+    assert walk.call_count >= 2
+    assert all(call.kwargs["valid_agents"] is supplied for call in walk.call_args_list)
+    anchor.assert_called_once_with(
+      f"agent.claude.{leaf}", active_agent="claude", valid_agents=supplied
+    )
+    assert path.read_bytes() == before
+
+  def test_path_shape_refusal_keeps_local_vocabulary(self, tmp_path, names, monkeypatch):
+    from unittest.mock import Mock
+    from kanibako.settings import settings_launch as launch
+    from kanibako.settings.settings_resolve import SettingsError
+
+    path = _write_yaml(tmp_path / "system.yaml", {"agent": {"claude": {"template": ["/bad"]}}})
+    before = path.read_bytes()
+    walk = Mock(wraps=launch._path_key_leaves)
+    monkeypatch.setattr(launch, "_path_key_leaves", walk)
+    with pytest.raises(SettingsError) as exc:
+      build_launch_snapshot(
+        agent_name="claude",
+        ctx=_ctx(),
+        system_path=path,
+        agent_path=None,
+        workset_path=None,
+        box_path=None,
+        valid_agents=names,
+      )
+    message = str(exc.value)
+    assert "agent.claude.template" in message
+    assert "holds a list;" in message
+    assert str(path) in message
+    assert walk.call_count >= 1
+    assert all(call.kwargs["valid_agents"] is names for call in walk.call_args_list)
+    assert path.read_bytes() == before
+
+
+class TestPersonaCredentialCascade:
+  @pytest.fixture
+  def credential(self, tmp_path):
+    from kanibako.settings.settings_categories import PersonaCredential
+
+    return PersonaCredential("Claude", tmp_path / "unread-pg-root", "TOK", False)
+
+  @pytest.fixture(autouse=True)
+  def no_material_access(self, monkeypatch):
+    from unittest.mock import Mock
+
+    for name in ("read_registered_persona", "read_persona_bundle", "resolve_secret_path"):
+      monkeypatch.setattr(
+        f"kanibako.persona_store.{name}", Mock(side_effect=AssertionError("PG read"))
+      )
+    monkeypatch.setattr(
+      "kanibako.settings.config_io.fetch_persona_secret",
+      Mock(side_effect=AssertionError("credential fetch")),
+    )
+    monkeypatch.setattr("subprocess.Popen", Mock(side_effect=AssertionError("credential spawn")))
+    for method in ("stat", "open", "read_bytes", "read_text", "write_bytes", "write_text"):
+      original = getattr(Path, method)
+
+      def guarded(path, *args, _original=original, **kwargs):
+        if "unread-pg-root" in path.parts or str(path) in {
+          "/winning-file",
+          "/higher-file",
+          "/from-lower",
+          "/lower",
+        }:
+          raise AssertionError(f"credential source access: {path}")
+        return _original(path, *args, **kwargs)
+
+      monkeypatch.setattr(Path, method, guarded)
+
+  def build(self, tmp_path, credential, *, system=None, agent=None, workset=None, box=None, **kw):
+    paths = {
+      name: _write_yaml(tmp_path / f"{name}.yaml", doc) if doc is not None else None
+      for name, doc in (("system", system), ("agent", agent), ("workset", workset), ("box", box))
+    }
+    before = {path: path.read_bytes() for path in paths.values() if path is not None}
+    out = []
+    snapshot = build_launch_snapshot(
+      agent_name="claude",
+      ctx=_ctx(),
+      system_path=paths["system"],
+      agent_path=paths["agent"],
+      workset_path=paths["workset"],
+      box_path=paths["box"],
+      persona_credential=credential,
+      persona_credential_out=out,
+      valid_agents=("claude",),
+      **kw,
+    )
+    assert {path: path.read_bytes() for path in before} == before
+    untouched = repr(snapshot)
+    entries = snapshot_category_entries(
+      snapshot, active_agent="claude", box_ctx=_ctx(), persona_credential=out[0] if out else None
+    )
+    assert repr(snapshot) == untouched
+    assert "PersonaCredential" not in untouched
+    assert "unread-pg-root" not in untouched
+    return snapshot, out, entries
+
+  @pytest.mark.parametrize("lower", ["absent", "default", "system", "descriptor"])
+  def test_metadata_reaches_the_active_pick_without_entering_the_snapshot(
+    self, tmp_path, credential, lower
+  ):
+    kw = {}
+    if lower in ("default", "system"):
+      node = "default" if lower == "default" else "claude"
+      kw["system"] = {"agent": {node: {"secret_path": {"TOK": "/from-lower"}}}}
+    elif lower == "descriptor":
+      kw["agent_partial"] = KeyStore({"agent": {"claude": {"secret_path": {"TOK": "/lower"}}}})
+    snapshot, out, entries = self.build(tmp_path, credential, **kw)
+    assert out == [credential]
+    secret = next(e for e in entries if e.category == "secret_path")
+    assert secret.persona_credential is credential
+    assert secret.host_src is None
+    assert secret.key_segments == ("agent", "claude", "secret_path", "TOK")
+    assert secret.has_secret_material is True
+    control, _, _ = self.build(tmp_path, None, **kw)
+    assert snapshot == control
+
+  @pytest.mark.parametrize("source", ["agent", "workset", "box", "cli", "persona"])
+  @pytest.mark.parametrize("value", ["/winning-file", None])
+  def test_same_key_file_null_pref_and_cli_values_eliminate_pg(
+    self, tmp_path, credential, source, value
+  ):
+    kw = {}
+    if source == "agent":
+      kw["agent"] = {"self": {"secret_path": {"TOK": value}}}
+    elif source in ("workset", "box"):
+      kw[source] = {"pref": {"agent": {"claude": {"secret_path": {"TOK": value}}}}}
+    elif source == "cli":
+      kw["cli_level"] = {"agent.claude.secret_path.TOK": value}
+    else:
+      kw["persona_values"] = {"secret_path.TOK": value}
+    snapshot, out, entries = self.build(tmp_path, credential, **kw)
+    assert out == []
+    secret = next(e for e in entries if e.category == "secret_path")
+    assert secret.persona_credential is None
+    assert secret.host_src == value
+    assert snapshot.agent.claude.secret_path.TOK == value
+
+  @pytest.mark.parametrize(
+    "reset",
+    [
+      pytest.param(
+        {"secret_path": None},
+        marks=pytest.mark.writes_undeclared(
+          "agent.claude.secret_path", reason="Refuses the ancestor reset."
+        ),
+      ),
+      pytest.param(
+        None,
+        marks=pytest.mark.writes_undeclared("agent.claude", reason="Refuses the ancestor reset."),
+      ),
+    ],
+  )
+  def test_ancestor_scalar_winners_eliminate_the_projection_without_repairing_the_fault(
+    self, tmp_path, credential, reset
+  ):
+    from kanibako.settings.settings_launch import _eligible_persona_credential
+    from kanibako.settings.settings_merge import merge
+    from kanibako.settings.settings_resolve import SettingsError
+
+    doc = {"agent": {"claude": reset}}
+    levels = [KeyStore(doc)]
+    assert (
+      _eligible_persona_credential(
+        levels, persona_index=1, agent_name="claude", credential=credential
+      )
+      is None
+    )
+    assert merge(levels).agent.claude == reset
+    out = []
+    path = _write_yaml(tmp_path / "system.yaml", doc)
+    with pytest.raises(SettingsError):
+      build_launch_snapshot(
+        agent_name="claude",
+        ctx=_ctx(),
+        system_path=path,
+        agent_path=None,
+        workset_path=None,
+        box_path=None,
+        persona_credential=credential,
+        persona_credential_out=out,
+        valid_agents=("claude",),
+      )
+    assert out == []
+
+  @pytest.mark.parametrize("value", [None, "/higher-file"])
+  def test_higher_scope_source_wins_the_existing_arbitration(self, tmp_path, credential, value):
+    from kanibako.settings.settings_categories import launch_deliveries
+
+    _, out, entries = self.build(
+      tmp_path, credential, box={"box": {"secret_path": {"TOK": value}}}
+    )
+    assert out == [credential]
+    result = launch_deliveries(entries, agent_dests=frozenset(), required_var="TOK")
+    state = result.credential_states["TOK"]
+    assert state.kind == ("keyless-null" if value is None else "file")
+    assert state.declaration.scope == "box"
+    assert state.declaration.persona_credential is None
+    assert state.declaration.host_src == value
+
+  @pytest.mark.parametrize("cli", ["", " ", "winning-value"])
+  def test_cli_env_suppression_uses_the_same_pg_declaration(self, tmp_path, credential, cli):
+    from kanibako.settings.settings_categories import launch_deliveries
+
+    _, _, entries = self.build(tmp_path, credential)
+    result = launch_deliveries(entries, agent_dests=frozenset(), cli_env={"TOK": cli})
+    state = result.credential_states["TOK"]
+    assert state.kind == ("cli-value" if cli.strip() else "cli-blank-suppressed")
+    assert state.declaration.persona_credential is credential
+    assert result.secrets == []
+
+  @pytest.mark.parametrize("var", ["TOK", None])
+  def test_keyless_context_preserves_only_its_real_name(self, tmp_path, credential, var):
+    from dataclasses import replace
+    from kanibako.settings.settings_categories import launch_deliveries
+
+    keyless = replace(credential, var=var, keyless=True)
+    _, out, entries = self.build(tmp_path, keyless)
+    assert out == [keyless]
+    if var is None:
+      assert not any(e.category == "secret_path" for e in entries)
+      result = launch_deliveries(entries, agent_dests=frozenset(), keyless_persona=out[0])
+      assert result.keyless_persona is keyless
+      assert result.active_secret_names == {}
+    else:
+      result = launch_deliveries(entries, agent_dests=frozenset(), required_var=var)
+      assert result.credential_states[var].kind == "keyless-null"
+      assert result.active_secret_names == {var: [f"agent.claude.secret_path.{var}"]}
+    assert result.secrets == []
+
+  def test_keyless_native_placeholder_stays_an_env_value(self, tmp_path, credential):
+    from dataclasses import replace
+    from kanibako.settings.settings_categories import launch_deliveries
+
+    _, _, entries = self.build(
+      tmp_path, replace(credential, keyless=True), persona_values={"env.TOK": "native-placeholder"}
+    )
+    assert next(e for e in entries if e.category == "env").options == "native-placeholder"
+    result = launch_deliveries(entries, agent_dests=frozenset(), required_var="TOK")
+    assert result.credential_states["TOK"].kind == "keyless-null"
+
+  def test_mismatched_metadata_refuses_before_output_or_category_emission(
+    self, tmp_path, credential
+  ):
+    from kanibako.settings.settings_resolve import SettingsError
+
+    out = []
+    with pytest.raises(SettingsError, match="does not belong to agent 'goose'"):
+      build_launch_snapshot(
+        agent_name="goose",
+        ctx=_ctx(),
+        system_path=None,
+        agent_path=None,
+        workset_path=None,
+        box_path=None,
+        persona_credential=credential,
+        persona_credential_out=out,
+      )
+    assert out == []
+    snapshot = KeyStore()
+    with pytest.raises(SettingsError, match="does not belong to agent 'goose'"):
+      snapshot_category_entries(
+        snapshot, active_agent="goose", box_ctx=_ctx(), persona_credential=credential
+      )
+    assert snapshot == {}
+
+  def test_validation_failure_never_publishes_eligible_metadata(self, tmp_path, credential):
+    from kanibako.settings.settings_resolve import SettingsError
+
+    path = _write_yaml(tmp_path / "system.yaml", {"box": {"env": {"BAD": "{no.such.key}"}}})
+    out = []
+    with pytest.raises(SettingsError):
+      build_launch_snapshot(
+        agent_name="claude",
+        ctx=_ctx(),
+        system_path=path,
+        agent_path=None,
+        workset_path=None,
+        box_path=None,
+        persona_credential=credential,
+        persona_credential_out=out,
+      )
+    assert out == []

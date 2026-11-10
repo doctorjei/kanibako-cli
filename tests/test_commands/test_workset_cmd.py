@@ -2124,6 +2124,606 @@ class TestWorksetInfo:
     assert "not registered" in err
 
 
+class TestWorksetAddressedIdentity:
+  @pytest.fixture(params=[("ClAuDe", "claude"), ("Guide+Goose", "Guide℘goose")])
+  def addressed(self, request, std, tmp_path, monkeypatch):
+    from unittest.mock import Mock
+
+    from kanibako.agent_ref import AgentIdentity
+    from kanibako.commands import workset_cmd
+    from kanibako.settings import config as selection
+    from kanibako.settings import config_interface as ci
+    from kanibako.settings.config_io import dump_doc
+    from kanibako.settings.settings_prefs import AgentNames
+
+    typed, node = request.param
+    identity = AgentIdentity(node, "TrailGuide", "Guide", "Goose", "goose", tmp_path / "PG")
+    names = AgentNames(
+      {"claude", "goose"}, leaf_map={"claude": {"claude_only"}, "goose": {"provider"}}
+    )
+    monkeypatch.setattr("kanibako.settings.settings_prefs.default_valid_agents", lambda: names)
+    resolver = Mock(return_value=selection.AgentResolution(identity))
+    monkeypatch.setattr(ci, "resolve_named_agent_input", resolver)
+    project = Mock(return_value=(None, None))
+    monkeypatch.setattr(ci, "project_agent_input", project)
+    monkeypatch.setattr(
+      selection, "resolve_agent_identity", Mock(side_effect=AssertionError("box selection"))
+    )
+    traps = []
+    for name in (
+      "locate_entry",
+      "read_registered_persona",
+      "read_persona_bundle",
+      "resolve_secret_path",
+    ):
+      trap = Mock(side_effect=AssertionError("PG is inactive"))
+      monkeypatch.setattr(f"kanibako.persona_store.{name}", trap)
+      traps.append(trap)
+    monkeypatch.setattr(workset_cmd, "_load_std", lambda: std)
+    ws = create_workset("identityws", tmp_path / "identityws", std)
+    noun = workset_cmd._workset_config_path(ws)
+    node_path = agent_settings_path(std.agents, node)
+    dump_doc(node_path, {"self": {"model": "node-only"}})
+    node_before = node_path.read_bytes()
+    yield typed, identity, names, noun, resolver
+    assert node_path.read_bytes() == node_before
+    assert names.leaf_map.agent_harnesses == {}
+    assert not identity.entry_path.exists()
+    assert project.call_count == resolver.call_count
+    assert all(call.args[0] is resolver.return_value for call in project.call_args_list)
+    for trap in traps:
+      trap.assert_not_called()
+
+  def _run(self, verb, key=None, **kwargs):
+    from kanibako.commands import workset_cmd
+
+    args = argparse.Namespace(
+      workset="identityws", key=key, key_value=key, force=False, reset_all=False, **kwargs
+    )
+    return getattr(workset_cmd, f"run_{verb}")(args)
+
+  @pytest.mark.writes_undeclared(
+    "agent.claude.provider",
+    "pref.agent.claude.provider",
+    reason="Injected registered Claude uses Goose's vocabulary",
+  )
+  @pytest.mark.parametrize("verb", ["set", "get", "reset"])
+  def test_pref_verbs_share_one_identity(self, addressed, verb, capsys):
+    from unittest.mock import patch
+
+    from kanibako.settings import config_interface as ci
+    from kanibako.settings.config_io import dump_doc, load_doc
+
+    typed, identity, names, noun, resolver = addressed
+    dump_doc(noun, {"pref": {"agent": {identity.node: {"provider": "old"}}}})
+    key = f"pref.agent.{typed}.provider"
+    engine_name = {
+      "set": "set_config_value",
+      "get": "get_config_value",
+      "reset": "reset_config_value",
+    }[verb]
+    with (
+      patch.object(ci, engine_name, wraps=getattr(ci, engine_name)) as engine,
+      patch.object(ci, "identity_valid_agents", wraps=ci.identity_valid_agents) as vocabulary,
+    ):
+      assert self._run(verb, key + "=new" if verb == "set" else key) == 0
+    output = capsys.readouterr()
+    assert not output.err
+    assert {"set": "Set pref.agent.", "get": "old", "reset": "Cleared pref.agent."}[
+      verb
+    ] in output.out
+    resolver.assert_called_once_with(typed)
+    assert engine.call_args.kwargs["cascade_agent_identity"] is identity
+    assert (
+      engine.call_args.kwargs["active_agent" if verb == "get" else "cascade_agent_name"]
+      == identity.node
+    )
+    assert all(call.args == (identity,) for call in vocabulary.call_args_list)
+    assert load_doc(noun) == (
+      {}
+      if verb == "reset"
+      else {"pref": {"agent": {identity.node: {"provider": "new" if verb == "set" else "old"}}}}
+    )
+    if verb == "get":
+      assert engine.call_args.kwargs["node_store"] is False
+
+  @pytest.mark.parametrize("verb", ["set", "get", "reset"])
+  def test_readable_harness_refuses_foreign_leaf_without_writes(self, addressed, verb, capsys):
+    from kanibako.settings.config_io import dump_doc
+
+    typed, identity, names, noun, resolver = addressed
+    dump_doc(noun, {"workset": {"env": {"KEEP": "kept"}}})
+    before = noun.read_bytes()
+    key = f"pref.agent.{typed}.claude_only"
+    assert self._run(verb, key + "=new" if verb == "set" else key) == 1
+    output = capsys.readouterr()
+    assert key in output.err
+    assert "claude_only" in output.err
+    assert noun.read_bytes() == before
+    resolver.assert_called_once_with(typed)
+
+  @pytest.mark.writes_undeclared(
+    "agent.claude.provider",
+    reason="Injected Goose descriptor's provider default is foreign to native Claude",
+  )
+  @pytest.mark.parametrize("value", [None, ""])
+  @pytest.mark.parametrize("verb", ["set", "get", "reset"])
+  def test_pref_model_empty_values(self, addressed, value, verb, capsys):
+    from kanibako.settings.config_io import dump_doc, load_doc, render_stored_scalar
+
+    typed, identity, names, noun, resolver = addressed
+    dump_doc(noun, {"pref": {"agent": {identity.node: {"model": value}}}})
+    key = f"pref.agent.{typed}.model"
+    assert (
+      self._run(
+        verb,
+        key + "=" if verb == "set" and value == "" else key,
+        null=verb == "set" and value is None,
+      )
+      == 0
+    )
+    output = capsys.readouterr()
+    assert not output.err
+    if verb == "get":
+      assert output.out.strip() == render_stored_scalar(value)
+    assert load_doc(noun) == (
+      {} if verb == "reset" else {"pref": {"agent": {identity.node: {"model": value}}}}
+    )
+    resolver.assert_called_once_with(typed)
+
+  @pytest.mark.writes_undeclared(
+    "agent.claude.unknown_leaf",
+    "pref.agent.claude.unknown_leaf",
+    "agent.Guide℘goose.unknown_leaf",
+    "pref.agent.Guide℘goose.unknown_leaf",
+    reason="Injected missing harness concedes its unreadable leaves",
+  )
+  @pytest.mark.parametrize("verb", ["set", "get", "reset"])
+  def test_missing_plugin_concedes_pref_leaf(self, addressed, monkeypatch, verb, capsys):
+    from dataclasses import replace
+    from unittest.mock import Mock
+
+    from kanibako.settings.config_io import dump_doc, load_doc
+    from kanibako.settings.settings_prefs import AgentNames
+
+    typed, identity, names, noun, resolver = addressed
+    resolver.return_value = replace(
+      resolver.return_value,
+      identity=replace(identity, harness="Missing", target_name="missing"),
+    )
+    missing = AgentNames({"claude", "goose"}, leaf_map=names.leaf_map, unreadable={"missing"})
+    monkeypatch.setattr("kanibako.settings.settings_prefs.default_valid_agents", lambda: missing)
+    monkeypatch.setattr("kanibako.targets.get_target", Mock(side_effect=KeyError("missing")))
+    dump_doc(noun, {"pref": {"agent": {identity.node: {"unknown_leaf": "old"}}}})
+    key = f"pref.agent.{typed}.unknown_leaf"
+    assert self._run(verb, key + "=new" if verb == "set" else key) == 0
+    assert not capsys.readouterr().err
+    assert load_doc(noun) == (
+      {}
+      if verb == "reset"
+      else {
+        "pref": {"agent": {identity.node: {"unknown_leaf": "new" if verb == "set" else "old"}}}
+      }
+    )
+    resolver.assert_called_once_with(typed)
+
+  @pytest.mark.parametrize("verb", ["set", "get", "reset"])
+  def test_empty_vocabulary_never_rediscovered(self, addressed, monkeypatch, verb, capsys):
+    from unittest.mock import Mock
+
+    from kanibako.settings import config_interface as ci
+    from kanibako.settings.config_io import dump_doc
+    from kanibako.settings.settings_prefs import AgentNames
+
+    typed, identity, names, noun, resolver = addressed
+    empty = AgentNames(())
+    monkeypatch.setattr(ci, "identity_valid_agents", lambda picked: empty)
+    monkeypatch.setattr(
+      "kanibako.settings.settings_prefs.default_valid_agents",
+      Mock(side_effect=AssertionError("vocabulary rediscovery")),
+    )
+    dump_doc(noun, {"workset": {"env": {"KEEP": "kept"}}})
+    before = noun.read_bytes()
+    key = f"pref.agent.{typed}.provider"
+    assert self._run(verb, key + "=new" if verb == "set" else key) == 1
+    assert key in capsys.readouterr().err
+    assert noun.read_bytes() == before
+    resolver.assert_called_once_with(typed)
+
+  @pytest.mark.parametrize("verb", ["set", "get", "reset"])
+  @pytest.mark.parametrize(
+    "key",
+    [
+      "pref.pref.agent.claude.model",
+      "agent.bad..model",
+      "meta.agent.claude.model",
+      "agent.claude.bindings.ro.old",
+    ],
+  )
+  def test_nonkeys_and_retired_routes_leave_files_unchanged(self, addressed, verb, key, capsys):
+    from kanibako.settings.config_io import dump_doc
+
+    typed, identity, names, noun, resolver = addressed
+    dump_doc(noun, {"workset": {"env": {"KEEP": "kept"}}})
+    before = noun.read_bytes()
+    assert self._run(verb, key + "=new" if verb == "set" else key) == 1
+    assert key in capsys.readouterr().err
+    assert noun.read_bytes() == before
+    assert resolver.call_count <= 1
+
+  @pytest.mark.writes_undeclared(
+    "agent.claude.provider",
+    "pref.agent.claude.provider",
+    reason="Injected registered Claude uses Goose's vocabulary",
+  )
+  def test_registered_get_reads_only_noun_file(self, addressed, capsys):
+    from kanibako.settings.config_io import dump_doc
+
+    typed, identity, names, noun, resolver = addressed
+    dump_doc(noun, {"pref": {"agent": {identity.node: {"provider": "noun-only"}}}})
+    before = noun.read_bytes()
+    assert self._run("get", f"pref.agent.{typed}.provider") == 0
+    output = capsys.readouterr()
+    assert output.out.strip() == "noun-only"
+    assert not output.err
+    assert noun.read_bytes() == before
+    resolver.assert_called_once_with(typed)
+
+  @pytest.mark.parametrize("verb", ["set", "get", "reset"])
+  def test_native_legacy_identity_keeps_discovery(self, addressed, verb, capsys):
+    from dataclasses import replace
+    from unittest.mock import patch
+
+    from kanibako.settings import config_interface as ci
+    from kanibako.settings.config_io import dump_doc
+
+    typed, identity, names, noun, resolver = addressed
+    native = replace(
+      identity,
+      registered_name=None,
+      harness="Claude" if identity.node == "claude" else identity.harness,
+      target_name="claude" if identity.node == "claude" else identity.target_name,
+    )
+    resolver.return_value = replace(resolver.return_value, identity=native)
+    dump_doc(noun, {"pref": {"agent": {identity.node: {"model": "old"}}}})
+    key = f"pref.agent.{typed}.model"
+    with patch.object(ci, "identity_valid_agents", wraps=ci.identity_valid_agents) as vocabulary:
+      assert self._run(verb, key + "=new" if verb == "set" else key) == 0
+    assert not capsys.readouterr().err
+    assert all(call.args == (native,) for call in vocabulary.call_args_list)
+    assert ci.identity_valid_agents(native) is None
+    resolver.assert_called_once_with(typed)
+
+  @pytest.mark.parametrize("verb", ["set", "get", "reset"])
+  def test_ordinary_keys_do_not_resolve_an_agent(self, addressed, verb, capsys):
+    from kanibako.settings.config_io import dump_doc
+
+    typed, identity, names, noun, resolver = addressed
+    dump_doc(noun, {"workset": {"vault_ro": "/keep"}})
+    key = "workset.vault_ro"
+    assert self._run(verb, key + "=/new" if verb == "set" else key) == 0
+    assert not capsys.readouterr().err
+    resolver.assert_not_called()
+
+
+class TestWorksetRegisteredInput:
+  @pytest.fixture
+  def live(self, std, tmp_path, monkeypatch):
+    from unittest.mock import Mock
+
+    from kanibako import persona_store
+    from kanibako.commands import workset_cmd
+    from kanibako.plugins.claude.target import ClaudeTarget
+    from kanibako.settings import config_io
+
+    root = tmp_path / "public-PG"
+    config = {"model": "live-model", "env": {"ANTHROPIC_BASE_URL": "https://live.invalid"}}
+    data = {
+      "agent": {
+        "persona": {"name": "Guide"},
+        "harness": {"name": "claude", "config_store": config, "auth_var": "TOKEN"},
+        "secret": "synthetic-manager",
+      }
+    }
+    lists = Mock(return_value={"Scout": root / "Scout"})
+    loads = Mock(side_effect=lambda *_args, **_kwargs: (root / "Scout", data))
+    project = Mock(wraps=persona_store.project_registered_persona)
+    fetch = Mock(side_effect=AssertionError("credential fetch"))
+    monkeypatch.setattr(config_io, "persona_store_location", lambda: root)
+    monkeypatch.setattr(config_io, "persona_store_agents", lists)
+    monkeypatch.setattr(config_io, "load_persona_agent", loads)
+    monkeypatch.setattr(config_io, "fetch_persona_secret", fetch)
+    monkeypatch.setattr(persona_store, "project_registered_persona", project)
+    monkeypatch.setattr("kanibako.targets.discover_targets", lambda: {"claude": ClaudeTarget})
+    monkeypatch.setattr(workset_cmd, "_load_std", lambda: std)
+    ws = create_workset("livews", tmp_path / "livews", std)
+    noun = workset_cmd._workset_config_path(ws)
+    yield config, root, lists, loads, project, std, ws, noun
+    fetch.assert_not_called()
+    assert not root.exists()
+
+  def _run(self, verb, key=None, **options):
+    from kanibako.commands import workset_cmd
+
+    args = argparse.Namespace(
+      workset="livews", key=key, key_value=key, force=False, reset_all=False
+    )
+    for name, value in options.items():
+      setattr(args, name, value)
+    return getattr(workset_cmd, f"run_{verb}")(args)
+
+  @pytest.mark.parametrize("model", ["live-model", "", None, "absent"])
+  @pytest.mark.parametrize("file_model", [None, "file-model"])
+  def test_set_live_reference_file_precedence_and_model_states(
+    self, live, model, file_model, capsys
+  ):
+    from unittest.mock import patch
+
+    from kanibako.settings import config_interface as ci
+    from kanibako.settings.config_io import dump_doc, load_doc
+    from kanibako.settings.settings_launch import ResolveSubject, _agent_pick_node, snapshot_leaf
+
+    config, root, lists, loads, project, std, ws, noun = live
+    if model == "absent":
+      config.pop("model")
+    else:
+      config["model"] = model
+    dump_doc(std.settings, {"agent": {"default": {"model": "default-model"}}})
+    if file_model is not None:
+      dump_doc(noun, {"pref": {"agent": {"scout": {"model": file_model}}}})
+    node_path = agent_settings_path(std.agents, "scout")
+    before = node_path.read_bytes() if node_path.exists() else None
+    key = "pref.agent.Scout.env.MODEL"
+    expression = (
+      "{agent.default.model}"
+      if model == "absent" and file_model is None
+      else "{agent.scout.model}"
+    )
+    snapshots = []
+    original = ci._set_time_snapshot
+
+    def capture(**kwargs):
+      result = original(**kwargs)
+      snapshots.append((kwargs, result))
+      return result
+
+    with (
+      patch.object(ci, "_set_time_snapshot", side_effect=capture),
+      patch.object(ci, "set_config_value", wraps=ci.set_config_value) as engine,
+    ):
+      assert self._run("set", key + "=" + expression) == 0
+    assert not capsys.readouterr().err
+    expected_stored = {"env": {"MODEL": expression}}
+    if file_model is not None:
+      expected_stored["model"] = file_model
+    assert load_doc(noun) == {"pref": {"agent": {"scout": expected_stored}}}
+    expected = (
+      file_model if file_model is not None else "default-model" if model == "absent" else model
+    )
+    assert snapshots
+    for kwargs, (snapshot, ctx) in snapshots:
+      expanded, errors = ci._lenient_expand(
+        snapshot, ctx, "scout", valid_agents=kwargs["valid_agents"]
+      )
+      assert not errors
+      assert snapshot_leaf(_agent_pick_node(expanded, "scout"), "model") == expected
+      assert kwargs["target"].cascade_workset_path == noun
+      assert kwargs["target"].system_path == std.settings
+      assert kwargs["target"].subject is ResolveSubject.WORKSET
+      assert kwargs["target"].cascade_box_path is None
+    args = engine.call_args.kwargs
+    assert args["std"] is std and args["ws"].root == ws.root
+    assert args["cascade_system_path"] == std.settings
+    assert args["cascade_agent_identity"].node == "scout"
+    assert args["cascade_persona_credential"].store_root == root
+    assert args["cascade_persona_credential"].var == "TOKEN"
+    assert args["cascade_persona_values"] == {
+      "endpoint": "https://live.invalid",
+      **({} if model == "absent" else {"model": model}),
+    }
+    lists.assert_called_once_with(root=root)
+    loads.assert_called_once_with("Scout", root=root)
+    project.assert_called_once()
+    assert (node_path.read_bytes() if node_path.exists() else None) == before
+
+  @pytest.mark.parametrize("verb", ["get", "reset"])
+  def test_stored_noun_and_live_handoff(self, live, verb, capsys):
+    from unittest.mock import patch
+
+    from kanibako.settings import config_interface as ci
+    from kanibako.settings.config_io import dump_doc, load_doc
+
+    config, root, lists, loads, project, std, ws, noun = live
+    dump_doc(noun, {"pref": {"agent": {"scout": {"model": "noun-only"}}}})
+    node_path = agent_settings_path(std.agents, "scout")
+    dump_doc(node_path, {"self": {"model": "node-only"}})
+    before = node_path.read_bytes()
+    name = "get_config_value" if verb == "get" else "reset_config_value"
+    with patch.object(ci, name, wraps=getattr(ci, name)) as engine:
+      assert self._run(verb, "pref.agent.Scout.model") == 0
+    output = capsys.readouterr()
+    assert not output.err
+    assert (
+      (output.out.strip() == "noun-only")
+      if verb == "get"
+      else "Cleared pref.agent.scout.model" in output.out
+    )
+    assert load_doc(noun) == (
+      {} if verb == "reset" else {"pref": {"agent": {"scout": {"model": "noun-only"}}}}
+    )
+    kwargs = engine.call_args.kwargs
+    assert kwargs["cascade_persona_values"]["model"] == "live-model"
+    assert kwargs["cascade_persona_credential"].store_root == root
+    assert kwargs["cascade_agent_identity"].registered_name == "Scout"
+    assert kwargs["cascade_system_path"] == std.settings
+    if verb == "get":
+      assert kwargs["node_store"] is False
+      assert kwargs["ws"].root == ws.root and kwargs["std"] is std
+    else:
+      assert kwargs["cascade_workset_path"] == noun
+    assert node_path.read_bytes() == before
+    lists.assert_called_once_with(root=root)
+    loads.assert_called_once_with("Scout", root=root)
+    project.assert_called_once()
+
+  def test_fresh_operations_capture_new_values(self, live, capsys):
+    from unittest.mock import patch
+
+    from kanibako.settings import config_interface as ci
+
+    config, root, lists, loads, project, std, ws, noun = live
+    with patch.object(ci, "set_config_value", wraps=ci.set_config_value) as engine:
+      for model in ("first", "second"):
+        config["model"] = model
+        assert self._run("set", "pref.agent.Scout.env.MODEL={agent.scout.model}") == 0
+        assert engine.call_args.kwargs["cascade_persona_values"]["model"] == model
+    assert not capsys.readouterr().err
+    assert lists.call_count == loads.call_count == project.call_count == 2
+    assert (
+      engine.call_args_list[0].kwargs["cascade_persona_values"]
+      is not engine.call_args_list[1].kwargs["cascade_persona_values"]
+    )
+    assert not agent_settings_path(std.agents, "scout").exists()
+
+  @pytest.mark.parametrize("verb", ["set", "get", "reset"])
+  def test_installed_foreign_leaf_stays_refused(self, live, verb, capsys):
+    from kanibako.settings.config_io import dump_doc
+
+    config, root, lists, loads, project, std, ws, noun = live
+    dump_doc(noun, {"workset": {"env": {"KEEP": "kept"}}})
+    before = noun.read_bytes()
+    key = "pref.agent.Scout.provider"
+    assert self._run(verb, key + "=bad" if verb == "set" else key, force=True) == 1
+    assert "provider" in capsys.readouterr().err
+    assert noun.read_bytes() == before
+    assert lists.call_count == loads.call_count == project.call_count == 1
+
+  @pytest.mark.parametrize("verb", ["set", "get", "reset"])
+  def test_broken_store_retains_targetless_repair(self, live, verb, capsys, caplog):
+    from unittest.mock import patch
+
+    from kanibako.settings import config_interface as ci
+    from kanibako.settings.config_io import dump_doc, load_doc
+
+    config, root, lists, loads, project, std, ws, noun = live
+    config["env"]["ANTHROPIC_BASE_URL"] = "not-a-url"
+    dump_doc(std.settings, {"agent": {"default": {"model": "system-default"}}})
+    system_before = std.settings.read_bytes()
+    dump_doc(noun, {"pref": {"agent": {"scout": {"model": "own"}}}})
+    name = {"get": "get_config_value", "set": "set_config_value", "reset": "reset_config_value"}[
+      verb
+    ]
+    with patch.object(ci, name, wraps=getattr(ci, name)) as engine:
+      key = "pref.agent.Scout.model"
+      assert self._run(verb, key, null=verb == "set", force=True) == 0
+    output = capsys.readouterr()
+    assert not output.err
+    assert "not-a-url" in engine.call_args.kwargs["target_error"]
+    assert engine.call_args.kwargs["cascade_system_path"] == std.settings
+    if verb == "get":
+      assert output.out.strip() == "own"
+    else:
+      assert load_doc(noun) == (
+        {} if verb == "reset" else {"pref": {"agent": {"scout": {"model": None}}}}
+      )
+    assert std.settings.read_bytes() == system_before
+    assert not agent_settings_path(std.agents, "scout").exists()
+    assert lists.call_count == loads.call_count == project.call_count == 1
+
+  def test_targetless_set_keeps_system_and_workset_files(self, live, capsys):
+    from unittest.mock import patch
+
+    from kanibako.settings import config_interface as ci
+    from kanibako.settings.config_io import dump_doc, load_doc
+    from kanibako.settings.settings_launch import snapshot_leaf
+
+    config, root, lists, loads, project, std, ws, noun = live
+    config["env"]["ANTHROPIC_BASE_URL"] = "not-a-url"
+    dump_doc(std.settings, {"system": {"env": {"SOURCE": "system-value"}}})
+    dump_doc(noun, {"workset": {"env": {"SOURCE": "{system.env.SOURCE}"}}})
+    snapshots = []
+    original = ci._set_time_snapshot
+
+    def capture(**kwargs):
+      result = original(**kwargs)
+      snapshots.append((kwargs, result))
+      return result
+
+    with patch.object(ci, "_set_time_snapshot", side_effect=capture):
+      assert self._run("set", "pref.agent.Scout.env.MODEL={workset.env.SOURCE}") == 0
+    assert not capsys.readouterr().err
+    assert snapshots
+    for kwargs, (snapshot, ctx) in snapshots:
+      assert kwargs["target"] is None
+      assert snapshot_leaf(snapshot, "system.env.SOURCE") == "system-value"
+      assert snapshot_leaf(snapshot, "workset.env.SOURCE") == "{system.env.SOURCE}"
+    assert load_doc(noun)["pref"]["agent"]["scout"]["env"]["MODEL"] == "{workset.env.SOURCE}"
+    assert lists.call_count == loads.call_count == project.call_count == 1
+
+  @pytest.mark.parametrize("verb", ["set", "get", "reset"])
+  def test_unreadable_identity_does_not_grant_pref_vocabulary(self, live, verb, capsys):
+    from kanibako.settings.config_io import dump_doc
+
+    config, root, lists, loads, project, std, ws, noun = live
+    loads.side_effect = ValueError("broken PG configuration")
+    dump_doc(noun, {"workset": {"env": {"KEEP": "kept"}}})
+    before = noun.read_bytes()
+    key = "pref.agent.Scout.model"
+    assert self._run(verb, key, null=verb == "set", force=True) == 1
+    assert "not a valid agent" in capsys.readouterr().err
+    assert noun.read_bytes() == before
+    assert lists.call_count == loads.call_count == 1
+    project.assert_not_called()
+
+  @pytest.mark.parametrize("verb", ["set", "get", "reset"])
+  def test_installed_plugin_never_opens_pg(self, live, verb, capsys):
+    from kanibako.settings.config_io import dump_doc
+
+    config, root, lists, loads, project, std, ws, noun = live
+    lists.side_effect = AssertionError("installed plugin read PG")
+    loads.side_effect = AssertionError("installed plugin loaded PG")
+    dump_doc(noun, {"pref": {"agent": {"claude": {"model": "old"}}}})
+    key = "pref.agent.ClAuDe.model"
+    assert self._run(verb, key + "=new" if verb == "set" else key) == 0
+    assert not capsys.readouterr().err
+    lists.assert_not_called()
+    loads.assert_not_called()
+    project.assert_not_called()
+
+  def test_legacy_input_reaches_the_same_real_engine(self, live, monkeypatch, capsys):
+    from unittest.mock import Mock, patch
+
+    from kanibako import persona_store
+    from kanibako.settings import config_interface as ci
+    from kanibako.settings.config_io import load_doc
+
+    config, root, lists, loads, project, std, ws, noun = live
+    legacy = Mock(return_value=persona_store.PersonaBundle(model="legacy-model"))
+    monkeypatch.setattr(persona_store, "read_persona_bundle", legacy)
+    expression = "{agent.Guide℘claude.model}"
+    with patch.object(ci, "set_config_value", wraps=ci.set_config_value) as engine:
+      assert self._run("set", "pref.agent.Guide+claude.env.MODEL=" + expression) == 0
+    assert not capsys.readouterr().err
+    assert load_doc(noun)["pref"]["agent"]["Guide+claude"]["env"]["MODEL"] == expression
+    legacy.assert_called_once()
+    assert legacy.call_args.args[0] == "Guide℘claude"
+    assert legacy.call_args.args[1].name == "claude"
+    assert engine.call_args.kwargs["cascade_persona_values"] == {"model": "legacy-model"}
+    assert engine.call_args.kwargs["cascade_persona_credential"] is None
+    lists.assert_not_called()
+    loads.assert_not_called()
+    project.assert_not_called()
+
+  @pytest.mark.parametrize("verb", ["show", "reset"])
+  def test_unkeyed_doors_never_read_pg(self, live, verb, capsys):
+    config, root, lists, loads, project, std, ws, noun = live
+    assert self._run(verb, effective=False, reset_all=verb == "reset") == 0
+    assert not capsys.readouterr().err
+    lists.assert_not_called()
+    loads.assert_not_called()
+    project.assert_not_called()
+
+
 class TestWorksetConfig:
   def test_config_show_empty(self, config_file, tmp_home, capsys):
     """Config show with no overrides prints '(no overrides)'."""

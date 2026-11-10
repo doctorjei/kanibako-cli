@@ -142,6 +142,7 @@ artifacts:
   api-docs/kanibako/runtime/templates_image.py.md:
   api-docs/kanibako/scripts/__init__.py.md:
   api-docs/kanibako/scripts/import-directives.py.md:
+  api-docs/kanibako/secret_delivery.py.md:
   api-docs/kanibako/settings/__init__.py.md:
   api-docs/kanibako/settings/agent_config.py.md:
   api-docs/kanibako/settings/agent_defaults.py.md:

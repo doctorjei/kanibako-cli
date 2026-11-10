@@ -409,7 +409,7 @@ counts it.
 The count is the unit `config_interface.reset_all` uses for a scope table: one `env:` table of two
 variables counts 2 here and under a workset file's `box:`, through one counter in `config_io`.
 
-```record(level: AgentFileLevel, *, node: str) -> AgentConfig``` · ```save(path: Path, cfg: AgentConfig) -> None```
+```record(level: AgentFileLevel, *, node: str, valid_agents: AgentNames | None = None) -> AgentConfig``` · ```save(path: Path, cfg: AgentConfig) -> None```
 The WHOLE-FILE round trip. `record` builds the record from `level_table`'s ACTIVE level for the
 file's own node; it is reached through `settings_assemble.agent_record(path, *, node, purpose)`,
 THE ONE READER of the agent file — the `agent` verbs' own reads (`list` / `info` / `show` / `get`),
@@ -661,7 +661,7 @@ and builds).
 ⚑ It runs in `level_table`, through `_contribution`, so in every `agent_record` read and the
 launch; never in `clear_overrides`.
 
-```_refuse_undeclared_state(entries, *, node, path) -> None``` · ```_undeclared_entries(own, scope, *, node)``` · ```_node_tables(own, scope, *, node)```
+```_refuse_undeclared_state(entries, *, node, path) -> None``` · ```_undeclared_entries(own, scope, *, node, valid_agents=None)``` · ```_node_tables(own, scope, *, node)```
 RAISE naming EVERY agent-file entry that is not a declared key (spec §0), once each, in one
 refusal, as the launch's `settings_launch._refuse_undeclared_snapshot` does — the last refusal
 `record` runs. Each entry is `(shown, spelled, reason)`, produced by `_undeclared_entries` over the
@@ -687,8 +687,8 @@ refused by `settings_assemble`'s bind parse, which `agent_record`'s read runs as
 Two spellings of ONE node in the `agent:` table (`claude:` beside `Claude:`) are NOT in that set:
 `_contribution` refuses them through `refuse_node_spelled_twice`, before either pass runs.
 
-⚑ **THE PLUGIN UNION IS LOAD-BEARING, not a nicety.** `config_keys.agent_key_reason` unions the
-leaves the INSTALLED targets declare, and without it a legitimate `agent.goose.provider` would
-refuse a working box. The message names the key, says kanibako will not start a box on the file or display it, and
-points the cure at the file's own *path* — or at `kanibako agent reset <node> --all`, the one verb
-that still opens a refused file.
+Optional `record(..., valid_agents=names)` forwards the SAME `AgentNames` object through both
+passes: `agent_key_reason` takes its `leaf_map`; the whole-path oracle is
+`partial(key_class, valid_agents=ANY_AGENT, agent_leaf_map=names.leaf_map)`. Names stay permissive;
+leaf declarations remain partitioned by harness. With no input, both legacy suppliers stay intact.
+The message/cure is unchanged. `settings_assemble.agent_record` does not yet forward this input.

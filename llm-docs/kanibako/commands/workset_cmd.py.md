@@ -113,10 +113,10 @@ the `podman unshare rm -rf` escalation the user can actually run.
 
 ## The config verbs
 
-`run_set` / `run_reset` / `run_get` / `run_show` are thin argument shims onto `_run_workset_config`,
-which dispatches into the `config_interface` engine. Credential sharing is an ordinary settable
-cascade key (`workset.auth.share_allowed`) routed through the engine like any other — no
-special-casing.
+`_run_workset_config` passes one agent input: identity, vocabulary, live values,
+credential metadata, and unavailable diagnosis. Keyed verbs keep system/workset tiers and
+noun-only reads; unkeyed verbs select no agent. Credential sharing
+(`workset.auth.share_allowed`) uses the same engine.
 
 **There is no workset-tier docker env FILE (R-39/RQ-1).** The env family is the settings key
 `workset.env.<VAR>`, stored in `ws_config` like every other workset key, so there is no second

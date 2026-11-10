@@ -1,18 +1,10 @@
 # The Podman Invocation (where a box actually becomes a process)
 
-Every kanibako box is, in the end, one `podman run` argv. This module builds it. That makes almost
-everything here **empirical platform behavior** rather than design: the option spellings, the
-argument ORDER, the escalating deletion attempts and the host-side mountpoint pre-creation are each
-a bug that was paid for once, in debugging, on a real runtime.
+This module builds each box's `podman run` argv. Option spellings, ORDER, escalating deletion,
+and mountpoint pre-creation encode **empirical platform behavior**.
 
-⚑ **Most of it cannot be re-derived from a unit test.** The dev box has no working podman, and the
-failures these notes encode are things podman does INSIDE the box (what a mask shows, what `:U`
-chowns, what crun can mkdir) — invisible to any test that only inspects the argv. So the standing
-rule for this file is inverted from the usual one: a claim that sounds odd is kept, and a note is
-dropped only when it can be proven false.
-
-The one-line `⚑` markers left in the source mark the exact lines where deleting a note would let a
-future edit break something silently. Each is expanded below.
+⚑ No podman runs here. Argv tests cannot establish mask contents, `:U` chowning, or crun mkdir
+behavior. Keep odd claims until disproved; `⚑` markers identify constraints explained below.
 
 ## The argv shape, and why its ORDER is load-bearing
 
@@ -98,12 +90,20 @@ COLLAPSE — so nothing is bound into a box except through the keyspace. Only `-
 mount) stays in this module's own argv. The core mounts arrive from `_resolve_launch_snapshot` →
 `_install_assembly_collapse` → `meta.assembly.bindings` → `_emit_category_mounts`.
 
-## The detached-launch output
+## Launch readiness and output
 
-`podman run -d` prints the new container's full SHA id to stdout. The caller reattaches by NAME
-(`runtime.exec`), so the id is not needed; it is captured to keep it off the user's terminal and
-surfaced only at DEBUG (`-v`). A genuine launch failure must still be reported, so captured stderr
-is echoed on a non-zero return.
+Absent/empty secrets preserve native `run()`. Detached IDs stay captured/debug-only;
+reattach uses NAME. Native errors echo stderr.
+
+Nonempty `secret_payload` uses CLOEXEC pipes and `--preserve-fds=2`. Ordered child-only remapping
+reclaims unused detached outputs before cycle allocation. Targets inherit; consumed sources close.
+Restore exec signal defaults; preserve parent descriptors/session/group/masks. EOF ends framing;
+readiness follows pumping without ack EOF. A monotonic deadline covers publication and detached engine0,
+not ready foreground lifetime. Detached output is discarded; failures never echo it.
+
+Cancellation closes pipes and bounds launcher teardown/queries. Remove only an inspected immutable
+ID matching this launch's nonce. Labels are copied; names prove nothing. Query/removal failure or
+possible late creation warns without unsafe retry. Real podman/Docker/remote/conmon proof remains owed.
 
 ## `exec` — the attach/non-attach split
 
@@ -619,17 +619,17 @@ substring on the whole line.
 ```python
 image_ref_or_none(raw: str) -> str | None
 ```
-Return `inspect` output *raw* as an image reference, or None if it cannot be one. The ONE guard for
-every `inspect --format` read of an image reference, local (`container_image`) and remote
-(`vscode.vscode_remote.RemoteEngine.container_image`): an engine can print Go's `<no value>` at
-exit 0 for a missing map key. It does not check that the image exists or is fully qualified.
+Guard local/remote `container_image`: Go can print `<no value>` for a missing map key at exit 0.
+Returns the stripped reference or None; existence and full qualification are unchecked.
 
 ```python
 running_from_inspect(result: subprocess.CompletedProcess[str]) -> bool
 env_from_inspect(result: subprocess.CompletedProcess[str], key: str) -> str | None
+creation_metadata_from_inspect(result: subprocess.CompletedProcess[str]) -> tuple[str, dict[str, str]] | None
 ```
-The parsers shared by the local `is_running` / `inspect_env` and their remote twins in
-`vscode.vscode_remote.RemoteEngine`. A failed `inspect` reads as not running, or None.
+Local/remote running/env parsers return False/None on failure. Creation metadata parses remote
+`[Id, Labels]`: nonempty string ID, string map; null labels become empty. Failed inspect, malformed
+JSON, or invalid shape returns None, never a legacy empty map.
 
 `STUCK_STATES` (`removing`, `stopping`) are the `ps -a` states of a container caught part-way out:
 it still holds its name, so a launch under that name fails, and only `<runtime> rm -f` clears it.

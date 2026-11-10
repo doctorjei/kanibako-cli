@@ -44,13 +44,13 @@ box-side resolution") and the seams S3/S17/S18/S19 are all in
 
 from __future__ import annotations
 
-from typing import Callable, cast, overload
+from typing import TYPE_CHECKING, Callable, cast, overload
 
 from kanibako.settings.kb_store import Bind, BindEntry, StoreValue, __MISSING__
 from kanibako.settings.keystore import KeyStore
 from kanibako.settings.settings_categories import BARE_RELATIVE_SOURCE_HAZARD, _shape_phrase
-from kanibako.settings.settings_keyspace import KeyClass, entry_label
-from kanibako.settings.settings_keyspace_probe import keyspace_verdict
+from kanibako.settings.settings_keyspace import KeyClass, entry_label, key_class
+from kanibako.settings.settings_keyspace_probe import ANY_AGENT, keyspace_verdict
 from kanibako.settings.settings_resolve import (
   ExprSyntaxError,
   ResolveCtx,
@@ -62,6 +62,10 @@ from kanibako.settings.settings_resolve import (
   match_braced,
   resolve_var,
 )
+
+
+if TYPE_CHECKING:
+  from kanibako.settings.settings_prefs import AgentNames
 
 
 class _Absent:
@@ -88,14 +92,15 @@ class _Absent:
 _ABSENT: _Absent = _Absent()
 
 
-def _absent_reason(dotted: str) -> str | None:
-  """Why *dotted* is not in the snapshot, or ``None`` when it is a DECLARED key.
+def _absent_reason(dotted: str, valid_agents: AgentNames | None = None) -> str | None:
+  """Why *dotted* is no key; ``None`` means declared but absent from this cascade.
 
-  ⚑ A set-time command judges a value against ITS OWN cascade, so a declared key living
-  in a scope that cascade does not reach is absent BY CONSTRUCTION — not a keyspace
-  breach. Declared is the set door's verdict
-  (:func:`~kanibako.settings.config_keys.scope_key_reason`, agent names discovered).
+  Supplied vocabulary uses the shared parameterized judge; omission retains discovery.
   """
+  if valid_agents is not None:
+    from kanibako.settings.settings_prefs import key_reason
+
+    return key_reason(dotted, valid_agents=valid_agents)
   from kanibako.settings.config_keys import scope_key_reason
 
   return scope_key_reason(dotted)
@@ -215,6 +220,7 @@ def expand(
   refs_read: RefsRead | None = None,
   dest_keys: DestKeys | None = None,
   derive: Derive | None = None,
+  valid_agents: AgentNames | None = None,
 ) -> KeyStore: ...
 @overload
 def expand(
@@ -226,6 +232,7 @@ def expand(
   refs_read: RefsRead | None = None,
   dest_keys: DestKeys | None = None,
   derive: Derive | None = None,
+  valid_agents: AgentNames | None = None,
 ) -> KeyStore | tuple[KeyStore, dict[str, str]]: ...
 
 
@@ -238,6 +245,7 @@ def expand(
   refs_read: RefsRead | None = None,
   dest_keys: DestKeys | None = None,
   derive: Derive | None = None,
+  valid_agents: AgentNames | None = None,
 ) -> KeyStore | tuple[KeyStore, dict[str, str]]:
   """Expand *snapshot*'s tokens to terminals, returning a FRESH KeyStore (S19).
 
@@ -271,9 +279,12 @@ def expand(
   *derive* answers a reference to a key the caller materializes after this pass
   (:data:`Derive`); it is asked only when the snapshot does not hold the key.
 
+  *valid_agents* supplies per-call leaf vocabulary; ``None`` retains legacy discovery.
   The input snapshot is never mutated (S19).
   """
-  expander = _Expander(snapshot, ctx, collect_errors=collect_errors, derive=derive)
+  expander = _Expander(
+    snapshot, ctx, collect_errors=collect_errors, derive=derive, valid_agents=valid_agents
+  )
   expanded = expander.run()
   if null_sources is not None:
     null_sources.update(expander.null_sources)
@@ -307,10 +318,12 @@ class _Expander:
     *,
     collect_errors: bool = False,
     derive: Derive | None = None,
+    valid_agents: AgentNames | None = None,
   ) -> None:
     self._snapshot = snapshot
     self._ctx = ctx
     self._derive = derive
+    self._valid_agents = valid_agents
     # Memo: dotted path -> fully-resolved value (or _ABSENT). ⚑ None and
     # _ABSENT are both VALID memo values, so membership is tested with ``in``,
     # never by comparing to a sentinel. A path mid-resolution is not in the
@@ -767,7 +780,7 @@ class _Expander:
       if self._collect_errors and not absent_ok:
         # LENIENT (Q9): a DANGLING ref is a set-time defect to record, NOT
         # the strict silent drop. Raised so the OWNING leaf gets it.
-        reason = _absent_reason(dotted)
+        reason = _absent_reason(dotted, self._valid_agents)
         if reason is not None:
           raise _LenientDefect(f"dangling reference '{{{dotted}}}' ({reason})")
         if not self._blind_absent:
@@ -777,7 +790,11 @@ class _Expander:
           )
       # ⚑ Absence propagates only from a KEY; a ref that names no key is
       # refused by name (spec §0), never dropped.
-      verdict = keyspace_verdict(dotted)
+      verdict = (
+        keyspace_verdict(dotted)
+        if self._valid_agents is None
+        else key_class(dotted, valid_agents=ANY_AGENT, agent_leaf_map=self._valid_agents.leaf_map)
+      )
       if verdict.cls is not KeyClass.KEY:
         # The key that HOLDS the ref is the trail element before it.
         leaf = self._leaf_labels[-1] if self._leaf_labels else chain[0]

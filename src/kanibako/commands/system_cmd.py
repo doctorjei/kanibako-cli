@@ -4,10 +4,14 @@ from __future__ import annotations
 
 import argparse
 import sys
+from typing import TYPE_CHECKING
 
 from kanibako import __version__
 from kanibako.commands.flags import add_null_flag, add_set_force_flag
 from kanibako.settings.config import user_config_file
+
+if TYPE_CHECKING:
+  from kanibako.settings.settings_prefs import AgentNames
 
 
 def add_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -257,7 +261,9 @@ def run_defaults(args: argparse.Namespace) -> int:
   return 0
 
 
-def _agent_node_error(key: str, *, verb: str) -> str | None:
+def _agent_node_error(
+  key: str, *, verb: str, valid_agents: AgentNames | None = None
+) -> str | None:
   """Why ``system <verb>`` refuses the agent node *key* addresses, or ``None``.
 
   The node is judged by the ``system get`` verdict (spec §0), before anything is
@@ -273,16 +279,14 @@ def _agent_node_error(key: str, *, verb: str) -> str | None:
   from kanibako.settings.settings_keyspace import is_valid_agent_segment
   from kanibako.settings.settings_prefs import default_valid_agents
 
-  canonical = resolve_key(key)
-  # ⚑ The key's own agent segment, the one ``get`` judges — not ``agent_node_of``'s node,
-  # which splits on the LAST segment and reads ``agent.claude.bindings.ro.model`` as
-  # node ``claude.bindings.ro``, pre-empting the engine's retired-route refusal.
-  if not agent_node_of(canonical) or is_valid_agent_segment(
+  canonical = resolve_key(key, valid_agents=valid_agents)
+  # Judge the addressed segment; a retired bind tail must reach the engine's cure.
+  if not agent_node_of(canonical, valid_agents=valid_agents) or is_valid_agent_segment(
     canonical.split(".")[1],
-    default_valid_agents(),
+    default_valid_agents() if valid_agents is None else valid_agents,
   ):
     return None
-  reason = scope_key_reason(canonical)
+  reason = scope_key_reason(canonical, valid_agents=valid_agents)
   if reason is None:
     return None
   return scope_key_refusal(key, reason, ConfigLevel.system, verb=verb, cure="")
@@ -350,8 +354,11 @@ def _run_system_config(args: argparse.Namespace) -> int:
   )
   from kanibako.settings.config_interface import (
     ConfigAction,
+    addressed_agent_input,
     get_config_value,
+    identity_valid_agents,
     parse_config_arg,
+    project_agent_input,
     reset_all,
     reset_config_value,
     set_config_value,
@@ -363,6 +370,23 @@ def _run_system_config(args: argparse.Namespace) -> int:
     key_value,
     set_null=getattr(args, "null", False),
   )
+  resolved = addressed_agent_input(key) if key else None
+  identity = resolved.identity if resolved is not None else None
+  valid_agents = identity_valid_agents(identity)
+  persona_values = persona_credential = None
+  agent_error = None
+  if resolved is not None:
+    from kanibako.errors import KanibakoError
+    from kanibako.targets import get_target
+
+    if resolved.unavailable is not None:
+      agent_error = str(resolved.unavailable)
+    else:
+      try:
+        target = get_target(resolved.identity.target_name)()
+        persona_values, persona_credential = project_agent_input(resolved, target)
+      except (KanibakoError, KeyError) as exc:
+        agent_error = str(exc)
 
   # ⚑ Keyspec § 0: dropping the system value can land worksets on one log dir.
   if args.reset and (key or getattr(args, "all_keys", False)):
@@ -401,7 +425,7 @@ def _run_system_config(args: argparse.Namespace) -> int:
         file=sys.stderr,
       )
       return 1
-    _node_err = _agent_node_error(key, verb="reset")
+    _node_err = _agent_node_error(key, verb="reset", valid_agents=valid_agents)
     if _node_err is not None:
       print(_node_err, file=sys.stderr)
       return 1
@@ -421,6 +445,11 @@ def _run_system_config(args: argparse.Namespace) -> int:
       system_settings_path=ssp,
       command_scope=ConfigLevel.system,
       cascade_system_path=ssp,
+      cascade_agent_name=identity.node if identity is not None else "",
+      cascade_agent_identity=identity,
+      cascade_persona_values=persona_values,
+      cascade_persona_credential=persona_credential,
+      target_error=agent_error,
       agents_root=agents_root,
       node_store=False,
     )
@@ -472,10 +501,11 @@ def _run_system_config(args: argparse.Namespace) -> int:
     # ``scope_key_reason``) answers that.
     # ⚑ NO ``active_agent``: a bare table leaf here means the ANY-AGENT tier, so naming
     # one agent in the cure would answer for a tier the user did not ask about.
-    _key_err = scope_read_key_error(key, ConfigLevel.system)
+    _key_err = scope_read_key_error(key, ConfigLevel.system, valid_agents=valid_agents)
     if _key_err is not None:
       print(_key_err, file=sys.stderr)
       return 1
+    get_std, get_std_error = _system_target_std(cf)
     val = get_config_value(
       key,
       global_config_path=cf,
@@ -491,7 +521,12 @@ def _run_system_config(args: argparse.Namespace) -> int:
       # that withholds it leaves the rule inferring the scope from a path
       # being non-None -- which is exactly how get and set drifted apart.
       command_scope=ConfigLevel.system,
-      std=_system_target_std(cf)[0],
+      active_agent=identity.node if identity is not None else None,
+      cascade_agent_identity=identity,
+      cascade_persona_values=persona_values,
+      cascade_persona_credential=persona_credential,
+      target_error="; ".join(filter(None, (get_std_error, agent_error))) or None,
+      std=get_std,
     )
     if val is None:
       print(f"{key}: (not set)")
@@ -501,7 +536,7 @@ def _run_system_config(args: argparse.Namespace) -> int:
 
   # set
   if action == ConfigAction.set:
-    _node_err = _agent_node_error(key, verb="set")
+    _node_err = _agent_node_error(key, verb="set", valid_agents=valid_agents)
     if _node_err is not None:
       print(_node_err, file=sys.stderr)
       return 1
@@ -524,24 +559,8 @@ def _run_system_config(args: argparse.Namespace) -> int:
     # passed cf (the CONFIG file) here while a system category set wrote to cf,
     # so the must-exist probe agreed with neither the launch nor reset; both
     # halves now name ssp.
-    # ⚑ THE ONE DATUM THIS VERB HAS TO READ OFF THE KEY (P7). ``cascade_agent_name``
-    # is "the agent this command is about": ``box set`` resolves the box's ACTIVE
-    # agent, ``agent set`` is handed the node it was invoked on, and here the key is
-    # the only carrier — so a per-node key names its own node and every other key
-    # names none. It anchors ``{meta.agent.<node>.path}`` in the set-time snapshot;
-    # withheld, ``system set agent.claude.canon=@meta.agent.claude.path/canon`` was
-    # refused as a dangling reference while ``agent set claude canon=…`` — the same
-    # key, the other spelling — accepted it.
-    # ⚑ THE NODE IS READ, NOT GUESSED: ``agent_node_of`` derives it from the same
-    # parsers ``path_key_anchor`` uses, so only the node this write ADDRESSES is
-    # floored. A ref against any OTHER node's store root still dangles, and a key
-    # naming no node threads nothing — this cannot become a blanket accept of
-    # ``{meta.agent.*.path}``.
-    # ⚑ CANONICAL FIRST: the node segment is spelled ``+`` on the command line and
-    # ``℘`` in the keyspace, and the setter parses the CANONICAL form.
-    # ⚑ THE SYSTEM SCOPE IS THE TARGET (spec §2a), and its resolve needs ``std``,
-    # which this verb deliberately does not hold (the foundation note above). It is
-    # loaded for the set-time resolve (:func:`_system_target_std`).
+    # Only the addressed node supplies identity and path anchors; agent.default
+    # retains the existing name-only fallback. The command's target stays SYSTEM.
     set_std, set_std_error = _system_target_std(cf)
     # ⚑ Keyspec § 0: an anchored value can still land worksets on one log dir.
     if set_std is not None:
@@ -557,12 +576,19 @@ def _run_system_config(args: argparse.Namespace) -> int:
       config_path=cf,
       system_settings_path=ssp,
       cascade_system_path=ssp,
-      cascade_agent_name=agent_node_of(resolve_key(key)),
+      cascade_agent_name=(
+        identity.node
+        if identity is not None
+        else agent_node_of(resolve_key(key, valid_agents=valid_agents), valid_agents=valid_agents)
+      ),
+      cascade_agent_identity=identity,
+      cascade_persona_values=persona_values,
+      cascade_persona_credential=persona_credential,
       command_scope=ConfigLevel.system,
       agents_root=agents_root,
       node_store=False,
       std=set_std,
-      target_error=set_std_error,
+      target_error="; ".join(filter(None, (set_std_error, agent_error))) or None,
       force=args.force,
     )
     if msg.startswith("Error:"):

@@ -4237,3 +4237,92 @@ class TestCreatePersistsAgentSelection:
     # share-symlink shim lays exactly such a dir — and this refusal must
     # leave neither shape behind.
     assert not agent_settings_path(std.agents, "navigator+codex").parent.exists()
+
+
+class TestBoxSetterIdentity:
+  @pytest.mark.writes_undeclared(
+    "agent.claude.provider",
+    reason="Injected registered Goose-at-Claude supplies Goose's floor without changing global discovery",
+  )
+  @pytest.mark.parametrize("null", [False, True])
+  def test_set_forwards_one_selected_identity_and_preserves_raw_value(
+    self, std, tmp_path, monkeypatch, capsys, null
+  ):
+    from unittest.mock import Mock
+
+    from kanibako.agent_ref import AgentIdentity
+    from kanibako.commands.box import _parser as box
+    from kanibako.settings import config_interface as ci
+    from kanibako.settings.agent_config import agent_settings_path
+    from kanibako.settings.agent_select import AgentSelection
+    from kanibako.settings.config import user_config_file
+    from kanibako.settings.config_io import load_doc
+    from kanibako.settings.paths import box_workset_settings_paths
+
+    identity = AgentIdentity(
+      node="claude",
+      registered_name="Claude",
+      persona="Guide",
+      harness="Goose",
+      target_name="goose",
+      entry_path=tmp_path / "pg" / "Claude",
+    )
+    proj = resolve_project(
+      std, load_config(user_config_file()), str(tmp_path / "project"), initialize=True
+    )
+    monkeypatch.setattr(box, "_resolve_config_subject", lambda *args: proj)
+    selected = Mock(return_value=AgentSelection(identity, "box"))
+    monkeypatch.setattr("kanibako.settings.agent_select.select_agent", selected)
+    setter = Mock(wraps=ci.set_config_value)
+    monkeypatch.setattr(ci, "set_config_value", setter)
+    monkeypatch.setattr(
+      "kanibako.persona_store.read_registered_persona",
+      Mock(side_effect=AssertionError("no PG read")),
+    )
+    args = argparse.Namespace(
+      args=["pref.agent.claude.transform" if null else "box.env.SELECTED={system.template}"],
+      null=null,
+      force=False,
+    )
+    assert box.run_set(args) == 0, capsys.readouterr().err
+    assert selected.call_count == 1
+    assert setter.call_count == 1
+    assert setter.call_args.kwargs["cascade_agent_identity"] is identity
+    assert setter.call_args.kwargs["cascade_agent_name"] == identity.node
+    assert setter.call_args.kwargs["cascade_agent_path"] == agent_settings_path(
+      std.agents, identity.node
+    )
+    path, _ = box_workset_settings_paths(proj)
+    data = load_doc(path)
+    if null:
+      assert data["pref"]["agent"]["claude"]["transform"] is None
+    else:
+      assert data["box"]["env"]["SELECTED"] == "{system.template}"
+    assert not identity.entry_path.exists()
+    assert not agent_settings_path(std.agents, identity.node).exists()
+
+  def test_selection_failure_keeps_unrelated_repair_usable(self, std, tmp_path, monkeypatch):
+    from unittest.mock import Mock
+
+    from kanibako.commands.box import _parser as box
+    from kanibako.errors import ConfigError
+    from kanibako.settings import config_interface as ci
+    from kanibako.settings.config import user_config_file
+    from kanibako.settings.config_io import load_doc
+    from kanibako.settings.paths import box_workset_settings_paths
+
+    proj = resolve_project(
+      std, load_config(user_config_file()), str(tmp_path / "project"), initialize=True
+    )
+    monkeypatch.setattr(box, "_resolve_config_subject", lambda *args: proj)
+    selected = Mock(side_effect=ConfigError("selection broken"))
+    monkeypatch.setattr("kanibako.settings.agent_select.select_agent", selected)
+    setter = Mock(wraps=ci.set_config_value)
+    monkeypatch.setattr(ci, "set_config_value", setter)
+    args = argparse.Namespace(args=["box.env.REPAIR=fixed"], null=False, force=False)
+    assert box.run_set(args) == 0
+    assert selected.call_count == 1
+    assert setter.call_args.kwargs["cascade_agent_identity"] is None
+    assert setter.call_args.kwargs["cascade_agent_name"] == ""
+    path, _ = box_workset_settings_paths(proj)
+    assert load_doc(path)["box"]["env"]["REPAIR"] == "fixed"

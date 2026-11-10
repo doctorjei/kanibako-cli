@@ -1079,6 +1079,8 @@ def start_mocks():
           delivered,
           agent_dests=_agent_delivered_dests(delivered),
           declared_by=_declared_by,
+          cli_env=kw.get("cli_env"),
+          required_var=kw.get("required_var"),
         )
         # ⚑ DELIBERATE OMISSION: the real orchestrator also installs the
         # ``binding_derivations.*`` materialization (``derive_binding_keys``) and

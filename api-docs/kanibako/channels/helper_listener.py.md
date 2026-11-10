@@ -36,6 +36,7 @@ class HelperContext:
     boxes: Path | None = None
     primary_workset: Path | None = None
     labels: dict[str, str] = field(default_factory=dict, kw_only=True)
+    target_name: str | None = field(default=None, kw_only=True)
 
 class HelperHub:
     def __init__(self) -> None

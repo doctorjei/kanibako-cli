@@ -22,13 +22,15 @@ arbitration") and never merges (block 2b).
 from __future__ import annotations
 
 import copy
+from unittest.mock import Mock
 
 import pytest
 
 from kanibako.settings.kb_store import Bind, BindEntry
 from kanibako.settings.kb_store import __MISSING__
 from kanibako.settings.keystore import KeyStore
-from kanibako.settings.settings_expand import _is_whole_value_ref, expand
+from kanibako.settings.settings_expand import _is_whole_value_ref, expand, is_cascade_blindness
+from kanibako.settings.settings_prefs import AgentNames
 from kanibako.settings.settings_launch import (
   resolve_box_dest,
   snapshot_category_entries,
@@ -1928,3 +1930,233 @@ def test_a_dest_key_naming_a_map_valued_key_is_refused(collect_errors: bool) -> 
       expand(snap, _ctx())
     message = str(exc.value)
   assert "'{system.channels.common}'" in message and "not a path" in message
+
+
+@pytest.fixture
+def local_vocabulary(monkeypatch: pytest.MonkeyPatch) -> AgentNames:
+  names = AgentNames(
+    {"claude", "goose"},
+    leaf_map={"claude": {"claude_only"}, "goose": {"provider"}},
+  ).with_harnesses({"claude": "goose"})
+  for supplier in (
+    "kanibako.settings.settings_prefs.default_valid_agents",
+    "kanibako.settings.settings_keyspace_probe.plugin_agent_leaf_map",
+  ):
+    monkeypatch.setattr(supplier, Mock(side_effect=AssertionError("unexpected discovery")))
+  return names
+
+
+@pytest.mark.parametrize(
+  "raw,expected",
+  [("{agent.claude.provider}", __MISSING__), ("pre-{agent.claude.provider}-post", "pre--post")],
+)
+def test_local_vocabulary_strict_absence(
+  local_vocabulary: AgentNames, raw: str, expected: object
+) -> None:
+  snap = KeyStore({"box": {"env": {"LOCAL": raw}}})
+  before = copy.deepcopy(snap)
+  refs: dict[tuple[str, ...], frozenset[str]] = {}
+  out = expand(snap, _ctx(), valid_agents=local_vocabulary, refs_read=refs)
+  assert _probe(out, "box", "env", "LOCAL") == expected
+  assert refs == {("box", "env", "LOCAL"): frozenset({"agent.claude.provider"})}
+  assert snap == before
+
+
+@pytest.mark.parametrize("raw", ["{agent.claude.claude_only}", "pre-{agent.claude.claude_only}"])
+@pytest.mark.parametrize("collect_errors", [False, True])
+def test_local_vocabulary_refuses_foreign_leaf(
+  local_vocabulary: AgentNames, raw: str, collect_errors: bool
+) -> None:
+  snap = KeyStore({"box": {"env": {"LOCAL": raw}}})
+  if collect_errors:
+    out, errors = expand(snap, _ctx(), valid_agents=local_vocabulary, collect_errors=True)
+    message = errors["box.env.LOCAL"]
+    assert not is_cascade_blindness(message)
+    assert _probe(out, "box", "env", "LOCAL") is __MISSING__
+  else:
+    with pytest.raises(SettingsError) as exc:
+      expand(snap, _ctx(), valid_agents=local_vocabulary)
+    message = str(exc.value)
+    assert "references no key" in message
+  assert "agent.claude.claude_only" in message
+
+
+@pytest.mark.parametrize("raw", ["{agent.claude.provider}", "pre-{agent.claude.provider}"])
+def test_local_vocabulary_lenient_blindness(local_vocabulary: AgentNames, raw: str) -> None:
+  out, errors = expand(
+    KeyStore({"box": {"env": {"LOCAL": raw}}}),
+    _ctx(),
+    valid_agents=local_vocabulary,
+    collect_errors=True,
+  )
+  assert is_cascade_blindness(errors["box.env.LOCAL"])
+  assert "agent.claude.provider" in errors["box.env.LOCAL"]
+  assert _probe(out, "box", "env", "LOCAL") is __MISSING__
+
+
+@pytest.mark.parametrize("collect_errors", [False, True])
+def test_empty_vocabulary_is_supplied_and_strict_membership_is_neutral(
+  local_vocabulary: AgentNames, collect_errors: bool
+) -> None:
+  empty = AgentNames(())
+  assert len(empty) == 0
+  snap = KeyStore({"box": {"env": {"LOCAL": "{agent.stranger.label}"}}})
+  if collect_errors:
+    out, errors = expand(snap, _ctx(), valid_agents=empty, collect_errors=True)
+    assert "stranger" in errors["box.env.LOCAL"]
+    assert not is_cascade_blindness(errors["box.env.LOCAL"])
+  else:
+    out = expand(snap, _ctx(), valid_agents=empty)
+  assert _probe(out, "box", "env", "LOCAL") is __MISSING__
+  with pytest.raises(SettingsError, match="references no key"):
+    expand(
+      KeyStore({"box": {"env": {"LOCAL": "{agent.claude.provider}"}}}),
+      _ctx(),
+      valid_agents=empty,
+    )
+
+
+@pytest.mark.parametrize("collect_errors", [False, True])
+def test_unreadable_plugin_concession_stays_local(
+  local_vocabulary: AgentNames, collect_errors: bool
+) -> None:
+  names = AgentNames({"claude"}, unreadable={"goose"}, agent_harnesses={"claude": "goose"})
+  snap = KeyStore({"box": {"env": {"LOCAL": "{agent.claude.provider}"}}})
+  if collect_errors:
+    out, errors = expand(snap, _ctx(), valid_agents=names, collect_errors=True)
+    assert is_cascade_blindness(errors["box.env.LOCAL"])
+  else:
+    out = expand(snap, _ctx(), valid_agents=names)
+  assert _probe(out, "box", "env", "LOCAL") is __MISSING__
+
+
+@pytest.mark.parametrize("collect_errors", [False, True])
+def test_successive_vocabularies_do_not_leak_or_mutate_globals(
+  local_vocabulary: AgentNames, collect_errors: bool
+) -> None:
+  from kanibako.settings import settings_keyspace_probe as probe
+
+  verdicts = dict(probe._verdicts)
+  leaves = dict(local_vocabulary.leaf_map)
+  harnesses = dict(local_vocabulary.leaf_map.agent_harnesses)
+  snap = KeyStore({"box": {"env": {"LOCAL": "{agent.claude.provider}"}}})
+  foreign = AgentNames({"claude"}, leaf_map={"claude": {"claude_only"}})
+  for names in (local_vocabulary, foreign, local_vocabulary):
+    if collect_errors:
+      _out, errors = expand(snap, _ctx(), valid_agents=names, collect_errors=True)
+      assert is_cascade_blindness(errors["box.env.LOCAL"]) is (names is local_vocabulary)
+    elif names is foreign:
+      with pytest.raises(SettingsError, match="references no key"):
+        expand(snap, _ctx(), valid_agents=names)
+    else:
+      out = expand(snap, _ctx(), valid_agents=names)
+      assert _probe(out, "box", "env", "LOCAL") is __MISSING__
+  assert probe._verdicts == verdicts
+  assert dict(local_vocabulary.leaf_map) == leaves
+  assert dict(local_vocabulary.leaf_map.agent_harnesses) == harnesses
+
+
+@pytest.mark.parametrize("collect_errors", [False, True])
+@pytest.mark.writes_undeclared(
+  "agent.claude.provider",
+  reason="Registered claude uses Goose locally; global census retains the native Claude vocabulary",
+)
+def test_local_vocabulary_preserves_raw_null_derive_and_side_tables(
+  local_vocabulary: AgentNames, collect_errors: bool
+) -> None:
+  from functools import partial
+
+  from kanibako.settings.settings_expand import DestKeys, NullSources, RefsRead
+  from kanibako.settings.settings_keyspace import key_class
+  from kanibako.settings.settings_launch import post_expand_keys
+
+  snap = KeyStore(
+    {
+      "agent": {"claude": {"provider": None, "model": "{agent.claude.provider}"}},
+      "box": {
+        "env": {"LOCAL": "prefix-{meta.box.agent.provider}"},
+        "bindings": {"ro": {"{box.canon}/dest": BindEntry("{agent.claude.provider}/src")}},
+        "canon": "/srv/canon",
+      },
+    }
+  )
+  before = copy.deepcopy(snap)
+  nulls: NullSources = {}
+  refs: RefsRead = {}
+  dests: DestKeys = {}
+  result = expand(
+    snap,
+    _ctx(),
+    valid_agents=local_vocabulary,
+    collect_errors=collect_errors,
+    derive=post_expand_keys(
+      snap,
+      "claude",
+      oracle=partial(
+        key_class, valid_agents=local_vocabulary, agent_leaf_map=local_vocabulary.leaf_map
+      ),
+    ),
+    null_sources=nulls,
+    refs_read=refs,
+    dest_keys=dests,
+  )
+  if collect_errors:
+    assert isinstance(result, tuple)
+    out, errors = result
+    assert errors == {}
+  else:
+    assert isinstance(result, KeyStore)
+    out = result
+  assert _probe(out, "box", "env", "LOCAL") is None
+  assert _probe(out, "agent", "claude", "model") is None
+  assert _probe(out, "box", "bindings", "ro", "/srv/canon/dest") is None
+  assert nulls == {("box", "bindings", "ro", "{box.canon}/dest"): ("agent.claude.provider",)}
+  assert dests == {("box", "bindings", "ro", "{box.canon}/dest"): "/srv/canon/dest"}
+  assert refs[("box", "env", "LOCAL")] == frozenset(
+    {"meta.box.agent.provider", "agent.claude.provider"}
+  )
+  assert snap == before
+  out["agent"]["claude"]["provider"] = "changed"
+  assert snap == before
+
+
+@pytest.mark.parametrize("collect_errors", [False, True])
+def test_local_vocabulary_keeps_cycle_distinct(
+  local_vocabulary: AgentNames, collect_errors: bool
+) -> None:
+  snap = KeyStore({"box": {"env": {"A": "{box.env.B}", "B": "{box.env.A}"}}})
+  if collect_errors:
+    _out, errors = expand(snap, _ctx(), valid_agents=local_vocabulary, collect_errors=True)
+    assert set(errors) == {"box.env.A", "box.env.B"}
+    assert all(reason.startswith("cyclic reference: ") for reason in errors.values())
+    assert all("{box.env.A}" in reason and "{box.env.B}" in reason for reason in errors.values())
+    assert all(not is_cascade_blindness(reason) for reason in errors.values())
+  else:
+    with pytest.raises(
+      SettingsError,
+      match=r"Cyclic reference: \{box\.env\.A\} -> \{box\.env\.B\} -> \{box\.env\.A\}",
+    ):
+      expand(snap, _ctx(), valid_agents=local_vocabulary)
+
+
+@pytest.mark.parametrize("collect_errors", [False, True])
+def test_omitted_and_explicit_none_keep_legacy_absence(collect_errors: bool) -> None:
+  snap = KeyStore({"box": {"env": {"LOCAL": "{agent.claude.provider}"}}})
+  if collect_errors:
+    omitted = expand(snap, _ctx(), collect_errors=True)
+    explicit = expand(snap, _ctx(), collect_errors=True, valid_agents=None)
+    assert explicit == omitted
+    assert not is_cascade_blindness(omitted[1]["box.env.LOCAL"])
+  else:
+    for kwargs in ({}, {"valid_agents": None}):
+      with pytest.raises(SettingsError, match="references no key"):
+        expand(snap, _ctx(), **kwargs)
+
+
+@pytest.mark.parametrize("collect_errors", [False, True])
+def test_no_reference_keeps_discovery_lazy(
+  local_vocabulary: AgentNames, collect_errors: bool
+) -> None:
+  for names in (None, AgentNames(()), local_vocabulary):
+    result = expand(KeyStore(), _ctx(), collect_errors=collect_errors, valid_agents=names)
+    assert result == (KeyStore(), {}) if collect_errors else result == KeyStore()

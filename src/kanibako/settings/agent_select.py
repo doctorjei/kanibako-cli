@@ -6,12 +6,10 @@ Selection order (spec §2h, least to most specific)::
 
     system.agent  <  workset pref  <  box pref  <  --agent (the §1A CLI level)
 
-The first three are settled INSIDE the settings cascade; this module resolves that
-much with a NARROW pre-pass
-(:func:`kanibako.settings.settings_launch.resolve_selected_agent`), applies
-``--agent`` on top, and hands the winner to
-:func:`kanibako.settings.config.resolve_agent_identity`, which owns everything that is NOT
-a key.
+The cascade settles the first three through a narrow pre-pass retaining pref
+dependencies. One facade call classifies its winner; the selected harness's
+vocabulary then judges the captured prefs. Explicit ``--agent`` bypasses this
+pre-pass. Identity and captured input stay with the same selection.
 
 ⚑ Whatever wins is INSTALLED at ``system.agent`` as the §1A top-most level,
 unconditionally — separate readers dereference ``{system.agent}``, so the snapshot
@@ -38,12 +36,15 @@ flag, and why the selection key is excluded from §2h's locator closure.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from kanibako.agent_ref import AgentIdentity
 from kanibako.settings.kb_store import __MISSING__
+
+if TYPE_CHECKING:
+  from kanibako.persona_store import RegisteredPersona
 
 #: The key naming the agent a box runs (spec §2g). Re-exported so callers spell it once.
 SELECTION_KEY = "system.agent"
@@ -55,6 +56,11 @@ class AgentSelection:
 
   identity: AgentIdentity
   source: str
+  registered_persona: RegisteredPersona | None = field(default=None, repr=False, compare=False)
+
+  def __post_init__(self) -> None:
+    if self.registered_persona is not None and self.registered_persona.identity != self.identity:
+      raise ValueError("registered input does not own the selected identity")
 
   @property
   def node(self) -> str:
@@ -165,7 +171,14 @@ def select_agent(
   from kanibako.settings.config import resolve_agent_identity, settings_base_path
   from kanibako.settings.paths import box_workset_settings_paths, project_cure_ref
   from kanibako.settings.settings_assemble import ReadPurpose, read_settings_files
-  from kanibako.settings.settings_launch import resolve_selected_agent
+  from kanibako.settings.settings_keyspace import is_valid_agent_segment
+  from kanibako.settings.settings_launch import selection_from_overlays
+  from kanibako.settings.settings_prefs import (
+    apply_prefs,
+    collect_prefs,
+    pref_overlay,
+    resolve_valid_agents,
+  )
 
   box_path, workset_path = box_workset_settings_paths(proj)
   system_path = std.settings
@@ -186,21 +199,35 @@ def select_agent(
   )
 
   requested: object = __MISSING__
-  # ⚑⚑ "GIVEN" IS ``is not None``, NOT TRUTHINESS.  This gate can answer the
-  # whole question by itself (the no-default REFUSAL below never reaches
-  # ``resolve_agent_identity``), so a truthy test let a GIVEN-but-blank ref be answered
-  # by the cascade — ``--agent ""`` came back as a no-agent box, or as whatever
-  # the files said, with nothing printed.  A blank ref is a value: it goes
-  # through to ``resolve_agent_identity``, which refuses it by the ref grammar's own
-  # message.  ``None`` keeps its one meaning — no ref was given at all.
+  requests = None
+  # Given means ``is not None``, never truthiness: a blank explicit ref must
+  # reach the facade's grammar refusal, not the cascade.
   if explicit_agent is None:
     # Only the cascade can decline or supply; ``--agent`` short-circuits it.
-    requested = resolve_selected_agent(
+    requests = collect_prefs(workset_path, box_path)
+    valid_agents = resolve_valid_agents(req.target for req in requests)
+    known_prefix = []
+    for req in requests:
+      parts = req.target.split(".", 2)
+      if (
+        len(parts) > 1
+        and parts[0] == "agent"
+        and not is_valid_agent_segment(parts[1], valid_agents)
+      ):
+        break
+      known_prefix.append(req)
+    if known_prefix:
+      apply_prefs(known_prefix, valid_agents=valid_agents)
+    requested = selection_from_overlays(
       ctx=launch_resolve_ctx(std, proj, None),
       system_path=system_path,
       workset_path=workset_path,
       box_path=box_path,
+      workset_overlay=pref_overlay(req for req in requests if req.level == "workset"),
+      box_overlay=pref_overlay(req for req in requests if req.level == "box"),
     )
+    if requested is None or requested is __MISSING__:
+      apply_prefs(requests)
     if requested is None:
       # PRESENT-None = NO DEFAULT IS SET (spec §2b): an agent must be named
       # explicitly, or the launch REFUSES saying so. ⚑ Keep it distinct from
@@ -218,11 +245,20 @@ def select_agent(
         "'kanibako shell' reaches the box's container without an agent."
       )
 
+  registered: list[RegisteredPersona] = []
   identity = resolve_agent_identity(
     explicit_agent=explicit_agent,
     requested=None if requested is __MISSING__ else str(requested),
+    registered_persona_out=registered,
   )
+  if requests is not None:
+    apply_prefs(
+      requests,
+      valid_agents=valid_agents.with_harnesses({identity.node: identity.target_name}),
+    )
   # ⚑ TWO SOURCES, not four: ``resolve_agent_identity`` REFUSES an unset key rather than
   # picking for the user, so a returning call always has a name somebody wrote.
   source = "cli" if explicit_agent is not None else "settings"
-  return AgentSelection(identity=identity, source=source)
+  return AgentSelection(
+    identity=identity, source=source, registered_persona=registered[0] if registered else None
+  )

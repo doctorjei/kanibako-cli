@@ -2356,3 +2356,565 @@ def test_show_effective_reads_a_legal_config_table_as_layer_1(
   cap = capsys.readouterr()
   assert "config.* entries" not in cap.err, cap.err
   assert "box_image = sys/img:1" in cap.out, cap.out
+
+
+class TestSystemAddressedIdentity:
+  @pytest.fixture
+  def addressed(self, config_file, tmp_home, tmp_path, monkeypatch):
+    from unittest.mock import Mock
+
+    from kanibako.agent_ref import AgentIdentity
+    from kanibako.settings import config_interface as ci
+    from kanibako.settings.config import AgentResolution
+    from kanibako.settings.settings_prefs import AgentNames
+
+    names = AgentNames(
+      {"claude", "goose"},
+      leaf_map={"claude": {"claude_only"}, "goose": {"provider"}},
+    )
+    monkeypatch.setattr("kanibako.settings.settings_prefs.default_valid_agents", lambda: names)
+    identity = AgentIdentity("claude", "Claude", "Guide", "Goose", "goose", tmp_path / "PG")
+    resolver = Mock(return_value=AgentResolution(identity))
+    monkeypatch.setattr(ci, "resolve_named_agent_input", resolver)
+    monkeypatch.setattr(ci, "project_agent_input", Mock(return_value=(None, None)))
+    for name in (
+      "locate_entry",
+      "read_registered_persona",
+      "read_persona_bundle",
+      "resolve_secret_path",
+    ):
+      monkeypatch.setattr(
+        f"kanibako.persona_store.{name}", Mock(side_effect=AssertionError("PG inactive"))
+      )
+    monkeypatch.setattr(
+      "kanibako.settings.config.resolve_agent_identity",
+      Mock(side_effect=AssertionError("no launch selection")),
+    )
+    std = _std(config_file)
+    node = agent_settings_path(std.agents, identity.node)
+    dump_doc(node, {"self": {"provider": "node-only"}})
+    return std, node, identity, resolver, names
+
+  @pytest.mark.parametrize("verb", ["set", "get", "reset"])
+  @pytest.mark.parametrize(
+    "typed",
+    [
+      pytest.param(
+        "ClAuDe",
+        marks=pytest.mark.writes_undeclared(
+          "agent.claude.provider", reason="Registered Claude uses injected Goose vocabulary"
+        ),
+      ),
+      "Guide+Goose",
+    ],
+  )
+  def test_keyed_verbs_forward_one_addressed_identity(self, addressed, capsys, verb, typed):
+    from dataclasses import replace
+    from unittest.mock import patch
+
+    from kanibako.commands import system_cmd
+    from kanibako.settings import config_interface as ci
+    from kanibako.settings import config_keys as ck
+
+    std, node, identity, resolver, names = addressed
+    if "+" in typed:
+      identity = replace(identity, node="Guide℘goose")
+      resolver.return_value = replace(resolver.return_value, identity=identity)
+    dump_doc(std.settings, {"agent": {identity.node: {"provider": "noun-only"}}})
+    node_before = node.read_bytes()
+    key = f"agent.{typed}.provider"
+    engine_name = {
+      "set": "set_config_value",
+      "get": "get_config_value",
+      "reset": "reset_config_value",
+    }[verb]
+    gate_name = "scope_read_key_error" if verb == "get" else "_agent_node_error"
+    gate_owner = ck if verb == "get" else system_cmd
+    with (
+      patch.object(ci, engine_name, wraps=getattr(ci, engine_name)) as engine,
+      patch.object(gate_owner, gate_name, wraps=getattr(gate_owner, gate_name)) as gate,
+    ):
+      assert {"set": _set, "get": _get, "reset": _reset}[verb](
+        key + "=new" if verb == "set" else key
+      ) == 0
+    output = capsys.readouterr()
+    assert not output.err
+    assert ("new" if verb == "set" else "noun-only" if verb == "get" else "Cleared") in output.out
+    resolver.assert_called_once_with(typed)
+    assert engine.call_args.kwargs["cascade_agent_identity"] is identity
+    assert engine.call_args.kwargs["node_store"] is False
+    assert gate.call_args.kwargs["valid_agents"].leaf_map.agent_harnesses == {
+      identity.node: "goose"
+    }
+    name_arg = "active_agent" if verb == "get" else "cascade_agent_name"
+    assert engine.call_args.kwargs[name_arg] == identity.node
+    assert load_doc(std.settings) == (
+      {"agent": {identity.node: {"provider": "new" if verb == "set" else "noun-only"}}}
+      if verb != "reset"
+      else {}
+    )
+    assert node.read_bytes() == node_before
+    assert names.leaf_map.agent_harnesses == {}
+    assert not identity.entry_path.exists()
+
+  @pytest.mark.parametrize("verb", ["set", "get", "reset"])
+  def test_foreign_leaf_is_not_authorized_by_address(self, addressed, capsys, verb):
+    std, node, identity, resolver, _ = addressed
+    dump_doc(std.settings, {"agent": {identity.node: {"claude_only": "keep"}}})
+    before = std.settings.read_bytes(), node.read_bytes()
+    key = "agent.ClAuDe.claude_only"
+    assert {"set": _set, "get": _get, "reset": _reset}[verb](
+      key + "=new" if verb == "set" else key
+    ) == 1
+    assert "claude_only" in capsys.readouterr().err
+    assert (std.settings.read_bytes(), node.read_bytes()) == before
+    resolver.assert_called_once_with("ClAuDe")
+
+  @pytest.mark.parametrize("verb", ["set", "get", "reset"])
+  def test_explicit_empty_vocabulary_does_not_rediscover(
+    self, addressed, capsys, monkeypatch, verb
+  ):
+    from unittest.mock import Mock
+
+    from kanibako.settings import config_interface as ci
+    from kanibako.settings.settings_prefs import AgentNames
+
+    std, node, identity, resolver, _ = addressed
+    empty = AgentNames(())
+    monkeypatch.setattr(ci, "identity_valid_agents", Mock(return_value=empty))
+    monkeypatch.setattr(
+      "kanibako.settings.settings_prefs.default_valid_agents",
+      Mock(side_effect=AssertionError("no rediscovery")),
+    )
+    before = node.read_bytes()
+    key = "agent.ClAuDe.unknown_leaf"
+    assert {"set": _set, "get": _get, "reset": _reset}[verb](
+      key + "=new" if verb == "set" else key
+    ) == 1
+    assert key in capsys.readouterr().err
+    resolver.assert_called_once_with("ClAuDe")
+    assert not std.settings.exists()
+    assert node.read_bytes() == before
+
+  @pytest.mark.writes_undeclared(
+    "agent.claude.unknown_leaf", reason="Missing injected harness concedes unreadable leaves"
+  )
+  @pytest.mark.parametrize(
+    "verb",
+    [
+      "set",
+      pytest.param(
+        "get",
+        marks=pytest.mark.writes_undeclared(
+          "agent.claude.provider",
+          reason="Get validates the synthetic node file under its missing harness",
+        ),
+      ),
+      "reset",
+    ],
+  )
+  def test_missing_plugin_concedes_leaf_without_changing_source(
+    self, addressed, capsys, monkeypatch, verb
+  ):
+    from dataclasses import replace
+    from unittest.mock import Mock
+
+    from kanibako.settings.settings_prefs import AgentNames
+
+    std, node, identity, resolver, _ = addressed
+    resolver.return_value = replace(
+      resolver.return_value, identity=replace(identity, target_name="missing", harness="Missing")
+    )
+    names = AgentNames({"claude"}, unreadable={"missing"})
+    monkeypatch.setattr("kanibako.settings.settings_prefs.default_valid_agents", lambda: names)
+    monkeypatch.setattr("kanibako.targets.get_target", Mock(side_effect=KeyError("missing")))
+    dump_doc(std.settings, {"agent": {"claude": {"unknown_leaf": "noun"}}})
+    before = node.read_bytes()
+    key = "agent.ClAuDe.unknown_leaf"
+    assert {"set": _set, "get": _get, "reset": _reset}[verb](
+      key + "=new" if verb == "set" else key
+    ) == 0
+    assert not capsys.readouterr().err
+    resolver.assert_called_once_with("ClAuDe")
+    assert node.read_bytes() == before
+    assert load_doc(std.settings) == (
+      {"agent": {"claude": {"unknown_leaf": "new" if verb == "set" else "noun"}}}
+      if verb != "reset"
+      else {}
+    )
+
+  @pytest.mark.parametrize("value", [None, ""])
+  def test_model_null_and_empty_keep_identity(self, addressed, capsys, value):
+    from unittest.mock import patch
+
+    from kanibako.settings import config_interface as ci
+
+    std, node, identity, resolver, _ = addressed
+    with patch.object(ci, "set_config_value", wraps=ci.set_config_value) as engine:
+      assert (
+        run_set(
+          argparse.Namespace(
+            key_value="agent.ClAuDe.model" + ("=" if value == "" else ""),
+            force=True,
+            null=value is None,
+          )
+        )
+        == 0
+      )
+    assert not capsys.readouterr().err
+    assert load_doc(std.settings)["agent"]["claude"]["model"] == value
+    assert engine.call_args.kwargs["cascade_agent_identity"] is identity
+    resolver.assert_called_once_with("ClAuDe")
+
+  @pytest.mark.parametrize(
+    "verb",
+    [
+      pytest.param(
+        "get",
+        marks=pytest.mark.writes_undeclared(
+          "agent.claude.provider",
+          reason="Pref get validates the synthetic node file under its registered harness",
+        ),
+      ),
+      "reset",
+    ],
+  )
+  def test_pref_target_uses_addressed_vocabulary(self, addressed, capsys, verb):
+    std, node, identity, resolver, _ = addressed
+    dump_doc(std.settings, {"pref": {"agent": {"claude": {"provider": "kept"}}}})
+    before = node.read_bytes(), std.settings.read_bytes()
+    key = "pref.agent.ClAuDe.provider"
+    assert {"get": _get, "reset": _reset}[verb](key) == (0 if verb == "get" else 1)
+    output = capsys.readouterr()
+    if verb == "get":
+      assert not output.err
+      assert "kept" in output.out
+    else:
+      assert "cannot be reset from the system scope" in output.err
+    resolver.assert_called_once_with("ClAuDe")
+    assert (node.read_bytes(), std.settings.read_bytes()) == before
+
+  @pytest.mark.parametrize(
+    "key",
+    [
+      "pref.agent.ClAuDe.provider",
+      "agent.ClAuDe.bindings.ro.old",
+      pytest.param(
+        "agent..model",
+        marks=pytest.mark.writes_undeclared(
+          "agent.", "agent..model", reason="The malformed-key refusal exercises an empty segment"
+        ),
+      ),
+      "agent.bad-name.model",
+      "agent.ClAuDe.self.model",
+      "meta.agent.claude.name",
+      "pref.pref.agent.ClAuDe.model",
+      "pref.meta.agent.claude.name",
+    ],
+  )
+  def test_addressing_never_bypasses_full_key_write_refusal(self, addressed, capsys, key):
+    std, node, identity, resolver, _ = addressed
+    before = node.read_bytes()
+    assert _set(key + "=no") == 1
+    assert capsys.readouterr().err.startswith("Error:")
+    assert not std.settings.exists()
+    assert node.read_bytes() == before
+
+  @pytest.mark.parametrize("typed", ["ClAuDe", "Guide+ClAuDe"])
+  @pytest.mark.parametrize("verb", ["set", "get", "reset"])
+  def test_unregistered_native_and_legacy_keep_existing_vocabulary(
+    self, config_file, tmp_home, capsys, typed, verb
+  ):
+    from unittest.mock import patch
+
+    from kanibako.settings import config as selection
+    from kanibako.settings import config_interface as ci
+
+    key = f"agent.{typed}.model"
+    with patch.object(
+      ci, "resolve_named_agent_input", wraps=selection.resolve_named_agent_input
+    ) as resolver:
+      assert {"set": _set, "get": _get, "reset": _reset}[verb](
+        key + "=new" if verb == "set" else key
+      ) == 0
+    assert not capsys.readouterr().err
+    resolver.assert_called_once_with(typed)
+
+  def test_default_tier_keeps_name_only_fallback(self, config_file, tmp_home, capsys):
+    from unittest.mock import Mock, patch
+
+    from kanibako.settings import config_interface as ci
+
+    with (
+      patch.object(
+        ci,
+        "resolve_named_agent_input",
+        Mock(side_effect=AssertionError("default has no identity")),
+      ),
+      patch.object(ci, "set_config_value", wraps=ci.set_config_value) as engine,
+    ):
+      assert _set("agent.default.model=new") == 1
+    assert "reserved any-agent tier" in capsys.readouterr().err
+    assert engine.call_args.kwargs["cascade_agent_name"] == "default"
+    assert engine.call_args.kwargs["cascade_agent_identity"] is None
+
+
+@pytest.fixture
+def system_pg(config_file, tmp_home, tmp_path, monkeypatch):
+  from types import SimpleNamespace
+  from unittest.mock import Mock
+
+  from kanibako import persona_store
+  from kanibako.settings import config_io
+
+  native = {
+    "model": "live-model",
+    "env": {"ANTHROPIC_BASE_URL": "https://live.invalid", "SOURCE": "live-only"},
+  }
+  data = {
+    "agent": {
+      "persona": {"name": "Guide"},
+      "harness": {"name": "claude", "config_store": native, "auth_var": "TOKEN"},
+      "secret": "synthetic-manager",
+    }
+  }
+  root = tmp_path / "captured-PG"
+  lists = Mock(return_value={"Scout": root / "Scout"})
+  loads = Mock(side_effect=lambda *_a, **_k: (root / "Scout", data))
+  fetch = Mock(side_effect=AssertionError("no credential fetch"))
+  project = Mock(wraps=persona_store.project_registered_persona)
+  monkeypatch.setattr(config_io, "persona_store_location", lambda: root)
+  monkeypatch.setattr(config_io, "persona_store_agents", lists)
+  monkeypatch.setattr(config_io, "load_persona_agent", loads)
+  monkeypatch.setattr(config_io, "fetch_persona_secret", fetch)
+  monkeypatch.setattr(persona_store, "project_registered_persona", project)
+  std = _std(config_file)
+  node = agent_settings_path(std.agents, "scout")
+  dump_doc(node, {"self": {}})
+  return SimpleNamespace(
+    native=native,
+    root=root,
+    lists=lists,
+    loads=loads,
+    project=project,
+    fetch=fetch,
+    std=std,
+    node=node,
+  )
+
+
+@pytest.mark.parametrize("verb", ["set", "get", "reset"])
+def test_system_public_pg_input_reaches_real_engine_once(system_pg, capsys, caplog, verb):
+  from unittest.mock import patch
+
+  from kanibako.settings import config_interface as ci
+
+  pg = system_pg
+  expression = "{agent.scout.env.SOURCE}"
+  key = "agent.Scout.env.MODEL"
+  dump_doc(
+    pg.std.settings,
+    {} if verb == "set" else {"agent": {"scout": {"env": {"MODEL": expression}}}},
+  )
+  before = pg.node.read_bytes()
+  engine_name = {
+    "set": "set_config_value",
+    "get": "get_config_value",
+    "reset": "reset_config_value",
+  }[verb]
+  snapshots = []
+  snapshot_builder = ci._set_time_snapshot
+
+  def observe_snapshot(*args, **kwargs):
+    snapshot, ctx = snapshot_builder(*args, **kwargs)
+    snapshots.append(snapshot)
+    return snapshot, ctx
+
+  with (
+    patch.object(ci, engine_name, wraps=getattr(ci, engine_name)) as engine,
+    patch.object(ci, "_set_time_snapshot", side_effect=observe_snapshot),
+  ):
+    assert {"set": _set, "get": _get, "reset": _reset}[verb](
+      key + "=" + expression if verb == "set" else key
+    ) == 0, capsys.readouterr()
+  output = capsys.readouterr()
+  assert not output.err
+  assert (
+    f"{key}={expression}" if verb == "get" else "Set" if verb == "set" else "Cleared"
+  ) in output.out
+  assert "dangling" not in caplog.text
+  if verb == "set":
+    from kanibako.settings.settings_launch import snapshot_leaf
+
+    assert any(
+      snapshot_leaf(snapshot, "agent.scout.env.SOURCE") == "live-only" for snapshot in snapshots
+    )
+  kwargs = engine.call_args.kwargs
+  assert kwargs["cascade_agent_identity"].registered_name == "Scout"
+  assert kwargs["cascade_persona_values"] == {
+    "endpoint": "https://live.invalid",
+    "model": "live-model",
+    "env.SOURCE": "live-only",
+  }
+  credential = kwargs["cascade_persona_credential"]
+  assert (
+    credential.registered_name,
+    credential.store_root,
+    credential.var,
+    credential.keyless,
+  ) == ("Scout", pg.root, "TOKEN", False)
+  assert kwargs["node_store"] is False
+  assert kwargs["target_error"] is None
+  pg.lists.assert_called_once_with(root=pg.root)
+  pg.loads.assert_called_once_with("Scout", root=pg.root)
+  pg.project.assert_called_once()
+  pg.fetch.assert_not_called()
+  assert pg.node.read_bytes() == before
+  assert load_doc(pg.std.settings) == (
+    {} if verb == "reset" else {"agent": {"scout": {"env": {"MODEL": expression}}}}
+  )
+  assert not pg.root.exists()
+
+
+def test_system_pg_operations_are_fresh_and_reset_stays_cleared_only(system_pg, capsys):
+  from unittest.mock import patch
+
+  from kanibako.settings import config_interface as ci
+
+  pg = system_pg
+  dump_doc(pg.std.settings, {"agent": {"scout": {"model": "stored-model"}}})
+  before = pg.node.read_bytes()
+  assert _reset("agent.Scout.model") == 0
+  output = capsys.readouterr().out
+  assert "Cleared agent.scout.model" in output and "effective is now" not in output
+  assert load_doc(pg.std.settings) == {}
+  pg.native["model"] = "fresh-model"
+  with patch.object(ci, "set_config_value", wraps=ci.set_config_value) as engine:
+    assert _set("agent.Scout.env.NEXT={agent.scout.model}") == 0
+  assert engine.call_args.kwargs["cascade_persona_values"]["model"] == "fresh-model"
+  assert load_doc(pg.std.settings) == {
+    "agent": {"scout": {"env": {"NEXT": "{agent.scout.model}"}}}
+  }
+  assert pg.lists.call_count == pg.loads.call_count == pg.project.call_count == 2
+  assert pg.node.read_bytes() == before
+  pg.fetch.assert_not_called()
+
+
+def test_system_pg_stored_file_value_is_not_replaced_by_live_input(system_pg, capsys):
+  pg = system_pg
+  dump_doc(pg.node, {"self": {"model": "node-model"}})
+  dump_doc(pg.std.settings, {"agent": {"scout": {"model": "noun-model"}}})
+  before = pg.node.read_bytes(), pg.std.settings.read_bytes()
+  assert _get("agent.Scout.model") == 0
+  assert capsys.readouterr().out == "agent.Scout.model=noun-model\n"
+  assert (pg.node.read_bytes(), pg.std.settings.read_bytes()) == before
+  pg.fetch.assert_not_called()
+
+
+@pytest.mark.parametrize("verb", ["set", "get", "reset"])
+def test_system_public_pg_identity_never_permits_foreign_installed_leaf(system_pg, capsys, verb):
+  pg = system_pg
+  dump_doc(pg.std.settings, {"agent": {"scout": {"model": "kept"}}})
+  before = pg.node.read_bytes(), pg.std.settings.read_bytes()
+  key = "agent.Scout.provider"
+  assert {"set": _set, "get": _get, "reset": _reset}[verb](
+    key + "=openai" if verb == "set" else key
+  ) == 1
+  assert "provider" in capsys.readouterr().err
+  assert (pg.node.read_bytes(), pg.std.settings.read_bytes()) == before
+  pg.loads.assert_called_once_with("Scout", root=pg.root)
+  pg.fetch.assert_not_called()
+
+
+@pytest.mark.parametrize("verb", ["set", "get", "reset", "null", "force"])
+def test_system_invalid_pg_projection_keeps_targetless_repair(system_pg, capsys, caplog, verb):
+  from unittest.mock import patch
+
+  from kanibako.settings import config_interface as ci
+
+  pg = system_pg
+  pg.native["env"]["ANTHROPIC_BASE_URL"] = "broken-endpoint"
+  dump_doc(pg.std.settings, {"agent": {"scout": {"model": "stored-model"}}})
+  before = pg.node.read_bytes()
+  engine_name = (
+    "get_config_value"
+    if verb == "get"
+    else "reset_config_value"
+    if verb == "reset"
+    else "set_config_value"
+  )
+  with patch.object(ci, engine_name, wraps=getattr(ci, engine_name)) as engine:
+    if verb == "null":
+      rc = run_set(argparse.Namespace(key_value="agent.Scout.model", null=True, force=True))
+    elif verb == "force":
+      rc = _set("agent.Scout.model={system.no_such_key}", force=True)
+    else:
+      rc = {"set": _set, "get": _get, "reset": _reset}[verb](
+        "agent.Scout.model=fixed-model" if verb == "set" else "agent.Scout.model"
+      )
+  assert rc == (1 if verb == "force" else 0)
+  output = capsys.readouterr()
+  assert "broken-endpoint" in engine.call_args.kwargs["target_error"]
+  assert engine.call_args.kwargs["cascade_persona_values"] is None
+  assert engine.call_args.kwargs["cascade_persona_credential"] is None
+  if verb == "force":
+    assert "system.no_such_key" in output.err and "broken-endpoint" in output.err
+  elif verb == "get":
+    assert "agent.Scout.model=stored-model" in output.out
+    assert "broken-endpoint" in caplog.text
+  elif verb == "reset":
+    assert "Cleared" in output.out and "effective is now" not in output.out
+    assert "broken-endpoint" in caplog.text
+  assert load_doc(pg.std.settings) == (
+    {}
+    if verb == "reset"
+    else {
+      "agent": {
+        "scout": {
+          "model": None if verb == "null" else "fixed-model" if verb == "set" else "stored-model"
+        }
+      }
+    }
+  )
+  assert pg.node.read_bytes() == before
+  pg.loads.assert_called_once_with("Scout", root=pg.root)
+  pg.project.assert_called_once()
+  pg.fetch.assert_not_called()
+
+
+def test_system_unaddressed_and_unkeyed_doors_never_read_pg(config_file, tmp_home, monkeypatch):
+  from unittest.mock import Mock
+
+  monkeypatch.setattr(
+    "kanibako.persona_store.read_registered_persona", Mock(side_effect=AssertionError("no PG"))
+  )
+  assert _set("model=plain") == 0
+  assert _get("model") == 0
+  assert _reset("model") == 0
+  assert _show() == 0
+  assert _show(effective=True) == 0
+  assert _reset(all_keys=True) == 0
+
+
+def test_system_legacy_persona_reference_uses_one_live_bundle(
+  config_file, tmp_home, monkeypatch, capsys
+):
+  from unittest.mock import Mock
+
+  from kanibako.agent_ref import agent_address_node, display_agent_ref
+  from kanibako.persona_store import PersonaBundle
+
+  reader = Mock(return_value=PersonaBundle(model="legacy-live"))
+  monkeypatch.setattr("kanibako.persona_store.read_persona_bundle", reader)
+  monkeypatch.setattr(
+    "kanibako.persona_store.read_registered_persona",
+    Mock(side_effect=AssertionError("legacy does not read registered PG")),
+  )
+  node = agent_address_node("guide+claude")
+  expression = f"{{agent.{node}.model}}"
+  assert _set(f"agent.guide+claude.env.MODEL={expression}") == 0, capsys.readouterr()
+  assert load_doc(_std(config_file).settings) == {
+    "agent": {display_agent_ref(node): {"env": {"MODEL": expression}}}
+  }
+  reader.assert_called_once()
+  assert reader.call_args.args[0] == node

@@ -14,6 +14,31 @@ config notes are in the [CHANGELOG](CHANGELOG.md).
 
 ---
 
+# Unreleased changes
+
+## Registered Persona Grata agents and one-shot credentials
+
+Registered PG names use the public AgentStore API; explicitly named installed plugins
+win collisions. Final winning manager credentials are fetched once, passed through
+inherited pipes, and exported into the existing entrypoint's environment. The pipes
+close before exec. No host token file, credential daemon, or lifetime wrapper is created.
+Ordinary harness and `secret_path` delivery remain unchanged. A fresh launch retrieves
+again; reattach does not. Independent exec shells do not inherit the startup environment.
+
+## Remote editor suggestions follow creation-time targets
+
+`kanibako code --remote` uses the container's `kanibako.target` label, not today's
+agent selection. Existing containers are not backfilled: only an absent label
+permits legacy `KANIBAKO_AGENT` parsing. Empty or invalid labels and missing plugins
+suggest no extension; unreadable metadata seeds only the image/workspace config.
+Image failure skips seeding; attach still proceeds.
+
+Recreation records the newly selected target. Reconnects, supervisor restarts, and
+exec leave the label unchanged. Attached configs remain image-shared and additive;
+this change does not remove previously suggested extensions.
+
+---
+
 # Migrating to kanibako v1.8.0
 
 > **Audience:** a kanibako user on **v1.7.2** (the previous production release).

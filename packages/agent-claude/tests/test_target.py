@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -517,6 +518,100 @@ class TestPrepareHost:
       with patch("kanibako.auth_browser.auto_refresh_auth") as m_auth:
         t.prepare_host(install, auto_auth=False, data_path=tmp_path)
     m_auth.assert_not_called()
+
+  def test_binary_phase_never_refreshes_auth(self, tmp_path, monkeypatch):
+    t = ClaudeTarget()
+    install = self._install(tmp_path, monkeypatch=monkeypatch)
+    with (
+      patch(
+        "kanibako.plugins.claude.target.subprocess.run", return_value=MagicMock(returncode=0)
+      ) as update,
+      patch(
+        "kanibako.auth_browser.auto_refresh_auth", side_effect=AssertionError("unexpected auth")
+      ) as auth,
+    ):
+      t.prepare_host_binary(install, data_path=tmp_path)
+    update.assert_called_once()
+    assert update.call_args.args[0] == [str(install.launcher), "update"]
+    assert update.call_args.kwargs["env"]["DISABLE_AUTOUPDATER"] == "1"
+    auth.assert_not_called()
+
+  def test_auth_phase_never_updates_binary(self, tmp_path, monkeypatch):
+    t = ClaudeTarget()
+    install = self._install(tmp_path, monkeypatch=monkeypatch)
+    with (
+      patch(
+        "kanibako.plugins.claude.target.subprocess.run",
+        side_effect=AssertionError("unexpected update"),
+      ) as update,
+      patch(
+        "kanibako.auth_browser.auto_refresh_auth", return_value=MagicMock(success=True)
+      ) as auth,
+    ):
+      t.refresh_host_auth(install, data_path=tmp_path)
+    update.assert_not_called()
+    auth.assert_called_once()
+    assert auth.call_args.args == (str(install.binary),)
+    assert auth.call_args.kwargs["env"]["DISABLE_AUTOUPDATER"] == "1"
+    assert "data_path" not in auth.call_args.kwargs
+
+  def test_combined_phases_run_once_in_order(self, tmp_path, monkeypatch):
+    t = ClaudeTarget()
+    install = self._install(tmp_path, monkeypatch=monkeypatch)
+    events = []
+    with (
+      patch(
+        "kanibako.plugins.claude.target.subprocess.run",
+        side_effect=lambda *a, **kw: events.append("update") or MagicMock(returncode=0),
+      ),
+      patch(
+        "kanibako.auth_browser.auto_refresh_auth",
+        side_effect=lambda *a, **kw: events.append("auth") or MagicMock(success=True),
+      ),
+    ):
+      t.prepare_host(install, auto_auth=True, data_path=tmp_path)
+    assert events == ["update", "auth"]
+
+  @pytest.mark.parametrize("method", ["prepare_host_binary", "refresh_host_auth"])
+  def test_phase_missing_launcher_is_noop(self, tmp_path, monkeypatch, method):
+    t = ClaudeTarget()
+    install = self._install(tmp_path, anchor=False)
+    _anchor_contract(monkeypatch, tmp_path / "absent" / "claude", tmp_path / "share")
+    with (
+      patch("kanibako.plugins.claude.target.subprocess.run") as update,
+      patch("kanibako.auth_browser.auto_refresh_auth") as auth,
+    ):
+      getattr(t, method)(install, data_path=tmp_path)
+    update.assert_not_called()
+    auth.assert_not_called()
+
+  @pytest.mark.parametrize(
+    "failure", [OSError("update failed"), subprocess.TimeoutExpired("claude", 300)]
+  )
+  def test_binary_failure_preserves_combined_auth(self, tmp_path, monkeypatch, failure):
+    t = ClaudeTarget()
+    install = self._install(tmp_path, monkeypatch=monkeypatch)
+    with (
+      patch("kanibako.plugins.claude.target.subprocess.run", side_effect=failure) as update,
+      patch(
+        "kanibako.auth_browser.auto_refresh_auth", return_value=MagicMock(success=True)
+      ) as auth,
+    ):
+      t.prepare_host(install, auto_auth=True, data_path=tmp_path)
+    update.assert_called_once()
+    auth.assert_called_once()
+
+  def test_auth_failure_does_not_raise(self, tmp_path, monkeypatch, caplog):
+    t = ClaudeTarget()
+    install = self._install(tmp_path, monkeypatch=monkeypatch)
+    with (
+      patch("kanibako.plugins.claude.target.subprocess.run") as update,
+      patch("kanibako.auth_browser.auto_refresh_auth", side_effect=RuntimeError("refresh failed")),
+      caplog.at_level("DEBUG", logger="kanibako.targets.claude"),
+    ):
+      t.refresh_host_auth(install, data_path=tmp_path)
+    update.assert_not_called()
+    assert "Auto-auth failed: refresh failed" in caplog.text
 
 
 class TestDefaultShares:

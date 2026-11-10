@@ -876,6 +876,7 @@ def _remote_stack(seed_path, engine):
 def _remote_engine():
   """A RemoteEngine double for a running, stamped remote box."""
   engine = MagicMock()
+  engine.inspect_creation_metadata.return_value = ("remote-id", {})
   engine.container_image.return_value = "ghcr.io/doctorjei/kanibako-oci:latest"
   engine.inspect_env.return_value = "claude"
   engine.running_with_stderr.return_value = (True, "")
@@ -992,6 +993,7 @@ def test_remote_seed_hands_the_legacy_harness_to_the_extension_lookup(stamp):
   from kanibako.commands.code_cmd import _seed_remote_attached_config
 
   engine = MagicMock()
+  engine.inspect_creation_metadata.return_value = ("remote-id", {})
   engine.container_image.return_value = "remote-img"
   engine.inspect_env.return_value = stamp
   with (
@@ -1008,7 +1010,9 @@ def test_remote_seed_hands_the_legacy_harness_to_the_extension_lookup(stamp):
 
   m_ext.assert_called_once_with("claude")
   m_local.assert_not_called()
-  engine.inspect_env.assert_called_once_with("kanibako-mybox", "KANIBAKO_AGENT")
+  engine.inspect_env.assert_called_once_with("remote-id", "KANIBAKO_AGENT")
+  engine.inspect_creation_metadata.assert_called_once_with("kanibako-mybox")
+  engine.container_image.assert_called_once_with("remote-id")
 
 
 @pytest.mark.parametrize("stamped", [True, False])
@@ -1081,3 +1085,206 @@ def test_box_extension_never_autodetects_for_nodeless_selection():
   ):
     assert _resolve_box_vscode_extension(runtime, MagicMock(), MagicMock(), "box") is None
   m_extension.assert_not_called()
+
+
+@pytest.fixture
+def _no_local_remote_identity():
+  paths = [
+    "kanibako.settings.config.resolve_agent_identity",
+    "kanibako.settings.agent_select.select_agent",
+    "kanibako.persona_store.locate_entry",
+    "kanibako.persona_store.read_registered_persona",
+    "kanibako.settings.settings_launch.load_merged_config",
+    "kanibako.commands.code_cmd.load_config",
+    "kanibako.commands.code_cmd.load_std_paths",
+  ]
+  with contextlib.ExitStack() as stack:
+    guards = [stack.enter_context(patch(path, side_effect=AssertionError(path))) for path in paths]
+    yield
+    for guard in guards:
+      guard.assert_not_called()
+
+
+@pytest.mark.parametrize(
+  ("node", "target_name", "extension"),
+  [
+    ("claude", "goose", "goose.extension"),
+    ("scout", "claude", "anthropic.claude-code"),
+    ("claude", "shell", None),
+    ("claude", "", None),
+    ("claude", "navigator+claude", None),
+    ("claude", "bad target", None),
+    ("claude", "missing-plugin", None),
+  ],
+)
+def test_remote_creation_target_never_uses_node_or_local_identity(
+  node, target_name, extension, _no_local_remote_identity, monkeypatch, tmp_path
+):
+  from types import SimpleNamespace
+
+  from kanibako.commands.code_cmd import _seed_remote_attached_config
+
+  engine = _remote_engine()
+  engine.inspect_creation_metadata.return_value = ("remote-id", {"kanibako.target": target_name})
+  engine.inspect_env.return_value = node
+  monkeypatch.setenv("KANIBAKO_AGENT", "local+codex")
+  targets = {
+    "goose": SimpleNamespace(descriptor=SimpleNamespace(vscode_extension="goose.extension")),
+    "claude": SimpleNamespace(
+      descriptor=SimpleNamespace(vscode_extension="anthropic.claude-code")
+    ),
+    "shell": SimpleNamespace(descriptor=None),
+  }
+  seed_path = tmp_path / "target.json"
+  with (
+    patch("kanibako.targets.resolve_target", side_effect=targets.__getitem__) as m_target,
+    patch("kanibako.commands.code_cmd.attached_container_config_path", return_value=seed_path),
+  ):
+    _seed_remote_attached_config(engine, "kanibako-mybox")
+  expected = {"workspaceFolder": "/home/agent/workspace"}
+  if extension is not None:
+    expected["extensions"] = [extension]
+  assert json.loads(seed_path.read_text()) == expected
+  if target_name:
+    m_target.assert_called_once_with(target_name)
+  else:
+    m_target.assert_not_called()
+  engine.inspect_env.assert_not_called()
+  engine.inspect_creation_metadata.assert_called_once_with("kanibako-mybox")
+  engine.container_image.assert_called_once_with("remote-id")
+
+
+@pytest.mark.parametrize(
+  ("stamp", "target_name"),
+  [("claude", "claude"), ("navigator+Claude", "claude"), ("shell", "shell"), (None, None)],
+)
+def test_remote_absent_target_keeps_legacy_stamp_semantics(
+  stamp, target_name, _no_local_remote_identity
+):
+  from kanibako.commands.code_cmd import _seed_remote_attached_config
+
+  engine = _remote_engine()
+  engine.inspect_env.return_value = stamp
+  with (
+    patch("kanibako.commands.code_cmd._extension_for_agent", return_value="ext") as m_ext,
+    patch("kanibako.commands.code_cmd._write_attached_config") as m_write,
+  ):
+    _seed_remote_attached_config(engine, "kanibako-mybox")
+  if target_name is None:
+    m_ext.assert_not_called()
+  else:
+    m_ext.assert_called_once_with(target_name)
+  assert m_write.call_args.args[1] == ("ext" if target_name is not None else None)
+  engine.inspect_env.assert_called_once_with("remote-id", "KANIBAKO_AGENT")
+
+
+@pytest.mark.parametrize("metadata_error", [False, True])
+def test_remote_unreadable_metadata_seeds_workspace_without_stamp(
+  metadata_error, _no_local_remote_identity
+):
+  from kanibako.commands.code_cmd import _seed_remote_attached_config
+
+  engine = _remote_engine()
+  engine.inspect_creation_metadata.return_value = None
+  if metadata_error:
+    engine.inspect_creation_metadata.side_effect = OSError("metadata unavailable")
+  with (
+    patch("kanibako.commands.code_cmd._extension_for_agent") as m_ext,
+    patch("kanibako.commands.code_cmd._write_attached_config") as m_write,
+  ):
+    _seed_remote_attached_config(engine, "kanibako-mybox")
+  engine.container_image.assert_called_once_with("kanibako-mybox")
+  engine.inspect_env.assert_not_called()
+  m_ext.assert_not_called()
+  m_write.assert_called_once()
+  assert m_write.call_args.args[1] is None
+
+
+@pytest.mark.parametrize("failure", ["image-none", "image-error", "env-error", "bad-stamp"])
+def test_remote_probe_failures_keep_the_appropriate_seed(failure, _no_local_remote_identity):
+  from kanibako.commands.code_cmd import _seed_remote_attached_config
+
+  engine = _remote_engine()
+  if failure == "image-none":
+    engine.container_image.return_value = None
+  elif failure == "image-error":
+    engine.container_image.side_effect = OSError("image unavailable")
+  elif failure == "env-error":
+    engine.inspect_env.side_effect = OSError("env unavailable")
+  else:
+    engine.inspect_env.return_value = "bad+stamp+shape"
+  with (
+    patch("kanibako.commands.code_cmd._extension_for_agent") as m_ext,
+    patch("kanibako.commands.code_cmd._write_attached_config") as m_write,
+  ):
+    _seed_remote_attached_config(engine, "kanibako-mybox")
+  m_ext.assert_not_called()
+  if failure.startswith("image"):
+    m_write.assert_not_called()
+    engine.inspect_env.assert_not_called()
+  else:
+    m_write.assert_called_once()
+    assert m_write.call_args.args[1] is None
+  engine.container_image.assert_called_once_with("remote-id")
+
+
+@pytest.mark.parametrize("legacy", [False, True])
+def test_remote_reconnect_and_recreation_pin_all_reads_to_metadata_id(
+  legacy, _no_local_remote_identity
+):
+  import subprocess
+
+  from kanibako.commands.code_cmd import _seed_remote_attached_config
+  from kanibako.vscode.vscode_remote import RemoteEngine
+
+  engine = RemoteEngine("unix:///tmp/synthetic.sock", podman="/usr/bin/podman")
+  generations = iter(["id-a", "id-a", "id-b"])
+  images = {"id-a": "image-a", "id-b": "image-b", "box-name": "wrong-image"}
+  targets = {"id-a": "goose", "id-b": "claude", "box-name": "codex"}
+
+  def inspect(args):
+    assert args[:2] == ["inspect", "--format"]
+    fmt, ref = args[2:]
+    if fmt == "[{{json .Id}},{{json .Config.Labels}}]":
+      assert ref == "box-name"
+      container_id = next(generations)
+      labels = {} if legacy else {"kanibako.target": targets[container_id]}
+      output = json.dumps([container_id, labels])
+    elif fmt == "{{.ImageName}}":
+      output = images[ref]
+    else:
+      assert fmt == "{{json .Config.Env}}"
+      output = json.dumps([f"KANIBAKO_AGENT=navigator+{targets[ref]}"])
+    return subprocess.CompletedProcess(args, 0, output, "")
+
+  with (
+    patch.object(engine, "_run", side_effect=inspect) as m_inspect,
+    patch(
+      "kanibako.commands.code_cmd.attached_container_config_path",
+      side_effect=lambda image, _: image,
+    ) as m_path,
+    patch(
+      "kanibako.commands.code_cmd._extension_for_agent", side_effect=lambda target: target + ".ext"
+    ) as m_ext,
+    patch("kanibako.commands.code_cmd._write_attached_config") as m_write,
+  ):
+    for _ in range(3):
+      _seed_remote_attached_config(engine, "box-name")
+  assert [c.args[0] for c in m_path.call_args_list] == ["image-a", "image-a", "image-b"]
+  assert [c.args[0] for c in m_ext.call_args_list] == ["goose", "goose", "claude"]
+  assert [c.args for c in m_write.call_args_list] == [
+    ("image-a", "goose.ext"),
+    ("image-a", "goose.ext"),
+    ("image-b", "claude.ext"),
+  ]
+  expected = []
+  for container_id in ["id-a", "id-a", "id-b"]:
+    expected.extend(
+      [
+        ["inspect", "--format", "[{{json .Id}},{{json .Config.Labels}}]", "box-name"],
+        ["inspect", "--format", "{{.ImageName}}", container_id],
+      ]
+    )
+    if legacy:
+      expected.append(["inspect", "--format", "{{json .Config.Env}}", container_id])
+  assert [c.args[0] for c in m_inspect.call_args_list] == expected

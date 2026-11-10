@@ -41,7 +41,7 @@ from kanibako.settings.config import (
 from kanibako.settings.config_interface import persist_creation_level
 from kanibako.settings.settings_cli_level import build_cli_level
 from kanibako.runtime.container import STUCK_STATES, ContainerRuntime, remove_path
-from kanibako.identifiers import agent_node_case, find_identifier
+from kanibako.identifiers import find_identifier
 from kanibako.errors import (
   BoxNameError,
   ContainerError,
@@ -103,7 +103,7 @@ from kanibako.settings.paths import (
   resolve_workset_project,
   unregister_primary_box_name,
 )
-from kanibako.agent_ref import GENERAL_SLOT, harness_of, parse_agent_address, with_harness
+from kanibako.agent_ref import GENERAL_SLOT, parse_agent_address
 from kanibako.targets import resolve_target
 from kanibako.utils import (
   CONTAINER_NAME_PREFIX,
@@ -805,7 +805,7 @@ def _assert_primary_home_free_for_create(std, name: str) -> None:
     )
 
 
-def _check_persona_store_for_create(agent_ref: str) -> str | None:
+def _check_persona_store_for_create(agent_ref: str, *, prepared=None) -> str | None:
   """⚑ READ-ONLY create-side persona-grata store CHECK; an ``"Error: …"`` or ``None``."""
   from kanibako.agent_ref import display_agent_ref
   from kanibako.errors import ConfigError
@@ -817,17 +817,23 @@ def _check_persona_store_for_create(agent_ref: str) -> str | None:
     PersonaProbeVerdict,
   )
 
+  if prepared is not None and (
+    prepared.selection is None or prepared.selection.identity.registered_name is not None
+  ):
+    return None
   try:
     entry = locate_entry(agent_ref)
   except ConfigError as e:
     return f"Error: {e}"
   if entry is None:
     return None  # not a persona / no store entry -> normal create handling
-  target = resolve_target(entry.harness)
+  target = prepared.target if prepared is not None else resolve_target(entry.harness)
   if target is None:
     return None  # harness not installed -> the normal machinery errors
   display = display_agent_ref(entry.node)
-  bundle = read_persona_bundle(entry.node, target)
+  bundle = (
+    prepared.persona_bundle if prepared is not None else read_persona_bundle(entry.node, target)
+  )
   if bundle is None or bundle.no_reader:
     # ⚑ ``no_reader`` is a FALL-THROUGH, never a refusal (a goose persona may own a
     # store dir purely for its ``.secret_path``).
@@ -1754,6 +1760,7 @@ def run_create(args: argparse.Namespace, outcome: _CreateOutcome) -> int:
     _primary_probe_named,
     _register_new_box,
     persona_create_verdict,
+    prepare_create_agent,
     recover_cure,
     seed_new_box,
   )
@@ -1870,12 +1877,8 @@ def run_create(args: argparse.Namespace, outcome: _CreateOutcome) -> int:
     enable_vault = not _recorded.get("no_vault", False)
     standalone_name = _recorded.get("name", "") if args.standalone else ""
     standalone_register = standalone_register or bool(_recorded.get("register"))
-  # ⚑⚑ THE ONE ANSWER TO "which agent is this create steering" — the persona pre-flight,
-  # the ``pref.system.agent`` persist and the seed all read it, and spelling
-  # ``args.agent`` at any of them again reopens the defect (pinned by
-  # ``TestAgentFlagIsReadOnce``).  ``None`` here is "resolve from settings", NEVER
-  # "no agent": it routes each consumer to the ``pref.system.agent`` the persist
-  # wrote, so seed and settings cannot disagree.  A recovery reads the RECORDED one.
+  # Recovery uses its recorded selector. None resolves settings once during
+  # preparation; the verdict and seed retain that input instead of reading again.
   _agent_arg = _recorded.get("agent") if is_recovery else getattr(args, "agent", None)
   # ⚑⚑ "GIVEN" IS ``is not None`` AT EVERY DOOR — argparse's own absent-vs-present
   # answer, and the ONE predicate both the store check here and the
@@ -1896,13 +1899,13 @@ def run_create(args: argparse.Namespace, outcome: _CreateOutcome) -> int:
     parse_agent_address(_agent_arg)
     # The ONE normalized value every consumer below reads (P10).
     _agent_arg = _agent_arg.strip()
-    # ⚑ The store check runs BEFORE the verdict below, so a broken store is reported
-    # as itself rather than as the verdict's downstream "no endpoint configured".
-    _store_err = _check_persona_store_for_create(_agent_arg)
+  _prepared_agent = prepare_create_agent(std, _probe, explicit_agent=_agent_arg)
+  if _agent_arg is not None:
+    _store_err = _check_persona_store_for_create(_agent_arg, prepared=_prepared_agent)
     if _store_err is not None:
       print(_store_err, file=sys.stderr)
       return 1
-  _persona_err = persona_create_verdict(std, config, _probe, explicit_agent=_agent_arg)
+  _persona_err = persona_create_verdict(std, config, _probe, prepared=_prepared_agent)
   if _persona_err is not None:
     print(_persona_err, file=sys.stderr)
     return 1
@@ -2130,7 +2133,7 @@ def run_create(args: argparse.Namespace, outcome: _CreateOutcome) -> int:
         _clear_create_entry(std, _entry_probe)
       else:
         outcome.recover = recover_cure(_entry_probe)
-  seed_new_box(std, config, proj, explicit_agent=_agent_arg)
+  seed_new_box(std, config, proj, prepared=_prepared_agent)
   make_proj_inbox(std, proj)
   # ⚑ THE CANON SKELETON (J-7) — AFTER the seed (it only fills what the seed left
   # missing) and INSIDE the journal window (it must replay).
@@ -4197,24 +4200,25 @@ def run_info(args: argparse.Namespace) -> int:
 
   container_running, container_detail = _check_container_running(proj)
 
-  # ⚑ INFORMATIONAL, not a launch: a resolution failure DEGRADES rather than errors.
-  # Selection still goes through the ONE seam (:func:`select_agent`).
+  # ⚑ Selection/target failures DEGRADE; captured projection failures do not.
+  # Selection goes through the ONE seam (:func:`select_agent`).
   agent_display = "n/a (unresolved)"
+  selection = None
   target = None
   try:
     from kanibako.agent_ref import display_agent_ref
     from kanibako.settings.agent_select import select_agent
 
-    _sel = select_agent(std=std, proj=proj)
-    agent_name = _sel.node
+    selection = select_agent(std=std, proj=proj)
+    agent_name = selection.node
     # ⚑ SHOW WHERE IT CAME FROM (P7) — this is the ONE place a user can read
     # ``AgentSelection.source``, and "which agent, and WHY" is not in any one file.
     agent_display = (
-      f"{display_agent_ref(agent_name)}  (from: {_sel.source})"
+      f"{display_agent_ref(agent_name)}  (from: {selection.source})"
       if agent_name
-      else f"none — plain shell  (from: {_sel.source})"
+      else f"none — plain shell  (from: {selection.source})"
     )
-    target = resolve_target(harness_of(agent_name)) if agent_name else None
+    target = resolve_target(selection.identity.target_name) if selection.has_agent else None
     creds_file = target.credential_check_path(proj.shell_path) if target else None
   except Exception as exc:
     creds_file = None
@@ -4225,12 +4229,21 @@ def run_info(args: argparse.Namespace) -> int:
 
   from kanibako.commands.start import _box_scalars
 
+  persona_values = None
+  if target and selection and selection.registered_persona is not None:
+    from kanibako.persona_store import project_registered_persona
+
+    persona_values = project_registered_persona(
+      selection.registered_persona, target
+    ).to_persona_values()
   merged = _box_scalars(
     std,
     proj,
-    with_harness(agent_name, agent_node_case(target.name)) if target else GENERAL_SLOT,
+    selection.node if target and selection else GENERAL_SLOT,
     std.settings,
     None,
+    agent_identity=selection.identity if target and selection else None,
+    persona_values=persona_values,
   )
 
   # Dashes read better than underscores in the mode row.
@@ -4357,6 +4370,30 @@ def _resolve_config_subject(std, config, project_dir: str | None):
   return proj
 
 
+def _box_config_agent_input(std, proj):
+  """Capture one selection; unavailable input leaves config repair usable."""
+  from kanibako.errors import AgentNoDefaultError, AgentUnsetError
+  from kanibako.settings.agent_select import select_agent
+  from kanibako.settings.config import AgentResolution
+  from kanibako.settings.config_interface import project_agent_input
+
+  try:
+    selection = select_agent(std=std, proj=proj)
+  except (AgentNoDefaultError, AgentUnsetError):
+    return None, None, None, None
+  except Exception as exc:
+    return None, None, None, str(exc)
+  identity = selection.identity
+  try:
+    target = resolve_target(identity.target_name) if selection.has_agent else None
+    values, credential = project_agent_input(
+      AgentResolution(identity, selection.registered_persona), target
+    )
+  except Exception as exc:
+    return identity, None, None, str(exc)
+  return identity, values, credential, None
+
+
 def _run_box_config(args: argparse.Namespace) -> int:
   """Shared box-config dispatch into the ``config_interface`` engine."""
   from kanibako.settings.config_keys import ConfigLevel, is_known_key
@@ -4426,15 +4463,10 @@ def _run_box_config(args: argparse.Namespace) -> int:
       return 1
     # ⚑ The M-8 PAIR: reset clears exactly the file set/get address.
     project_toml, reset_ws_path = box_workset_settings_paths(proj)
-    # The full launch cascade, so the cleared-message can name the now-effective
-    # value and its tier.  A resolution failure degrades to the cleared-only form.
-    reset_agent_name = ""
-    try:
-      from kanibako.settings.agent_select import select_agent
-
-      reset_agent_name = select_agent(std=std, proj=proj).node
-    except Exception:
-      reset_agent_name = ""
+    reset_identity, persona_values, persona_credential, target_error = _box_config_agent_input(
+      std, proj
+    )
+    reset_agent_name = reset_identity.node if reset_identity is not None else ""
     msg = reset_config_value(
       reset_key,
       config_path=project_toml,
@@ -4443,6 +4475,10 @@ def _run_box_config(args: argparse.Namespace) -> int:
       cascade_workset_path=reset_ws_path,
       cascade_box_path=project_toml,
       cascade_agent_name=reset_agent_name,
+      cascade_agent_identity=reset_identity,
+      cascade_persona_values=persona_values,
+      cascade_persona_credential=persona_credential,
+      target_error=target_error,
     )
     if msg.startswith("Error:"):
       print(msg, file=sys.stderr)
@@ -4488,11 +4524,13 @@ def _run_box_config(args: argparse.Namespace) -> int:
 
       # Informational display: a selection failure degrades to the shell slot.
       stored = stored_box_agent(std, proj)
-      effective_selection, agent_id, target, agent_cfg, agent_cfg_path = stored
-      if target is not None and agent_cfg is not None:
+      effective_selection = stored.selection
+      agent_id = stored.node
+      agent_cfg_path = stored.agent_cfg_path
+      if stored.target is not None and stored.agent_cfg is not None:
         agent_state = _effective_behavior_for_display(
-          target,
-          agent_cfg,
+          stored.target,
+          stored.agent_cfg,
           std=std,
           proj=proj,
           system_settings_path=std.settings,
@@ -4501,6 +4539,10 @@ def _run_box_config(args: argparse.Namespace) -> int:
           ),
           node_name=agent_id,
           agent_cfg_path=(agent_cfg_path if agent_cfg_path.exists() else None),
+          agent_identity=(
+            effective_selection.identity if effective_selection is not None else None
+          ),
+          persona_values=stored.persona_values,
         )
       # ⚑ Resolved off the SAME launch pipeline a start takes, so the display
       # cannot drift from what mounts.  A collision is REPORTED, never raised —
@@ -4568,15 +4610,13 @@ def _run_box_config(args: argparse.Namespace) -> int:
     if _env_err is not None:
       print(_env_err, file=sys.stderr)
       return 1
-    # The resolved agent NODE names the ``pref.agent.<active>.<key>`` a BARE agent
-    # key redirects to.  Best-effort: an unresolvable agent just means no redirect.
-    _get_agent_name = ""
-    try:
-      from kanibako.settings.agent_select import select_agent
+    get_identity, persona_values, persona_credential, target_error = _box_config_agent_input(
+      std, proj
+    )
+    _get_agent_name = get_identity.node if get_identity is not None else ""
+    from kanibako.settings.config_interface import identity_valid_agents
 
-      _get_agent_name = select_agent(std=std, proj=proj).node
-    except Exception:
-      _get_agent_name = ""
+    valid_agents = identity_valid_agents(get_identity)
     # ⚑ THE CLOSED-KEYSPACE READ GATE (spec §0) — an undeclared name is refused
     # NAMING it, never answered "(not set)".  It runs AFTER the resolution above
     # because it must judge the key the ENGINE will read, redirect included, and
@@ -4589,6 +4629,7 @@ def _run_box_config(args: argparse.Namespace) -> int:
       key,
       ConfigLevel.box,
       active_agent=_get_agent_name or None,
+      valid_agents=valid_agents,
     )
     if _key_err is not None:
       print(_key_err, file=sys.stderr)
@@ -4603,6 +4644,10 @@ def _run_box_config(args: argparse.Namespace) -> int:
       node_store=False,
       command_scope=ConfigLevel.box,
       active_agent=_get_agent_name or None,
+      cascade_agent_identity=get_identity,
+      cascade_persona_values=persona_values,
+      cascade_persona_credential=persona_credential,
+      target_error=target_error,
       cascade_system_path=std.settings,
       cascade_workset_path=workset_path,
       std=std,
@@ -4613,7 +4658,7 @@ def _run_box_config(args: argparse.Namespace) -> int:
     from kanibako.settings.config_keys import resolve_key, box_agent_redirect_key
 
     redirect = box_agent_redirect_key(
-      resolve_key(key),
+      resolve_key(key, valid_agents=valid_agents),
       ConfigLevel.box,
       _get_agent_name or None,
     )
@@ -4627,17 +4672,12 @@ def _run_box_config(args: argparse.Namespace) -> int:
     # ⚑ The BOX is the target (spec §2a): ``resolve_inputs`` builds its full cascade
     # — the M-8 file pair, its real ``{meta.box.path}`` and workset anchors — so a
     # cross-scope ``{key}``-ref in the new value resolves at set time as at launch.
-    # ⚑ THE TIER PAIR IS STILL THREADED, and it is not redundant: if the target
-    # cannot be built, the target-less fallback reads these same files and differs
-    # only by the floors. Without the workset tier a system-level value shows
-    # through a dangling workset one, and the fallback ACCEPTS what the box refuses.
-    cascade_agent_name = ""
-    try:
-      from kanibako.settings.agent_select import select_agent
-
-      cascade_agent_name = select_agent(std=std, proj=proj).node
-    except Exception:
-      cascade_agent_name = ""
+    # Targetless repair retains the same tier files and live input; omitting a tier
+    # could expose a lower value and accept a broken dependency.
+    cascade_agent_identity, persona_values, persona_credential, target_error = (
+      _box_config_agent_input(std, proj)
+    )
+    cascade_agent_name = cascade_agent_identity.node if cascade_agent_identity is not None else ""
     from kanibako.settings.agent_config import agent_settings_path
 
     msg = set_config_value(
@@ -4651,6 +4691,10 @@ def _run_box_config(args: argparse.Namespace) -> int:
         agent_settings_path(std.agents, cascade_agent_name) if cascade_agent_name else None
       ),
       cascade_agent_name=cascade_agent_name,
+      cascade_agent_identity=cascade_agent_identity,
+      cascade_persona_values=persona_values,
+      cascade_persona_credential=persona_credential,
+      target_error=target_error,
       command_scope=ConfigLevel.box,
       std=std,
       proj=proj,

@@ -7,7 +7,11 @@ from unittest.mock import patch
 
 import pytest
 
-from kanibako.runtime.container import ContainerRuntime, image_ref_or_none
+from kanibako.runtime.container import (
+  ContainerRuntime,
+  creation_metadata_from_inspect,
+  image_ref_or_none,
+)
 from kanibako.errors import ContainerError
 
 
@@ -774,6 +778,63 @@ class TestInspectEnv:
     with patch("kanibako.runtime.container.subprocess.run") as m:
       m.return_value = MagicMock(returncode=0, stdout=env)
       assert rt.inspect_env("box", "FOO") == "a=b=c"
+
+
+class TestCreationMetadataFromInspect:
+  @pytest.mark.parametrize(
+    "labels",
+    [None, {}, {"kanibako.target": ""}, {"kanibako.target": "Goose", "custom": "value=1"}],
+  )
+  def test_returns_exact_id_and_labels(self, labels):
+    import json
+    from subprocess import CompletedProcess
+
+    result = CompletedProcess([], 0, stdout=json.dumps(["ABC123", labels]) + "\n")
+    assert creation_metadata_from_inspect(result) == (
+      "ABC123",
+      labels if labels is not None else {},
+    )
+
+  @pytest.mark.parametrize(
+    "metadata",
+    [
+      None,
+      {},
+      "id",
+      [],
+      ["id"],
+      ["id", {}, {}],
+      [None, {}],
+      [1, {}],
+      [True, {}],
+      ["", {}],
+      [" \t", {}],
+      ["id", []],
+      ["id", ""],
+      ["id", {"kanibako.target": None}],
+      ["id", {"kanibako.target": 1}],
+      ["id", {"kanibako.target": False}],
+      ["id", {"kanibako.target": {}}],
+    ],
+  )
+  def test_unreadable_shape_never_becomes_a_legacy_empty_map(self, metadata):
+    import json
+    from subprocess import CompletedProcess
+
+    result = CompletedProcess([], 0, stdout=json.dumps(metadata))
+    assert creation_metadata_from_inspect(result) is None
+
+  @pytest.mark.parametrize("stdout", ["", " \n", "<no value>", "not json", '["id",'])
+  def test_unreadable_json_returns_none(self, stdout):
+    from subprocess import CompletedProcess
+
+    assert creation_metadata_from_inspect(CompletedProcess([], 0, stdout=stdout)) is None
+
+  def test_failed_inspect_ignores_even_valid_payload(self):
+    from subprocess import CompletedProcess
+
+    result = CompletedProcess([], 125, stdout='["id", {}]', stderr="container missing")
+    assert creation_metadata_from_inspect(result) is None
 
 
 class TestImageRefOrNone:
@@ -2690,3 +2751,1178 @@ class TestSymlinkedParentRefusal:
 
     launched.assert_not_called()
     assert not (outside / "sub" / "notebook").exists()
+
+
+def _credential_engine(tmp_path, body):
+  import sys
+  import textwrap
+
+  executable = tmp_path / "engine"
+  executable.write_text(
+    f"#!{sys.executable}\n"
+    "import hashlib, json, os, signal, sys, time\n"
+    "if sys.argv[1] != 'run':\n  raise SystemExit(0)\n" + textwrap.dedent(body)
+  )
+  executable.chmod(0o755)
+  return ContainerRuntime(command=str(executable))
+
+
+def _credential_run(runtime, tmp_path, payload, **options):
+  return runtime.run(
+    "image",
+    shell_path=tmp_path / "home",
+    project_path=tmp_path / "work",
+    vault_ro_path=None,
+    vault_rw_path=None,
+    enable_vault=False,
+    secret_payload=payload,
+    **options,
+  )
+
+
+class TestCredentialRuntime:
+  @pytest.mark.parametrize("detach", [False, True])
+  def test_empty_payload_is_identical_to_native_calls(self, tmp_path, detach):
+    from subprocess import CompletedProcess
+    from kanibako.secret_delivery import SecretPayload
+
+    runtime = ContainerRuntime(command="engine")
+    results = []
+    for payload in (None, SecretPayload()):
+      with (
+        patch("kanibako.runtime.container.subprocess.run") as run,
+        patch("kanibako.runtime.container.subprocess.Popen") as popen,
+      ):
+        run.return_value = CompletedProcess([], 17, stdout="", stderr="")
+        assert (
+          _credential_run(
+            runtime,
+            tmp_path,
+            payload,
+            detach=detach,
+            labels={"box": "unchanged"},
+            publication_timeout=-1,
+          )
+          == 17
+        )
+        results.append(run.call_args)
+        popen.assert_not_called()
+    assert results[0] == results[1]
+    assert "--preserve-fds=2" not in results[0].args[0]
+
+  @pytest.mark.parametrize("detach", [False, True])
+  @pytest.mark.parametrize(
+    "value", [b"", b"secret\0\n'\xff", b"x" * (1024 * 1024)], ids=["empty", "binary", "large"]
+  )
+  def test_real_pipe_complete_frame_ack_and_label_copy(self, tmp_path, detach, value):
+    import hashlib
+    from kanibako.secret_delivery import SecretPayload, SecretValue, encode_payload
+
+    payload = SecretPayload((SecretValue("TOKEN", value),))
+    digest = hashlib.sha256(encode_payload(payload)).hexdigest()
+    runtime = _credential_engine(
+      tmp_path,
+      f"""
+      assert '--preserve-fds=2' in sys.argv
+      data = bytearray()
+      while True:
+        chunk = os.read(3, 997)
+        if not chunk:
+          break
+        data.extend(chunk)
+      assert hashlib.sha256(data).hexdigest() == {digest!r}
+      os.write(4, b'R')
+    """,
+    )
+    labels = {"box": "keep"}
+    assert _credential_run(runtime, tmp_path, payload, detach=detach, labels=labels) == 0
+    assert labels == {"box": "keep"}
+
+  def test_nonce_is_fresh_and_never_mutates_caller_labels(self, tmp_path):
+    from kanibako.secret_delivery import SecretPayload, SecretValue
+
+    labels = {"org.kanibako.credential-launch": "caller", "box": "keep"}
+    runtime = ContainerRuntime(command="engine")
+    payload = SecretPayload((SecretValue("TOKEN", b"opaque"),))
+    with patch.object(runtime, "_run_with_secrets", return_value=0) as launch:
+      for _ in range(2):
+        assert _credential_run(runtime, tmp_path, payload, labels=labels) == 0
+    first, second = [call.args for call in launch.call_args_list]
+    assert first[2] != second[2]
+    for arguments in (first, second):
+      assert f"org.kanibako.credential-launch={arguments[2]}" in arguments[0]
+      assert "opaque" not in repr(arguments)
+      assert "org.kanibako.credential-launch=caller" not in arguments[0]
+    assert labels == {"org.kanibako.credential-launch": "caller", "box": "keep"}
+
+  def test_detached_failure_discards_even_frame_echoes(self, tmp_path, capfd, caplog):
+    import logging
+    from kanibako.secret_delivery import SecretPayload, SecretValue
+
+    caplog.set_level(logging.DEBUG, logger="kanibako.container")
+    runtime = _credential_engine(
+      tmp_path,
+      """
+      data = bytearray()
+      while True:
+        piece = os.read(3, 65536)
+        if not piece:
+          break
+        data.extend(piece)
+      os.write(1, data)
+      os.write(2, data)
+      os.write(4, b'X')
+    """,
+    )
+    with pytest.raises(ContainerError) as error:
+      _credential_run(
+        runtime,
+        tmp_path,
+        SecretPayload((SecretValue("TOKEN", b"opaque-frame-marker"),)),
+        detach=True,
+      )
+    output = capfd.readouterr()
+    assert "opaque-frame-marker" not in output.out + output.err + caplog.text + str(error.value)
+    assert error.value.__context__ is None
+    assert error.value.__cause__ is None
+
+  def test_partial_nonblocking_writes_and_parent_fd_purity(self, tmp_path):
+    import fcntl
+    import os
+    from kanibako.secret_delivery import SecretPayload, SecretValue
+
+    runtime = _credential_engine(
+      tmp_path,
+      """
+      while os.read(3, 113):
+        time.sleep(0.0001)
+      os.write(4, b'R')
+    """,
+    )
+    payload = SecretPayload((SecretValue("TOKEN", b"x" * 131072),))
+    original_pipe = os.pipe2
+    original_write = os.write
+    sentinel = original_pipe(os.O_CLOEXEC)
+    flags = {fd: fcntl.fcntl(fd, fcntl.F_GETFD) for fd in sentinel}
+    allocated = []
+    writes = []
+
+    def sparse_pipe(flags):
+      pair = original_pipe(flags)
+      sparse = tuple(fcntl.fcntl(fd, fcntl.F_DUPFD_CLOEXEC, 200) for fd in pair)
+      for fd in pair:
+        os.close(fd)
+      allocated.extend(sparse)
+      return sparse
+
+    def short_write(fd, value):
+      writes.append(len(value))
+      if len(writes) % 3 == 0:
+        raise BlockingIOError()
+      return original_write(fd, value[:37])
+
+    try:
+      with (
+        patch("kanibako.runtime.container.os.pipe2", side_effect=sparse_pipe),
+        patch("kanibako.runtime.container.os.write", side_effect=short_write),
+        patch("kanibako.runtime.container.os.dup2", side_effect=AssertionError("parent dup2")),
+        patch(
+          "kanibako.runtime.container.os.set_inheritable",
+          side_effect=AssertionError("parent inheritable"),
+        ),
+      ):
+        assert _credential_run(runtime, tmp_path, payload, publication_timeout=5) == 0
+      assert len(writes) > 100
+      for fd in allocated:
+        with pytest.raises(OSError):
+          os.fstat(fd)
+      for fd in sentinel:
+        assert fcntl.fcntl(fd, fcntl.F_GETFD) == flags[fd]
+    finally:
+      for fd in sentinel:
+        os.close(fd)
+
+  @pytest.mark.parametrize("delay,status", [(0.25, 0), (0.25, 27), (0, 129)])
+  def test_foreground_lifetime_and_status_follow_readiness(self, tmp_path, delay, status):
+    import time
+    from kanibako.secret_delivery import SecretPayload, SecretValue
+
+    runtime = _credential_engine(
+      tmp_path,
+      f"""
+      while os.read(3, 65536):
+        pass
+      os.write(4, b'R')
+      time.sleep({delay})
+      raise SystemExit({status})
+    """,
+    )
+    started = time.monotonic()
+    assert (
+      _credential_run(
+        runtime,
+        tmp_path,
+        SecretPayload((SecretValue("TOKEN", b"value"),)),
+        publication_timeout=0.2,
+      )
+      == status
+    )
+    assert time.monotonic() - started >= delay
+
+  @pytest.mark.parametrize(
+    "body",
+    [
+      "os.close(3); time.sleep(0.1)",
+      "raise SystemExit(43)",
+      "while os.read(3, 65536):\n  pass\nos.close(4)",
+      "while os.read(3, 65536):\n  pass\nos.write(4, b'X')",
+      "while os.read(3, 65536):\n  pass\nos.write(4, b'RR')",
+      "time.sleep(5)",
+      "while os.read(3, 65536):\n  pass\ntime.sleep(5)",
+    ],
+  )
+  def test_failed_publication_aborts_and_bounds_cleanup(self, tmp_path, body, caplog):
+    import time
+    from kanibako.secret_delivery import SecretPayload, SecretValue
+
+    runtime = _credential_engine(tmp_path, body)
+    started = time.monotonic()
+    with pytest.raises(ContainerError, match="Credential publication failed") as error:
+      _credential_run(
+        runtime,
+        tmp_path,
+        SecretPayload((SecretValue("TOKEN", b"hidden" * 65536),)),
+        publication_timeout=0.2,
+        detach=True,
+      )
+    assert time.monotonic() - started < 2
+    assert "hidden" not in str(error.value)
+    assert error.value.__context__ is None
+    assert "cleanup incomplete" in caplog.text
+    assert "hidden" not in caplog.text
+
+  def test_readiness_is_required_even_after_engine_zero(self, tmp_path):
+    from kanibako.secret_delivery import SecretPayload, SecretValue
+
+    runtime = _credential_engine(
+      tmp_path,
+      """
+      while os.read(3, 65536):
+        pass
+      raise SystemExit(0)
+    """,
+    )
+    with pytest.raises(ContainerError, match="Credential publication failed"):
+      _credential_run(
+        runtime,
+        tmp_path,
+        SecretPayload((SecretValue("TOKEN", b"value"),)),
+        detach=True,
+        publication_timeout=0.2,
+      )
+
+  def test_detached_ack_does_not_hide_engine_failure(self, tmp_path):
+    from kanibako.secret_delivery import SecretPayload, SecretValue
+
+    runtime = _credential_engine(
+      tmp_path,
+      """
+      while os.read(3, 65536):
+        pass
+      os.write(4, b'R')
+      time.sleep(0.03)
+      raise SystemExit(31)
+    """,
+    )
+    with pytest.raises(ContainerError, match="Credential publication failed"):
+      _credential_run(
+        runtime,
+        tmp_path,
+        SecretPayload((SecretValue("TOKEN", b"value"),)),
+        detach=True,
+      )
+
+  @pytest.mark.parametrize("timeout", [0, -1, float("nan"), float("inf"), None, "bad"])
+  def test_bad_deadline_never_spawns(self, tmp_path, timeout):
+    from kanibako.secret_delivery import SecretPayload, SecretValue
+
+    runtime = ContainerRuntime(command="engine")
+    with patch("kanibako.runtime.container.subprocess.Popen") as popen:
+      with pytest.raises(ContainerError, match="finite and positive"):
+        _credential_run(
+          runtime,
+          tmp_path,
+          SecretPayload((SecretValue("TOKEN", b"value"),)),
+          publication_timeout=timeout,
+        )
+      popen.assert_not_called()
+
+  def test_large_finite_deadline_is_sliced(self, tmp_path):
+    from kanibako.secret_delivery import SecretPayload, SecretValue
+
+    runtime = _credential_engine(
+      tmp_path,
+      """
+      while os.read(3, 65536):
+        pass
+      os.write(4, b'R')
+    """,
+    )
+    assert (
+      _credential_run(
+        runtime,
+        tmp_path,
+        SecretPayload((SecretValue("TOKEN", b"value"),)),
+        publication_timeout=1e308,
+        detach=True,
+      )
+      == 0
+    )
+
+  def test_unrelated_inheritable_fd_closes_and_process_context_survives(self, tmp_path):
+    import fcntl
+    import os
+    import signal
+    from kanibako.secret_delivery import SecretPayload, SecretValue
+
+    original = os.open("/dev/null", os.O_RDONLY)
+    sentinel = fcntl.fcntl(original, fcntl.F_DUPFD, 300)
+    os.close(original)
+    expected_mask = sorted(int(sig) for sig in signal.pthread_sigmask(signal.SIG_BLOCK, []))
+    runtime = _credential_engine(
+      tmp_path,
+      f"""
+      assert os.getpgrp() == {os.getpgrp()}
+      assert os.getsid(0) == {os.getsid(0)}
+      assert sorted(int(sig) for sig in signal.pthread_sigmask(signal.SIG_BLOCK, [])) == {expected_mask!r}
+      try:
+        os.fstat({sentinel})
+      except OSError:
+        pass
+      else:
+        raise AssertionError('unrelated descriptor inherited')
+      while os.read(3, 65536):
+        pass
+      os.write(4, b'R')
+    """,
+    )
+    try:
+      assert os.get_inheritable(sentinel) is True
+      assert (
+        _credential_run(
+          runtime,
+          tmp_path,
+          SecretPayload((SecretValue("TOKEN", b"value"),)),
+        )
+        == 0
+      )
+      assert os.get_inheritable(sentinel) is True
+    finally:
+      os.close(sentinel)
+
+  def test_child_trampoline_handles_cross_colliding_sources(self):
+    import subprocess
+    import sys
+    import textwrap
+    from kanibako.runtime.container import _SECRET_EXEC
+
+    driver = textwrap.dedent("""
+      import fcntl, os, subprocess, sys
+      data_read, data_write = os.pipe()
+      ack_read, ack_write = os.pipe()
+      data = fcntl.fcntl(data_read, fcntl.F_DUPFD_CLOEXEC, 20)
+      ack = fcntl.fcntl(ack_write, fcntl.F_DUPFD_CLOEXEC, 20)
+      writer = fcntl.fcntl(data_write, fcntl.F_DUPFD_CLOEXEC, 20)
+      os.close(data_read)
+      os.close(data_write)
+      os.close(ack_write)
+      os.dup2(data, 4)
+      os.dup2(ack, 3)
+      os.close(data)
+      os.close(ack)
+      os.write(writer, b'data')
+      os.close(writer)
+      child = subprocess.Popen([
+        sys.executable, '-I', '-c', sys.argv[1], '4', '3', '3', '4', '0',
+        sys.executable, '-I', '-c',
+        "import os; assert os.read(3, 5) == b'data'; os.write(4, b'R')",
+      ], pass_fds=(3, 4))
+      os.close(3)
+      os.close(4)
+      assert os.read(ack_read, 2) == b'R'
+      assert child.wait(timeout=2) == 0
+      os.close(ack_read)
+    """)
+    result = subprocess.run(
+      [sys.executable, "-I", "-c", driver, _SECRET_EXEC],
+      capture_output=True,
+      timeout=3,
+    )
+    assert result.returncode == 0, result.stderr.decode()
+
+  def test_child_exec_restores_subprocess_sigpipe_default(self, tmp_path):
+    from kanibako.secret_delivery import SecretPayload, SecretValue
+
+    executable = tmp_path / "shell-engine"
+    executable.write_text(
+      "#!/bin/sh\ncat <&3 >/dev/null\nprintf R >&4\nsleep 0.03\nkill -PIPE $$\nexit 43\n"
+    )
+    executable.chmod(0o755)
+    runtime = ContainerRuntime(command=str(executable))
+    assert (
+      _credential_run(
+        runtime,
+        tmp_path,
+        SecretPayload((SecretValue("TOKEN", b"value"),)),
+      )
+      == -13
+    )
+
+  def test_early_ack_still_waits_for_full_payload_pumping(self, tmp_path):
+    import hashlib
+    import time
+    from kanibako.secret_delivery import SecretPayload, SecretValue, encode_payload
+
+    payload = SecretPayload((SecretValue("TOKEN", b"x" * 131072),))
+    digest = hashlib.sha256(encode_payload(payload)).hexdigest()
+    runtime = _credential_engine(
+      tmp_path,
+      f"""
+      os.write(4, b'R')
+      time.sleep(0.1)
+      data = bytearray()
+      while True:
+        piece = os.read(3, 65536)
+        if not piece:
+          break
+        data.extend(piece)
+      assert hashlib.sha256(data).hexdigest() == {digest!r}
+    """,
+    )
+    started = time.monotonic()
+    assert _credential_run(runtime, tmp_path, payload, detach=True) == 0
+    assert time.monotonic() - started >= 0.1
+
+  def test_failed_launcher_ignoring_term_is_killed_and_reaped(self, tmp_path):
+    import subprocess
+    import time
+    from kanibako.secret_delivery import SecretPayload, SecretValue
+
+    runtime = _credential_engine(
+      tmp_path,
+      """
+      signal.signal(signal.SIGTERM, signal.SIG_IGN)
+      while os.read(3, 65536):
+        pass
+      os.write(4, b'X')
+      time.sleep(10)
+    """,
+    )
+    original = subprocess.Popen
+    launchers = []
+
+    def spawn(*arguments, **options):
+      process = original(*arguments, **options)
+      if "-I" in arguments[0]:
+        launchers.append(process)
+      return process
+
+    started = time.monotonic()
+    with patch("kanibako.runtime.container.subprocess.Popen", side_effect=spawn):
+      with pytest.raises(ContainerError):
+        _credential_run(
+          runtime,
+          tmp_path,
+          SecretPayload((SecretValue("TOKEN", b"value"),)),
+        )
+    assert time.monotonic() - started < 2
+    assert len(launchers) == 1
+    assert launchers[0].returncode == -9
+
+  def test_hanging_real_cleanup_query_is_bounded_and_reaped(self, tmp_path):
+    import subprocess
+    import sys
+    import time
+    from kanibako.secret_delivery import SecretPayload, SecretValue
+
+    executable = tmp_path / "slow-query-engine"
+    executable.write_text(
+      f"#!{sys.executable}\nimport os, sys, time\n"
+      "if sys.argv[1] == 'run':\n"
+      "  while os.read(3, 65536):\n    pass\n"
+      "  os.write(4, b'X')\n"
+      "time.sleep(20)\n"
+    )
+    executable.chmod(0o755)
+    runtime = ContainerRuntime(command=str(executable))
+    original = subprocess.Popen
+    processes = []
+
+    def spawn(*arguments, **options):
+      process = original(*arguments, **options)
+      processes.append(process)
+      return process
+
+    started = time.monotonic()
+    with patch("kanibako.runtime.container.subprocess.Popen", side_effect=spawn):
+      with pytest.raises(ContainerError):
+        _credential_run(
+          runtime,
+          tmp_path,
+          SecretPayload((SecretValue("TOKEN", b"value"),)),
+        )
+    assert time.monotonic() - started < 7
+    assert len(processes) == 2
+    assert all(process.poll() is not None for process in processes)
+
+  def test_cancel_closes_all_pipe_ends_and_reaps_launcher(self, tmp_path):
+    import os
+    from kanibako.secret_delivery import SecretPayload, SecretValue
+
+    runtime = _credential_engine(tmp_path, "time.sleep(5)")
+    allocated = []
+    processes = []
+    original_pipe = os.pipe2
+    import subprocess
+
+    original_popen = subprocess.Popen
+
+    def pipes(flags):
+      pair = original_pipe(flags)
+      allocated.extend(pair)
+      return pair
+
+    def spawn(*args, **kwargs):
+      process = original_popen(*args, **kwargs)
+      if "-I" in args[0]:
+        processes.append(process)
+      return process
+
+    with (
+      patch("kanibako.runtime.container.os.pipe2", side_effect=pipes),
+      patch("kanibako.runtime.container.subprocess.Popen", side_effect=spawn),
+      patch(
+        "kanibako.runtime.container.selectors.EpollSelector.select", side_effect=KeyboardInterrupt
+      ),
+    ):
+      with pytest.raises(KeyboardInterrupt):
+        _credential_run(
+          runtime,
+          tmp_path,
+          SecretPayload((SecretValue("TOKEN", b"value"),)),
+        )
+    assert len(processes) == 1
+    assert processes[0].poll() is not None
+    for fd in allocated:
+      with pytest.raises(OSError):
+        os.fstat(fd)
+
+
+class TestCredentialOwnedCleanup:
+  @pytest.mark.parametrize("mismatch", ["id", "nonce", "invalid", "failed", "missing"])
+  def test_unverified_container_is_never_removed(self, mismatch):
+    import json
+    from subprocess import CompletedProcess
+
+    runtime = ContainerRuntime(command="engine")
+    candidate = "a" * 64
+    nonce = "launch"
+
+    def respond(cmd, **options):
+      assert 0 < options["timeout"] <= 5
+      if cmd[1] == "ps":
+        return CompletedProcess(cmd, 0, stdout=candidate + "\n", stderr="")
+      assert cmd[1] == "inspect"
+      identifier = "b" * 64 if mismatch == "id" else candidate
+      labels = {"org.kanibako.credential-launch": "other" if mismatch == "nonce" else nonce}
+      result = json.dumps([identifier, labels])
+      if mismatch == "invalid":
+        result = "not json"
+      if mismatch == "missing":
+        result = json.dumps([identifier, {}])
+      return CompletedProcess(cmd, 1 if mismatch == "failed" else 0, stdout=result, stderr="")
+
+    with patch("kanibako.runtime.container.subprocess.run", side_effect=respond) as run:
+      assert runtime._cancel_secret_launch(None, nonce) is False
+    assert [call.args[0][1] for call in run.call_args_list] == ["ps", "inspect"]
+
+  def test_name_reuse_cannot_redirect_force_remove(self):
+    import json
+    from subprocess import CompletedProcess
+
+    runtime = ContainerRuntime(command="engine")
+    candidate = "a" * 64
+
+    def respond(cmd, **options):
+      if cmd[1] == "ps":
+        assert "--no-trunc" in cmd
+        return CompletedProcess(cmd, 0, stdout=candidate + "\n", stderr="")
+      if cmd[1] == "inspect":
+        assert cmd[-1] == candidate
+        return CompletedProcess(
+          cmd,
+          0,
+          stdout=json.dumps(
+            [
+              candidate,
+              {"org.kanibako.credential-launch": "launch", "name": "reused"},
+            ]
+          ),
+          stderr="",
+        )
+      assert cmd == ["engine", "rm", "-f", candidate]
+      return CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    with patch("kanibako.runtime.container.subprocess.run", side_effect=respond) as run:
+      assert runtime._cancel_secret_launch(None, "launch") is True
+    assert len(run.call_args_list) == 3
+
+  @pytest.mark.parametrize("failure", ["query", "inspect", "remove"])
+  def test_cleanup_command_timeouts_are_bounded_and_not_retried(self, failure):
+    import json
+    import subprocess
+
+    runtime = ContainerRuntime(command="engine")
+    candidate = "a" * 64
+    expected = {"query": "ps", "inspect": "inspect", "remove": "rm"}[failure]
+
+    def respond(cmd, **options):
+      assert options["timeout"] <= 5
+      if cmd[1] == expected:
+        raise subprocess.TimeoutExpired(cmd, options["timeout"], output=b"opaque")
+      result = (
+        candidate + "\n"
+        if cmd[1] == "ps"
+        else json.dumps(
+          [
+            candidate,
+            {"org.kanibako.credential-launch": "launch"},
+          ]
+        )
+      )
+      return subprocess.CompletedProcess(cmd, 0, stdout=result, stderr="")
+
+    with patch("kanibako.runtime.container.subprocess.run", side_effect=respond) as run:
+      assert runtime._cancel_secret_launch(None, "launch") is False
+    assert sum(call.args[0][1] == expected for call in run.call_args_list) == 1
+
+  def test_empty_query_is_incomplete_not_proof_against_late_creation(self):
+    from subprocess import CompletedProcess
+
+    runtime = ContainerRuntime(command="engine")
+    with patch("kanibako.runtime.container.subprocess.run") as run:
+      run.return_value = CompletedProcess([], 0, stdout="", stderr="")
+      assert runtime._cancel_secret_launch(None, "launch") is False
+      assert run.call_count == 1
+
+
+class TestCredentialDescriptorLimit:
+  @pytest.mark.parametrize("detach", [False, True])
+  def test_pipe_sources_near_descriptor_limit_use_free_lower_slots(self, tmp_path, detach):
+    import subprocess
+    import sys
+    import textwrap
+    from kanibako.runtime import container
+
+    runtime = _credential_engine(
+      tmp_path,
+      """
+      while os.read(3, 65536):
+        pass
+      os.write(4, b'R')
+    """,
+    )
+    program = textwrap.dedent("""
+      import os, resource, subprocess, sys, threading
+      from pathlib import Path
+      from unittest.mock import patch
+
+      root = Path(sys.argv[1])
+      sys.path.insert(0, str(root))
+      from kanibako.runtime import container
+      from kanibako.secret_delivery import SecretPayload, SecretValue
+      assert Path(container.__file__).is_relative_to(root)
+      resource.setrlimit(resource.RLIMIT_NOFILE, (64, 64))
+      fillers = []
+      while True:
+        try:
+          fillers.append(os.open('/dev/null', os.O_RDONLY))
+        except OSError:
+          break
+      for _ in range(4):
+        os.close(fillers.pop())
+      release = threading.Event()
+      released = threading.Event()
+      def release_fillers():
+        release.wait()
+        for fd in fillers:
+          os.close(fd)
+        released.set()
+      thread = threading.Thread(target=release_fillers)
+      thread.start()
+      original_pipe = os.pipe2
+      original_popen = subprocess.Popen
+      observed = []
+      def real_pipe(flags):
+        pair = original_pipe(flags)
+        observed.append(pair)
+        return pair
+      def spawn(arguments, *args, **kwargs):
+        if '-I' in arguments:
+          release.set()
+          assert released.wait(2)
+        return original_popen(arguments, *args, **kwargs)
+      try:
+        with patch.object(container.os, 'pipe2', side_effect=real_pipe), patch.object(
+          container.subprocess, 'Popen', side_effect=spawn
+        ):
+          status = container.ContainerRuntime(command=sys.argv[2]).run(
+            'image', shell_path=Path(sys.argv[3]) / 'home',
+            project_path=Path(sys.argv[3]) / 'work', vault_ro_path=None,
+            vault_rw_path=None, enable_vault=False,
+            secret_payload=SecretPayload((SecretValue('TOKEN', b'opaque'),)),
+            publication_timeout=2, detach=sys.argv[4] == 'True',
+          )
+        assert status == 0
+        assert observed == [(60, 61), (62, 63)], observed
+      finally:
+        release.set()
+        thread.join(2)
+        assert not thread.is_alive()
+    """)
+    result = subprocess.run(
+      [
+        sys.executable,
+        "-I",
+        "-c",
+        program,
+        str(Path(container.__file__).parents[2]),
+        runtime.cmd,
+        str(tmp_path),
+        str(detach),
+      ],
+      capture_output=True,
+      text=True,
+      timeout=15,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+  @pytest.mark.parametrize("detach", [False, True])
+  @pytest.mark.parametrize("closed", range(8))
+  def test_real_pipes_publish_with_child_limit_six_and_closed_stdio(
+    self, tmp_path, detach, closed
+  ):
+    import subprocess
+    import sys
+    import textwrap
+    from kanibako.runtime import container
+    from kanibako.secret_delivery import SecretPayload, SecretValue, encode_payload
+
+    frame = encode_payload(SecretPayload((SecretValue("TOKEN", b"opaque"),)))
+    expected_stdio = [not (closed & (1 << fd)) or (detach and fd in (1, 2)) for fd in range(3)]
+    executable = tmp_path / "engine"
+    executable.write_text(
+      f"#!{sys.executable} -S\nimport os,sys\n"
+      "if sys.argv[1] != 'run': sys.exit(0)\n"
+      f"expected = {expected_stdio!r}\n"
+      "for fd in range(3):\n"
+      "  try: os.fstat(fd)\n"
+      "  except OSError: assert not expected[fd], fd\n"
+      "  else: assert expected[fd], fd\n"
+      "data = bytearray()\n"
+      "while True:\n"
+      "  piece = os.read(3, 65536)\n"
+      "  if not piece: break\n"
+      "  data.extend(piece)\n"
+      f"assert data == {frame!r}\n"
+      "os.write(4, b'R')\n"
+    )
+    executable.chmod(0o755)
+    report = tmp_path / "result.json"
+    program = textwrap.dedent(r"""
+      import fcntl, json, os, resource, sys
+      from pathlib import Path
+      from unittest.mock import patch
+      root, engine, directory, report = sys.argv[1:5]
+      closed, detach = int(sys.argv[5]), sys.argv[6] == 'True'
+      sys.path.insert(0, root)
+      from kanibako.runtime import container
+      from kanibako.secret_delivery import SecretPayload, SecretValue
+      assert Path(container.__file__).is_relative_to(root)
+      initial_limit = resource.getrlimit(resource.RLIMIT_NOFILE)
+      for fd in range(3):
+        if closed & (1 << fd): os.close(fd)
+      preserved = {fd: (os.fstat(fd), fcntl.fcntl(fd, fcntl.F_GETFD))
+                   for fd in range(3) if not (closed & (1 << fd))}
+      observed = []
+      real_pipe = os.pipe2
+      def pipe(flags):
+        pair = real_pipe(flags)
+        observed.append(pair)
+        return pair
+      parent_limit = 6 if closed == 7 else 32
+      resource.setrlimit(resource.RLIMIT_NOFILE, (parent_limit, initial_limit[1]))
+      script = 'import resource; resource.setrlimit(resource.RLIMIT_NOFILE, (6, 6))\n' + container._SECRET_EXEC
+      try:
+        with patch.object(container.os, 'pipe2', side_effect=pipe), patch.object(
+          container, '_SECRET_EXEC', script
+        ):
+          status = container.ContainerRuntime(command=engine).run(
+            'image', shell_path=Path(directory) / 'home',
+            project_path=Path(directory) / 'work', vault_ro_path=None,
+            vault_rw_path=None, enable_vault=False, detach=detach,
+            secret_payload=SecretPayload((SecretValue('TOKEN', b'opaque'),)),
+            publication_timeout=2,
+          )
+        assert status == 0
+        assert len(observed) == 2
+        if closed == 7: assert observed == [(0, 1), (2, 3)], observed
+        for fd, original in preserved.items():
+          assert (os.fstat(fd), fcntl.fcntl(fd, fcntl.F_GETFD)) == original
+        record = {'status': status, 'pipes': observed, 'parent_limit': parent_limit}
+      except BaseException as error:
+        record = {'error': type(error).__name__, 'detail': str(error), 'pipes': observed}
+      resource.setrlimit(resource.RLIMIT_NOFILE, initial_limit)
+      Path(report).write_text(json.dumps(record))
+      os._exit(0)
+    """)
+    result = subprocess.run(
+      [
+        sys.executable,
+        "-I",
+        "-c",
+        program,
+        str(Path(container.__file__).parents[2]),
+        str(executable),
+        str(tmp_path),
+        str(report),
+        str(closed),
+        str(detach),
+      ],
+      capture_output=True,
+      text=True,
+      timeout=10,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    import json
+
+    record = json.loads(report.read_text())
+    assert record.get("status") == 0, record
+
+  @pytest.mark.parametrize(
+    "sources,closed,limit,exhausted",
+    [
+      ((3, 4), 7, 5, False),
+      ((4, 3), 7, 5, False),
+      ((4, 3), 6, 5, False),
+      ((4, 3), 0, 5, True),
+      ((0, 3), 7, 5, False),
+      ((3, 0), 7, 5, False),
+      ((4, 8), 7, 6, False),
+      ((8, 4), 7, 6, False),
+      ((7, 9), 7, 6, False),
+    ],
+  )
+  def test_trampoline_orders_real_pipe_edges_and_allocates_only_for_cycles(
+    self, tmp_path, sources, closed, limit, exhausted
+  ):
+    import subprocess
+    import sys
+    import textwrap
+    from kanibako.runtime.container import _SECRET_EXEC
+
+    report = tmp_path / "result"
+    program = textwrap.dedent(r"""
+      import errno, fcntl, os, resource, sys
+      script, report = sys.argv[1:3]
+      sources = [int(fd) for fd in sys.argv[3:5]]
+      closed, limit = int(sys.argv[5]), int(sys.argv[6])
+      copies = []
+      for value in (b'a', b'b'):
+        read, write = os.pipe2(os.O_CLOEXEC)
+        os.write(write, value)
+        os.close(write)
+        copies.append(fcntl.fcntl(read, fcntl.F_DUPFD_CLOEXEC, 20))
+        os.close(read)
+      for fd in range(3):
+        if closed & (1 << fd): os.close(fd)
+      for source, copy in zip(sources, copies):
+        os.dup2(copy, source, inheritable=False)
+        os.close(copy)
+      checker = (
+        "import os; assert os.read(3, 2) == b'a'; assert os.read(4, 2) == b'b'; "
+        "assert os.get_inheritable(3) and os.get_inheritable(4); "
+        "from pathlib import Path; "
+      )
+      expected = {3, 4} | {fd for fd in range(3) if not closed & (1 << fd)}
+      checker += '\nfor fd in range(10):\n'
+      checker += '  try: os.fstat(fd)\n'
+      checker += f'  except OSError: assert fd not in {expected!r}, fd\n'
+      checker += f'  else: assert fd in {expected!r}, fd\n'
+      checker += f'Path({report!r}).write_text("ok")\n'
+      initial_limit = resource.getrlimit(resource.RLIMIT_NOFILE)
+      resource.setrlimit(resource.RLIMIT_NOFILE, (limit, initial_limit[1]))
+      sys.argv = ['trampoline', *map(str, sources), '3', '4', '0',
+                  sys.executable, '-I', '-c', checker]
+      try:
+        exec(script, {'__name__': '__main__'})
+      except OSError as error:
+        assert error.errno == errno.EMFILE, error
+        resource.setrlimit(resource.RLIMIT_NOFILE, initial_limit)
+        with open(report, 'w') as output: output.write('EMFILE')
+        os._exit(0)
+    """)
+    result = subprocess.run(
+      [
+        sys.executable,
+        "-I",
+        "-c",
+        program,
+        _SECRET_EXEC,
+        str(report),
+        *map(str, sources),
+        str(closed),
+        str(limit),
+      ],
+      capture_output=True,
+      text=True,
+      timeout=5,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert report.read_text() == ("EMFILE" if exhausted else "ok")
+
+  @pytest.mark.parametrize("closed", [0, 1, 7])
+  def test_detached_output_reuses_its_slots_without_a_spare(self, tmp_path, closed):
+    import subprocess
+    import sys
+    import textwrap
+    from kanibako.runtime.container import _SECRET_EXEC
+
+    report = tmp_path / "result"
+    driver = textwrap.dedent(r"""
+      import fcntl, os, resource, signal, sys
+      script, report, closed = sys.argv[1], sys.argv[2], int(sys.argv[3])
+      copies = []
+      for value in (b'a', b'b'):
+        read, write = os.pipe2(os.O_CLOEXEC)
+        os.write(write, value)
+        os.close(write)
+        copies.append(fcntl.fcntl(read, fcntl.F_DUPFD_CLOEXEC, 20))
+        os.close(read)
+      for target, copy in zip((3, 4), copies):
+        os.dup2(copy, target, inheritable=False)
+        os.close(copy)
+      stdin = os.fstat(0)
+      for fd in range(3):
+        if closed & (1 << fd): os.close(fd)
+      limit = resource.getrlimit(resource.RLIMIT_NOFILE)
+      resource.setrlimit(resource.RLIMIT_NOFILE, (5, limit[1]))
+      def observe(command, arguments):
+        assert command == 'engine' and arguments == ['engine']
+        assert os.read(3, 2) == b'a' and os.read(4, 2) == b'b'
+        assert all(os.get_inheritable(fd) for fd in (1, 2, 3, 4))
+        if closed & 1:
+          try: os.fstat(0)
+          except OSError: pass
+          else: raise AssertionError('stdin reopened')
+        else:
+          assert os.fstat(0) == stdin
+        expected = os.stat(os.devnull)
+        for fd in (1, 2):
+          actual = os.fstat(fd)
+          assert (actual.st_dev, actual.st_ino) == (expected.st_dev, expected.st_ino)
+          os.write(fd, b'discarded-marker')
+        resource.setrlimit(resource.RLIMIT_NOFILE, limit)
+        with open(report, 'w') as output: output.write('ok')
+        raise SystemExit(0)
+      os.execvp = observe
+      sys.argv = ['trampoline', '3', '4', '3', '4', '1', 'engine']
+      exec(script, {'__name__': '__main__'})
+    """)
+    result = subprocess.run(
+      [sys.executable, "-I", "-c", driver, _SECRET_EXEC, str(report), str(closed)],
+      capture_output=True,
+      text=True,
+      timeout=5,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert report.read_text() == "ok"
+    assert result.stdout == result.stderr == ""
+
+  @pytest.mark.parametrize("detach", [False, True])
+  @pytest.mark.parametrize("status", [0, 129])
+  @pytest.mark.parametrize("ack", [b"R", b"", b"X", b"RR"])
+  def test_queued_readiness_is_consumed_before_foreground_exit_status(
+    self, tmp_path, detach, status, ack
+  ):
+    import selectors
+    import subprocess
+    from kanibako.secret_delivery import SecretPayload, SecretValue
+
+    runtime = _credential_engine(
+      tmp_path,
+      f"while os.read(3, 65536): pass\nos.write(4, {ack!r})\nraise SystemExit({status})",
+    )
+    original_popen = subprocess.Popen
+    original_selector = selectors.DefaultSelector
+    processes = []
+
+    def spawn(*args, **kwargs):
+      process = original_popen(*args, **kwargs)
+      processes.append(process)
+      return process
+
+    class DelayedReadiness:
+      def __init__(self):
+        self.inner = original_selector()
+        self.delayed = False
+
+      def __enter__(self):
+        return self
+
+      def __exit__(self, *args):
+        self.inner.close()
+
+      def register(self, *args):
+        return self.inner.register(*args)
+
+      def unregister(self, *args):
+        return self.inner.unregister(*args)
+
+      def select(self, timeout):
+        events = self.inner.select(timeout)
+        if not self.delayed and any(key.events == selectors.EVENT_READ for key, _ in events):
+          self.delayed = True
+          assert processes[0].wait(timeout=2) == status
+          return []
+        return events
+
+    with (
+      patch("kanibako.runtime.container.subprocess.Popen", side_effect=spawn),
+      patch("kanibako.runtime.container.selectors.DefaultSelector", DelayedReadiness),
+    ):
+      payload = SecretPayload((SecretValue("TOKEN", b"opaque"),))
+      if ack == b"R" and (not detach or status == 0):
+        assert _credential_run(runtime, tmp_path, payload, detach=detach) == status
+      else:
+        with pytest.raises(ContainerError, match="Credential publication failed"):
+          _credential_run(runtime, tmp_path, payload, detach=detach)
+
+  @pytest.mark.parametrize("detach", [False, True])
+  def test_early_valid_ack_and_exit_do_not_replace_complete_pumping(self, tmp_path, detach):
+    from kanibako.secret_delivery import SecretPayload, SecretValue
+
+    runtime = _credential_engine(tmp_path, "os.read(3, 1)\nos.write(4, b'R')\nraise SystemExit(0)")
+    with pytest.raises(ContainerError, match="Credential publication failed"):
+      _credential_run(
+        runtime,
+        tmp_path,
+        SecretPayload((SecretValue("TOKEN", b"x" * 1048576),)),
+        detach=detach,
+        publication_timeout=1,
+      )
+
+  @pytest.mark.parametrize(
+    "detach,limit,ready", [(True, 5, True), (False, 5, False), (False, 6, True), (True, 6, True)]
+  )
+  def test_relocated_real_pipe_cycle_reclaims_only_detached_output(
+    self, tmp_path, detach, limit, ready
+  ):
+    import platform
+    import struct
+    import subprocess
+    import sys
+    import textwrap
+    from kanibako.runtime import container
+
+    if sys.platform != "linux" or platform.machine() not in ("x86_64", "amd64"):
+      pytest.skip("static syscall fixture requires Linux x86-64")
+    code = bytes.fromhex(
+      "4881ec0010000031c0bf030000004889e6ba001000000f054885c07fea7822"
+      "c6042452b801000000bf040000004889e6ba010000000f054883f8017504"
+      "31ffeb05bf01000000b83c0000000f05"
+    )
+    size = 120 + len(code)
+    header = struct.pack(
+      "<16sHHIQQQIHHHHHH",
+      b"\x7fELF\x02\x01\x01" + b"\0" * 9,
+      2,
+      62,
+      1,
+      0x400078,
+      64,
+      0,
+      0,
+      64,
+      56,
+      1,
+      0,
+      0,
+      0,
+    )
+    segment = struct.pack("<IIQQQQQQ", 1, 7, 0, 0x400000, 0x400000, size, size, 4096)
+    engine = tmp_path / "native-ack-engine"
+    engine.write_bytes(header + segment + code)
+    engine.chmod(0o755)
+    driver = textwrap.dedent(r"""
+      import fcntl, os, stat, sys
+      from pathlib import Path
+      from unittest.mock import patch
+      root, engine, directory = sys.argv[1:4]
+      detach, limit, ready = sys.argv[4] == 'True', int(sys.argv[5]), sys.argv[6] == 'True'
+      sys.path.insert(0, root)
+      from kanibako.runtime import container
+      from kanibako.errors import ContainerError
+      from kanibako.secret_delivery import SecretPayload, SecretValue
+      assert Path(container.__file__).is_relative_to(root)
+      preserved = {fd: (os.fstat(fd), fcntl.fcntl(fd, fcntl.F_GETFD)) for fd in range(3)}
+      actual_pipe = os.pipe2
+      observed = []
+      def pipe(flags):
+        pair = actual_pipe(flags)
+        copies = [fcntl.fcntl(fd, fcntl.F_DUPFD_CLOEXEC, 40) for fd in pair]
+        for fd in pair: os.close(fd)
+        targets = (4, 20) if not observed else (21, 3)
+        for source, target in zip(copies, targets):
+          os.dup2(source, target, inheritable=False)
+          os.close(source)
+        assert all(stat.S_ISFIFO(os.fstat(fd).st_mode) for fd in targets)
+        assert fcntl.fcntl(targets[0], fcntl.F_GETFL) & os.O_ACCMODE == os.O_RDONLY
+        assert fcntl.fcntl(targets[1], fcntl.F_GETFL) & os.O_ACCMODE == os.O_WRONLY
+        observed.append(targets)
+        return targets
+      script = f'import resource, signal; resource.setrlimit(resource.RLIMIT_NOFILE, ({limit}, {limit}))\n' + container._SECRET_EXEC
+      try:
+        with patch.object(container.os, 'pipe2', side_effect=pipe), patch.object(container, '_SECRET_EXEC', script):
+          status = container.ContainerRuntime(command=engine).run(
+            'image', shell_path=Path(directory) / 'home', project_path=Path(directory) / 'work',
+            vault_ro_path=None, vault_rw_path=None, enable_vault=False,
+            secret_payload=SecretPayload((SecretValue('TOKEN', b'opaque'),)),
+            detach=detach, publication_timeout=1,
+          )
+      except ContainerError:
+        assert not ready
+      else:
+        assert ready and status == 0
+      assert observed == [(4, 20), (21, 3)], observed
+      for fd, original in preserved.items():
+        assert (os.fstat(fd), fcntl.fcntl(fd, fcntl.F_GETFD)) == original
+    """)
+    result = subprocess.run(
+      [
+        sys.executable,
+        "-I",
+        "-c",
+        driver,
+        str(Path(container.__file__).parents[2]),
+        str(engine),
+        str(tmp_path),
+        str(detach),
+        str(limit),
+        str(ready),
+      ],
+      capture_output=True,
+      text=True,
+      timeout=8,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr

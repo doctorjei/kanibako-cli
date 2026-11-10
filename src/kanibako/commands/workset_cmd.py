@@ -1313,8 +1313,11 @@ def _run_workset_config(args: argparse.Namespace) -> int:
   from kanibako.settings.settings_resolve import SettingsError
   from kanibako.settings.config_interface import (
     ConfigAction,
+    addressed_agent_input,
     get_config_value,
+    identity_valid_agents,
     parse_config_arg,
+    project_agent_input,
     reset_all,
     reset_config_value,
     set_config_value,
@@ -1335,6 +1338,25 @@ def _run_workset_config(args: argparse.Namespace) -> int:
   # ordinary key in ``ws_config``, so there is no second write target here.
 
   key_value = getattr(args, "key_value", None)
+
+  def _addressed_input(raw_key: str):
+    resolved = addressed_agent_input(raw_key)
+    if resolved is None:
+      return None, None, None, None
+    reason = str(resolved.unavailable) if resolved.unavailable is not None else None
+    target = None
+    if reason is None:
+      from kanibako.targets import resolve_target
+
+      try:
+        target = resolve_target(resolved.identity.target_name)
+      except Exception as exc:
+        reason = str(exc)
+    try:
+      values, credential = project_agent_input(resolved, target)
+    except Exception as exc:
+      values, credential, reason = None, None, str(exc)
+    return resolved.identity, values, credential, reason
 
   # Handle --reset mode
   if args.reset is not None:
@@ -1361,6 +1383,7 @@ def _run_workset_config(args: argparse.Namespace) -> int:
       return 0
 
     reset_key = args.reset
+    identity, persona_values, persona_credential, target_error = _addressed_input(reset_key)
     # ⚑ Full launch cascade so the cleared-message can name the now-effective value
     # and its source tier — same two arms as the SET branch below.
     msg = reset_config_value(
@@ -1369,6 +1392,11 @@ def _run_workset_config(args: argparse.Namespace) -> int:
       command_scope=ConfigLevel.workset,
       cascade_system_path=std.settings,
       cascade_workset_path=ws_config,
+      cascade_agent_name=identity.node if identity is not None else "",
+      cascade_agent_identity=identity,
+      cascade_persona_values=persona_values,
+      cascade_persona_credential=persona_credential,
+      target_error=target_error,
     )
     if msg.startswith("Error:"):
       print(msg, file=sys.stderr)
@@ -1421,6 +1449,9 @@ def _run_workset_config(args: argparse.Namespace) -> int:
       return rc
     return _print_effective_derivations(ws, std)
 
+  identity, persona_values, persona_credential, target_error = _addressed_input(key)
+  valid_agents = identity_valid_agents(identity)
+
   if action == ConfigAction.get:
     # ⚑ Refused at the HANDLER, not in the engine: the get engine returns VALUES and
     # never error strings, so both guards below have to fire before it is called.
@@ -1432,7 +1463,7 @@ def _run_workset_config(args: argparse.Namespace) -> int:
     )
 
     _bare_err = bare_agent_key_scope_error(
-      resolve_key(key),
+      resolve_key(key, valid_agents=valid_agents),
       ConfigLevel.workset,
       verb="read",
     )
@@ -1452,7 +1483,7 @@ def _run_workset_config(args: argparse.Namespace) -> int:
     # ``scope_read_key_error`` states — a generic "not a key" must not overwrite
     # either cure above.  No redirect arm: a workset spans several boxes, so there
     # is no single agent to mirror, which is exactly what the first guard says.
-    _key_err = scope_read_key_error(key, ConfigLevel.workset)
+    _key_err = scope_read_key_error(key, ConfigLevel.workset, valid_agents=valid_agents)
     if _key_err is not None:
       print(_key_err, file=sys.stderr)
       return 1
@@ -1465,9 +1496,14 @@ def _run_workset_config(args: argparse.Namespace) -> int:
       agents_root=std.agents,
       node_store=False,
       command_scope=ConfigLevel.workset,
+      active_agent=identity.node if identity is not None else None,
       cascade_system_path=std.settings,
       std=std,
       ws=ws,
+      cascade_agent_identity=identity,
+      cascade_persona_values=persona_values,
+      cascade_persona_credential=persona_credential,
+      target_error=target_error,
     )
     if val is not None:
       print(val)
@@ -1497,9 +1533,14 @@ def _run_workset_config(args: argparse.Namespace) -> int:
       value,
       config_path=ws_config,
       cascade_system_path=std.settings,
+      cascade_agent_name=identity.node if identity is not None else "",
       command_scope=ConfigLevel.workset,
       std=std,
       ws=ws,
+      cascade_agent_identity=identity,
+      cascade_persona_values=persona_values,
+      cascade_persona_credential=persona_credential,
+      target_error=target_error,
       force=args.force,
     )
     if msg.startswith("Error:"):

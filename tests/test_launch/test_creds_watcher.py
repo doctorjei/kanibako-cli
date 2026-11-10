@@ -690,6 +690,7 @@ def test_every_stamp_reader_goes_through_running_box_agent():
     m_ctx.assert_called_once_with("S", "P", "navigator℘claude")
     m_wb.assert_called_once_with("T", "P", auth_src="A")
     engine = MagicMock()
+    engine.inspect_creation_metadata.return_value = ("remote-id", {})
     engine.container_image.return_value = "img"
     with (
       patch.object(code_cmd, "_extension_for_agent", return_value=None) as m_ext,
@@ -698,7 +699,9 @@ def test_every_stamp_reader_goes_through_running_box_agent():
     ):
       code_cmd._seed_remote_attached_config(engine, "box-c")
     m_ext.assert_called_once_with("claude")
-  assert [c.args[1] for c in m_read.call_args_list] == ["box-c", "box-c", "box-c"]
+  assert [c.args[1] for c in m_read.call_args_list] == ["box-c", "box-c", "remote-id"]
+  engine.inspect_creation_metadata.assert_called_once_with("box-c")
+  engine.container_image.assert_called_once_with("remote-id")
 
 
 def test_writeback_context_preserves_registered_identity(tmp_path):
@@ -707,6 +710,7 @@ def test_writeback_context_preserves_registered_identity(tmp_path):
   from kanibako.agent_ref import AgentIdentity
   from kanibako.launch.creds_watcher import box_writeback_context
   from kanibako.settings.agent_config import agent_settings_path
+  from kanibako.settings.config import AgentResolution
 
   identity = AgentIdentity(
     node="navigator",
@@ -719,7 +723,9 @@ def test_writeback_context_preserves_registered_identity(tmp_path):
   std, proj = MagicMock(), MagicMock()
   std.agents = tmp_path / "config" / "agents"
   with (
-    patch("kanibako.settings.config.resolve_agent_identity", return_value=identity) as m_identity,
+    patch(
+      "kanibako.settings.config.resolve_agent_input", return_value=AgentResolution(identity)
+    ) as m_identity,
     patch("kanibako.targets.resolve_target") as m_target,
     patch("kanibako.commands.start._resolve_box_auth_source") as m_auth,
   ):
@@ -732,7 +738,211 @@ def test_writeback_context_preserves_registered_identity(tmp_path):
     "proj": proj,
     "agent_name": "navigator",
     "agent_identity": identity,
+    "persona_values": None,
     "system_settings_path": std.settings,
     "agent_cfg_path": agent_settings_path(std.agents, "navigator"),
     "selection_level": {"system.agent": "navigator"},
   }
+
+
+@pytest.fixture
+def registered_auth_context(tmp_path, monkeypatch):
+  from types import SimpleNamespace
+  from unittest.mock import Mock
+
+  from kanibako import persona_store, targets
+  from kanibako.plugins.claude import ClaudeTarget
+  from kanibako.settings import config_io, settings_launch as sl
+  from kanibako.settings.settings_resolve import ResolveCtx
+
+  std = SimpleNamespace(settings=tmp_path / "settings.yaml", agents=tmp_path / "agents")
+  proj = SimpleNamespace(mode=SimpleNamespace(value="named"))
+  config_io.dump_doc(std.settings, {"system": {"agent": "goose"}})
+  native = {
+    "env": {
+      "AUTH_STORE": str(tmp_path / "live-auth"),
+      "ANTHROPIC_BASE_URL": "https://synthetic.invalid",
+    }
+  }
+  root = tmp_path / "captured-PG"
+  location = Mock(return_value=root)
+  listing = Mock(return_value=["Navigator"])
+  load = Mock(
+    side_effect=lambda name, *, root: (
+      root / name,
+      {
+        "agent": {
+          "persona": {"name": "Guide"},
+          "harness": {
+            "name": "claude",
+            "config_store": {"env": dict(native["env"])},
+            "auth_var": "ANTHROPIC_API_KEY",
+          },
+          "secret": {"backend": "synthetic-manager"},
+        }
+      },
+    )
+  )
+  fetch = Mock(side_effect=AssertionError("auth-source resolution must not fetch a secret"))
+  projection = Mock(wraps=persona_store.project_registered_persona)
+  monkeypatch.setattr(targets, "discover_targets", lambda: {"claude": ClaudeTarget})
+  monkeypatch.setattr(config_io, "persona_store_location", location)
+  monkeypatch.setattr(config_io, "persona_store_agents", listing)
+  monkeypatch.setattr(config_io, "load_persona_agent", load)
+  monkeypatch.setattr(config_io, "fetch_persona_secret", fetch)
+  monkeypatch.setattr(persona_store, "project_registered_persona", projection)
+
+  def inputs(**kwargs):
+    identity = kwargs["agent_identity"]
+    assert identity.node == "navigator"
+    assert kwargs["agent_name"] == "navigator"
+    return sl.LaunchInputs(
+      sl.ResolveSubject.BOX,
+      ResolveCtx(identity.node, "ReviewSet", str(tmp_path), {}),
+      std.settings,
+      {"workset.auth.path": "{agent.navigator.env.AUTH_STORE}"},
+      {},
+      {},
+      {},
+      {
+        "meta.box.agent.auth.share_support": True,
+        "system.auth.share_allowed": True,
+        "workset.auth.share_allowed": True,
+        "workset.auth.global_sync": True,
+        "box.auth.global_enabled": True,
+        "box.auth.workset_enabled": True,
+        "meta.box.auth.workset_path": "{workset.auth.path}/{system.agent}",
+      },
+      None,
+      None,
+      (),
+      agent_identity=identity,
+    )
+
+  monkeypatch.setattr(sl, "resolve_inputs", inputs)
+  yield SimpleNamespace(
+    std=std,
+    proj=proj,
+    native=native,
+    root=root,
+    location=location,
+    listing=listing,
+    load=load,
+    fetch=fetch,
+    projection=projection,
+  )
+  fetch.assert_not_called()
+
+
+def test_registered_stamp_resolves_live_auth_once_per_operation(registered_auth_context):
+  from kanibako.launch.creds_watcher import box_writeback_context
+
+  ctx = registered_auth_context
+  for index, directory in enumerate(("live-auth", "changed-auth"), 1):
+    ctx.native["env"]["AUTH_STORE"] = str(ctx.root.parent / directory)
+    target, auth = box_writeback_context(ctx.std, ctx.proj, "navigator")
+    assert target.name == "claude"
+    assert auth.tier == "workset"
+    assert auth.workset_source == str(ctx.root.parent / directory / "navigator")
+    assert ctx.location.call_count == index
+    assert ctx.listing.call_count == index
+    assert ctx.load.call_count == index
+    assert ctx.projection.call_count == index
+    assert ctx.load.call_args.args == ("Navigator",)
+    assert ctx.load.call_args.kwargs == {"root": ctx.root}
+    captured, projected_target = ctx.projection.call_args.args
+    assert captured.store_root == ctx.root
+    assert captured.identity.entry_path == ctx.root / "Navigator"
+    assert projected_target is target
+    assert not ctx.std.agents.exists()
+  ctx.fetch.assert_not_called()
+
+
+def test_registered_stamp_auth_keeps_file_precedence(registered_auth_context):
+  from kanibako.launch.creds_watcher import box_writeback_context
+  from kanibako.settings.agent_config import agent_settings_path
+  from kanibako.settings.config_io import dump_doc, load_doc
+
+  ctx = registered_auth_context
+  path = agent_settings_path(ctx.std.agents, "navigator")
+  contents = {"self": {"env": {"AUTH_STORE": str(ctx.root.parent / "file-auth")}}}
+  dump_doc(path, contents)
+  target, auth = box_writeback_context(ctx.std, ctx.proj, "navigator")
+  assert target.name == "claude"
+  assert auth.workset_source == str(ctx.root.parent / "file-auth" / "navigator")
+  assert load_doc(path) == contents
+  ctx.load.assert_called_once_with("Navigator", root=ctx.root)
+  assert ctx.projection.call_count == 1
+  ctx.fetch.assert_not_called()
+
+
+def test_stop_writeback_uses_registered_stamp_live_auth(registered_auth_context):
+  from unittest.mock import Mock, patch
+
+  from kanibako.commands.stop import _writeback_on_stop
+
+  ctx = registered_auth_context
+  runtime = Mock()
+  runtime.inspect_env.return_value = "Navigator"
+  with patch("kanibako.commands.start.writeback_session_credentials") as writeback:
+    _writeback_on_stop(runtime, ctx.proj, "running-id", std=ctx.std, config=None, box_is_live=True)
+  writeback.assert_called_once()
+  assert writeback.call_args.args[0].name == "claude"
+  assert writeback.call_args.args[1] is ctx.proj
+  auth = writeback.call_args.kwargs["auth_src"]
+  assert auth.tier == "workset"
+  assert auth.workset_source == str(ctx.root.parent / "live-auth" / "navigator")
+  ctx.load.assert_called_once_with("Navigator", root=ctx.root)
+  assert ctx.projection.call_count == 1
+  ctx.fetch.assert_not_called()
+
+
+@pytest.mark.parametrize("node", ["claude", "shell"])
+def test_native_stamp_context_never_reads_pg(monkeypatch, node):
+  from unittest.mock import MagicMock, Mock, patch
+
+  from kanibako import persona_store, targets
+  from kanibako.launch.creds_watcher import box_writeback_context
+  from kanibako.plugins.claude import ClaudeTarget
+  from kanibako.targets.shell import ShellTarget
+
+  forbidden = Mock(side_effect=AssertionError("native stamps never open PG"))
+  monkeypatch.setattr(persona_store, "read_registered_persona", forbidden)
+  monkeypatch.setattr(
+    targets, "discover_targets", lambda: {"claude": ClaudeTarget, "shell": ShellTarget}
+  )
+  with patch("kanibako.commands.start._resolve_box_auth_source") as auth:
+    target, result = box_writeback_context(MagicMock(), MagicMock(), node)
+  assert target.name == node
+  assert result is auth.return_value
+  assert auth.call_args.kwargs["agent_name"] == node
+  assert auth.call_args.kwargs["persona_values"] is None
+  forbidden.assert_not_called()
+
+
+def test_remote_attach_does_not_resolve_local_pg(tmp_path, monkeypatch):
+  from unittest.mock import Mock, patch
+
+  from kanibako.commands import code_cmd
+  from kanibako.settings import config, config_io
+
+  forbidden = Mock(side_effect=AssertionError("remote attach cannot use local PG"))
+  monkeypatch.setattr(config, "resolve_agent_input", forbidden)
+  for name in ("persona_store_location", "persona_store_agents", "load_persona_agent"):
+    monkeypatch.setattr(config_io, name, forbidden)
+  engine = Mock()
+  engine.inspect_creation_metadata.return_value = ("remote-id", {})
+  engine.container_image.return_value = "remote-image"
+  engine.inspect_env.return_value = "Guide+claude"
+  with (
+    patch.object(
+      code_cmd, "attached_container_config_path", return_value=tmp_path / "remote.json"
+    ),
+    patch.object(code_cmd, "_extension_for_agent", return_value="remote-ext") as extension,
+    patch.object(code_cmd, "_write_attached_config") as write,
+  ):
+    code_cmd._seed_remote_attached_config(engine, "remote-name")
+  engine.inspect_env.assert_called_once_with("remote-id", "KANIBAKO_AGENT")
+  extension.assert_called_once_with("claude")
+  write.assert_called_once_with(tmp_path / "remote.json", "remote-ext")
+  forbidden.assert_not_called()

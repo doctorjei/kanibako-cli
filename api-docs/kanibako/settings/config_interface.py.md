@@ -12,55 +12,60 @@ NULL_REFUSED_BEHAVIOR_KEYS = frozenset({'access', 'allow_helpers', 'continue_mod
 FLOOR_TIER = 'built-in default'
 _log = get_logger(__name__)
 _EARLY_KEY_DOORS = frozenset({ConfigLevel.workset, ConfigLevel.system})
-_SET_VALUE_DOORS: 'tuple[_SetValueDoor, ...]' = (_SetValueDoor(lambda key, value: value is None and refuses_null_path_key(key), ERR_CONFIG_NULL_PATH_SET_HEAD, lambda value: ERR_CONFIG_NULL_PATH_REASON, 'path'), _SetValueDoor(lambda key, value: value is None and refuses_null_box_scalar(key), ERR_BOX_SCALAR_NULL_SET_HEAD, lambda value: ERR_BOX_SCALAR_NULL_REASON, 'value'), _SetValueDoor(lambda key, value: value is None and refuses_null_behavior_key(key), ERR_BEHAVIOR_NULL_SET_HEAD, lambda value: ERR_BEHAVIOR_NULL_REASON, 'value'), _SetValueDoor(lambda key, value: value is not None and refuses_box_store_value(key, value), ERR_BOX_STORE_SET_HEAD, lambda value: (ERR_BOX_STORE_TRAILING_REASON if value is not None and value.endswith('/') else ERR_BOX_STORE_EMPTY_REASON) + '.', 'path'))
+_SET_VALUE_DOORS: 'tuple[_SetValueDoor, ...]' = (_SetValueDoor(lambda key, value, identity: value is None and refuses_null_path_key(key), ERR_CONFIG_NULL_PATH_SET_HEAD, lambda value: ERR_CONFIG_NULL_PATH_REASON, 'path'), _SetValueDoor(lambda key, value, identity: value is None and refuses_null_box_scalar(key), ERR_BOX_SCALAR_NULL_SET_HEAD, lambda value: ERR_BOX_SCALAR_NULL_REASON, 'value'), _SetValueDoor(lambda key, value, identity: value is None and refuses_null_behavior_key(key, identity=identity), ERR_BEHAVIOR_NULL_SET_HEAD, lambda value: ERR_BEHAVIOR_NULL_REASON, 'value'), _SetValueDoor(lambda key, value, identity: value is not None and refuses_box_store_value(key, value), ERR_BOX_STORE_SET_HEAD, lambda value: (ERR_BOX_STORE_TRAILING_REASON if value is not None and value.endswith('/') else ERR_BOX_STORE_EMPTY_REASON) + '.', 'path'))
 ```
 
 ## Functions
 ```
 def parse_config_arg(arg: str | None, *, set_null: bool=False) -> 'tuple[ConfigAction, str, str | None]'
-def effective_behavior_default(node: str, key: str) -> 'str | None'
-def refuses_null_behavior_key(canonical: str) -> bool
-def get_config_value(key: str, *, global_config_path: Path, project_toml: Path | None=None, env_global: Path | None=None, env_project: Path | None=None, system_settings_path: Path | None=None, agents_root: Path | None=None, command_scope: 'ConfigLevel | None'=None, active_agent: str | None=None, cascade_system_path: Path | None=None, cascade_workset_path: Path | None=None, node_store: bool=True, std: Any=None, proj: Any=None, ws: Any=None) -> str | None
-def set_config_value(key: str, value: 'str | None', *, config_path: Path, env_path: Path | None=None, system_settings_path: Path | None=None, cascade_system_path: Path | None=None, cascade_agent_path: Path | None=None, cascade_workset_path: Path | None=None, cascade_box_path: Path | None=None, cascade_agent_name: str='', command_scope: ConfigLevel | None=None, agents_root: Path | None=None, std: Any=None, proj: Any=None, ws: Any=None, target_error: 'str | None'=None, force: bool=False, node_store: bool=True) -> str
+def addressed_agent_input(raw_key: str) -> AgentResolution | None
+def addressed_agent_identity(raw_key: str) -> AgentIdentity | None
+def project_agent_input(resolved: AgentResolution, target: Target | None) -> tuple[Mapping[str, str | None] | None, PersonaCredential | None]
+def identity_valid_agents(identity: AgentIdentity | None) -> AgentNames | None
+def effective_behavior_default(node: str, key: str, *, identity: AgentIdentity | None=None) -> 'str | None'
+def refuses_null_behavior_key(canonical: str, *, identity: AgentIdentity | None=None) -> bool
+def get_config_value(key: str, *, global_config_path: Path, project_toml: Path | None=None, env_global: Path | None=None, env_project: Path | None=None, system_settings_path: Path | None=None, agents_root: Path | None=None, command_scope: 'ConfigLevel | None'=None, active_agent: str | None=None, cascade_system_path: Path | None=None, cascade_workset_path: Path | None=None, node_store: bool=True, std: Any=None, proj: Any=None, ws: Any=None, cascade_agent_identity: AgentIdentity | None=None, cascade_persona_values: Mapping[str, str | None] | None=None, cascade_persona_credential: PersonaCredential | None=None, target_error: str | None=None) -> str | None
+def set_config_value(key: str, value: 'str | None', *, config_path: Path, env_path: Path | None=None, system_settings_path: Path | None=None, cascade_system_path: Path | None=None, cascade_agent_path: Path | None=None, cascade_workset_path: Path | None=None, cascade_box_path: Path | None=None, cascade_agent_name: str='', command_scope: ConfigLevel | None=None, agents_root: Path | None=None, std: Any=None, proj: Any=None, ws: Any=None, target_error: 'str | None'=None, cascade_agent_identity: AgentIdentity | None=None, force: bool=False, node_store: bool=True, cascade_persona_values: Mapping[str, str | None] | None=None, cascade_persona_credential: PersonaCredential | None=None) -> str
 def persist_creation_level(level: 'Mapping[str, object] | None', *, typed_agent: 'str | None', box_settings_path: Path, workset_settings_path: 'Path | None', std: Any, proj: Any) -> None
 def persist_creation_env(cli_env: 'Mapping[str, str] | None', slots: 'Mapping[str, Any]', *, secret_names: 'Mapping[str, Sequence[str]]', box_settings_path: Path, workset_settings_path: 'Path | None', std: Any, proj: Any) -> None
-def reset_config_value(key: str, *, config_path: Path, env_path: Path | None=None, system_settings_path: Path | None=None, command_scope: ConfigLevel | None=None, cascade_system_path: Path | None=None, cascade_agent_path: Path | None=None, cascade_workset_path: Path | None=None, cascade_box_path: Path | None=None, cascade_agent_name: str='', agents_root: Path | None=None, node_store: bool=True) -> str
-def effective_value(canonical: str, sections: tuple[str, ...], leaf: str, *, agent_name: str, system_path: Path | None, agent_path: Path | None, workset_path: Path | None, box_path: Path | None, floor: 'Mapping[str, object] | None'=None, inputs: 'LaunchInputs | None'=None) -> 'tuple[str, str] | None'
+def reset_config_value(key: str, *, config_path: Path, env_path: Path | None=None, system_settings_path: Path | None=None, command_scope: ConfigLevel | None=None, cascade_system_path: Path | None=None, cascade_agent_path: Path | None=None, cascade_workset_path: Path | None=None, cascade_box_path: Path | None=None, cascade_agent_name: str='', agents_root: Path | None=None, node_store: bool=True, cascade_agent_identity: AgentIdentity | None=None, cascade_persona_values: Mapping[str, str | None] | None=None, cascade_persona_credential: PersonaCredential | None=None, target_error: str | None=None) -> str
+def effective_value(canonical: str, sections: tuple[str, ...], leaf: str, *, agent_name: str, system_path: Path | None, agent_path: Path | None, workset_path: Path | None, box_path: Path | None, floor: 'Mapping[str, object] | None'=None, inputs: 'LaunchInputs | None'=None, valid_agents: AgentNames | None=None, persona_values: Mapping[str, str | None] | None=None, persona_credential: PersonaCredential | None=None) -> 'tuple[str, str] | None'
 def write_system_value(system_settings_path: Path, leaf: str, value: object) -> None
 def reset_all(*, config_path: Path, env_path: Path | None=None, force: bool=False, system_settings_path: Path | None=None, command_scope: 'ConfigLevel | None'=None, agent_node: str | None=None) -> str
 def show_config(*, global_config_path: Path, command_scope: ConfigLevel, config_path: Path | None=None, env_global: Path | None=None, env_project: Path | None=None, effective: bool=False, file: Any=None, workset_path: Path | None=None, agent_state: dict[str, str] | None=None, env_resolved: dict[str, str] | None=None, system_settings_path: Path | None=None, category_snapshot: Any=None, category_ctx: Any=None, category_error: str | None=None, category_declared_by: Any=None, category_dest_keys: Any=None, category_convenience_sources: Any=None, inputs: Any=None, agent_name: str=GENERAL_SLOT, agent_path: Path | None=None) -> int
-def _pref_value_error(canonical: str, value: 'str | None', *, config_path: Path, command_scope: 'ConfigLevel | None', system_settings_path: Path | None, system_path: Path | None, agent_path: Path | None, workset_path: Path | None, box_path: Path | None, agent_name: str, set_target: 'LaunchInputs | None') -> str | None
+def _pref_value_error(canonical: str, value: 'str | None', *, config_path: Path, command_scope: 'ConfigLevel | None', system_settings_path: Path | None, system_path: Path | None, agent_path: Path | None, workset_path: Path | None, box_path: Path | None, agent_name: str, set_target: 'LaunchInputs | None', valid_agents: AgentNames | None=None, persona_values: Mapping[str, str | None] | None=None, persona_credential: PersonaCredential | None=None) -> str | None
 def _yaml_skeleton(target: str) -> list[str]
 def _host_xdg_map(data_home: 'Path | None'=None) -> dict[str, str]
 def _set_time_ctx(config: 'dict[str, str] | None'=None) -> 'Any'
 def _path_tier_split() -> 'tuple[dict[str, str], dict[str, str]]'
 def _set_time_target(*, std, proj, ws, agent_name: str, system_path: 'Path | None', agent_identity: AgentIdentity | None=None) -> 'LaunchInputs | None'
-def _target_scope_anchors(target: 'LaunchInputs | None', *, agent_path: 'Path | None', agent_name: str) -> dict[str, object]
+def _set_time_valid_agents(target: LaunchInputs | None) -> AgentNames | None
+def _target_scope_anchors(target: 'LaunchInputs | None', *, agent_path: 'Path | None', agent_name: str, persona_values: Mapping[str, str | None] | None=None, persona_credential: PersonaCredential | None=None) -> dict[str, object]
 def _set_time_anchor(anchor_ref: str, *, scope_anchors: 'dict[str, object]', agents_root: 'Path | None') -> 'str | None'
-def _bare_relative_path_error(canonical: str, value: 'str | None', *, display_key: str, route_key: str, config_path: Path, system_settings_path: 'Path | None', command_scope: 'ConfigLevel | None', target: 'LaunchInputs | None', agent_path: 'Path | None', agent_name: str, agents_root: 'Path | None') -> 'str | None'
+def _bare_relative_path_error(canonical: str, value: 'str | None', *, display_key: str, route_key: str, config_path: Path, system_settings_path: 'Path | None', command_scope: 'ConfigLevel | None', target: 'LaunchInputs | None', agent_path: 'Path | None', agent_name: str, agents_root: 'Path | None', valid_agents: AgentNames | None=None, persona_values: Mapping[str, str | None] | None=None, persona_credential: PersonaCredential | None=None) -> 'str | None'
 def _unusable_store_root_error(canonical: str, value: 'str | None') -> 'str | None'
 def _command_tier_files(cmd: 'Path | None', command_scope: 'ConfigLevel | None', *, system_path: 'Path | None', agent_path: 'Path | None', workset_path: 'Path | None', box_path: 'Path | None') -> 'tuple[Path | None, Path | None, Path | None, Path | None]'
 def _dotted_match(node: object, dotted: str) -> 'tuple[tuple[str, ...], object] | None'
 def _dotted_in(node: object, dotted: str) -> object
-def _cascade_bad_entries(cmd: 'Path | None', command_scope: 'ConfigLevel | None', *, system_path: 'Path | None', workset_path: 'Path | None', box_path: 'Path | None', edited: 'str | None'=None, defects: 'Callable[[], Mapping[str, str]] | None'=None) -> _BadEntries
+def _cascade_bad_entries(cmd: 'Path | None', command_scope: 'ConfigLevel | None', *, system_path: 'Path | None', workset_path: 'Path | None', box_path: 'Path | None', edited: 'str | None'=None, defects: 'Callable[[], Mapping[str, str]] | None'=None, valid_agents: AgentNames | None=None) -> _BadEntries
 def _first_dotted(views: 'list[dict]', dotted: str) -> object
 def _overwritten_by(edited: 'str | None', entry: 'tuple[str, ...]') -> bool
-def _set_time_agent_tier(agent_name: str, agent_path: 'Path | None', *, floor_only: bool=False, identity: AgentIdentity | None=None) -> 'tuple[Path | None, dict[str, str | None] | None, dict[str, str | None] | None]'
-def _set_time_snapshot(*, target: 'LaunchInputs | None', agent_name: str, agent_path: 'Path | None', config_path: 'Path | None'=None, command_scope: 'ConfigLevel | None'=None, system_settings_path: 'Path | None'=None, system_path: 'Path | None'=None, workset_path: 'Path | None'=None, box_path: 'Path | None'=None) -> 'tuple[Any, Any]'
-def _floor_blind_referents(key: str, value: str, candidate: 'Any', command_scope: 'ConfigLevel | None') -> list[str]
-def _category_set_lookups(config_path: Path, *, canonical: str, command_scope: 'ConfigLevel | None'=None, system_settings_path: Path | None=None, system_path: Path | None=None, agent_path: Path | None=None, workset_path: Path | None=None, box_path: Path | None=None, agent_name: str='', target: 'LaunchInputs | None'=None)
-def _lenient_expand(snapshot: 'Any', ctx: 'Any', agent_name: str) -> 'tuple[Any, dict[str, str]]'
-def _set_time_defects(config_path: 'Path | None', *, edit: 'tuple[str, object] | None', command_scope: 'ConfigLevel | None', system_settings_path: 'Path | None', system_path: 'Path | None', workset_path: 'Path | None', box_path: 'Path | None', agent_name: str, agent_path: 'Path | None'=None, target: 'LaunchInputs | None'=None) -> 'dict[str, str]'
-def _blindness_forgiven(errors: 'Mapping[str, str]', candidate: 'Any', ctx: 'Any', agent_name: str, command_scope: 'ConfigLevel | None') -> 'set[str]'
+def _set_time_agent_tier(agent_name: str, agent_path: 'Path | None', *, floor_only: bool=False, identity: AgentIdentity | None=None, valid_agents: AgentNames | None=None) -> 'tuple[Path | None, dict[str, str | None] | None, dict[str, str | None] | None]'
+def _set_time_snapshot(*, target: 'LaunchInputs | None', agent_name: str, agent_path: 'Path | None', config_path: 'Path | None'=None, command_scope: 'ConfigLevel | None'=None, system_settings_path: 'Path | None'=None, system_path: 'Path | None'=None, workset_path: 'Path | None'=None, box_path: 'Path | None'=None, valid_agents: AgentNames | None=None, persona_values: Mapping[str, str | None] | None=None, persona_credential: PersonaCredential | None=None) -> 'tuple[Any, Any]'
+def _floor_blind_referents(key: str, value: str, candidate: 'Any', command_scope: 'ConfigLevel | None', *, valid_agents: AgentNames | None=None) -> list[str]
+def _category_set_lookups(config_path: Path, *, canonical: str, command_scope: 'ConfigLevel | None'=None, system_settings_path: Path | None=None, system_path: Path | None=None, agent_path: Path | None=None, workset_path: Path | None=None, box_path: Path | None=None, agent_name: str='', target: 'LaunchInputs | None'=None, valid_agents: AgentNames | None=None, persona_values: Mapping[str, str | None] | None=None, persona_credential: PersonaCredential | None=None)
+def _lenient_expand(snapshot: 'Any', ctx: 'Any', agent_name: str, *, valid_agents: AgentNames | None=None) -> 'tuple[Any, dict[str, str]]'
+def _set_time_defects(config_path: 'Path | None', *, edit: 'tuple[str, object] | None', command_scope: 'ConfigLevel | None', system_settings_path: 'Path | None', system_path: 'Path | None', workset_path: 'Path | None', box_path: 'Path | None', agent_name: str, agent_path: 'Path | None'=None, target: 'LaunchInputs | None'=None, valid_agents: AgentNames | None=None, persona_values: Mapping[str, str | None] | None=None, persona_credential: PersonaCredential | None=None) -> 'dict[str, str]'
+def _blindness_forgiven(errors: 'Mapping[str, str]', candidate: 'Any', ctx: 'Any', agent_name: str, command_scope: 'ConfigLevel | None', *, valid_agents: AgentNames | None=None) -> 'set[str]'
 def _argv_aware(leaf: str, fallback: 'Callable[[object], str]') -> 'Callable[[object], str]'
 def _scalar_family_render(key: str, category: str) -> 'Callable[[object], str]'
 def _read_slot(canonical: str, slot: AgentFileSlot) -> str | None
 def _node_noun_file_value(canonical: str, slot: AgentFileSlot, noun_file: 'Path | None', command_scope: 'ConfigLevel | None') -> 'str | None'
 def _noun_file_slot(slot: AgentFileSlot, noun_file: Path) -> AgentFileSlot
 def _system_verb_slot(slot: 'AgentFileSlot | str | None', noun_file: 'Path | None', node_store: bool) -> 'AgentFileSlot | str | None'
-def _stored_shape_for(canonical: str, value: object) -> object
+def _stored_shape_for(canonical: str, value: object, *, valid_agents: AgentNames | None=None) -> object
 def _set_confirmation(display_key: str, value: object) -> str
-def _set_value_error(canonical: str, value: 'str | None') -> 'str | None'
+def _set_value_error(canonical: str, value: 'str | None', *, identity: AgentIdentity | None=None) -> 'str | None'
 def _per_owner_set_error(canonical: str, value: 'str | None', *, command_scope: 'ConfigLevel | None', ws: Any, written: Path, stored: 'Callable[[str], object]') -> 'str | None'
 def _write_creation_prefs(writes: 'list[tuple[str, str]]', *, box_settings_path: Path, workset_settings_path: 'Path | None', std: Any, proj: Any) -> None
 @contextmanager
@@ -74,7 +79,7 @@ def _reset_all_message(count: int, *, undeclared: int, unlisted: int) -> str
 def _entry_phrase(count: int, adjective: str) -> str
 def _noun_stored_view(path: 'Path | None', command_scope: ConfigLevel) -> dict
 def _quiet_drop_announcements(path: 'Path | None', command_scope: 'ConfigLevel | None') -> None
-def _undeclared_stored_entries(data: dict) -> dict[tuple[str, ...], tuple[str, str]]
+def _undeclared_stored_entries(data: dict, *, valid_agents: AgentNames | None=None) -> dict[tuple[str, ...], tuple[str, str]]
 def _ill_typed_stored_entries(data: dict) -> dict[tuple[str, ...], str]
 def _stored_value_reason(key: str, value: object, *, family: 'str | None') -> 'str | None'
 def _misplaced_config_entries(data: dict) -> dict[str, str]
@@ -104,7 +109,7 @@ class _BadEntries(NamedTuple):
     def chain_block(self) -> str
 
 class _SetValueDoor(NamedTuple):
-    refuses: 'Callable[[str, str | None], bool]'
+    refuses: 'Callable[[str, str | None, AgentIdentity | None], bool]'
     head: str
     reason: 'Callable[[str | None], str]'
     noun: str

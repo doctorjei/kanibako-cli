@@ -41,6 +41,7 @@ from kanibako.settings.config_io import (
 )
 from kanibako.settings.settings_categories import CATEGORY_FAMILY_ROOTS
 from kanibako.settings.settings_drops import cascade_drop_set, contained_scopes
+from kanibako.settings.settings_prefs import AgentNames
 from kanibako.settings.settings_resolve import (
   SettingsError,
   check_bind_tables,
@@ -612,7 +613,9 @@ def clear_overrides(path: Path) -> int:
 # ---------------------------------------------------------------------------
 
 
-def record(level: AgentFileLevel, *, node: str) -> AgentConfig:
+def record(
+  level: AgentFileLevel, *, node: str, valid_agents: AgentNames | None = None
+) -> AgentConfig:
   """The :class:`AgentConfig` record of agent *node*'s file, built from its ACTIVE *level*.
 
   *level* is :func:`level_table`'s output for the file's own node, so the record and the
@@ -620,10 +623,10 @@ def record(level: AgentFileLevel, *, node: str) -> AgentConfig:
   The record holds BOTH spellings of the file's own node — ``self:`` and ``agent: <node>:``
   (:func:`_own_node_settings`) — as the launch reads both.
 
-  ⚑ IT REFUSES every undeclared entry (:func:`_refuse_undeclared_state`, spec §0), over
-  ``self:`` AND the ``agent:`` table's nodes, category contents included, so every reader of
-  the record — ``agent show`` / ``info`` / ``list`` / ``get`` and the launch — gets the
-  launch's verdict. The repair door is :func:`clear_overrides`, which never comes here.
+  Both undeclared-entry passes use *valid_agents*'s ``leaf_map`` when supplied, else
+  their legacy lazy suppliers. They judge ``self:`` and every ``agent:`` node, category
+  contents included (:func:`_refuse_undeclared_state`, spec §0). The repair door,
+  :func:`clear_overrides`, never comes here.
   """
   cfg = AgentConfig()
   own = {**level.table, **level.state}
@@ -723,7 +726,7 @@ def record(level: AgentFileLevel, *, node: str) -> AgentConfig:
     if k in _CARRIED_CATEGORIES
   }
   _refuse_undeclared_state(
-    _undeclared_entries(own, level.scope, node=node),
+    _undeclared_entries(own, level.scope, node=node, valid_agents=valid_agents),
     node=node,
     path=level.path,
   )
@@ -1579,6 +1582,7 @@ def _undeclared_entries(
   scope: Any,
   *,
   node: str,
+  valid_agents: AgentNames | None = None,
 ) -> "Iterator[tuple[str, str, str]]":
   """Every entry of the file's node tables the LAUNCH refuses, as ``(shown, spelled, reason)``.
 
@@ -1589,33 +1593,40 @@ def _undeclared_entries(
      category holding a VALUE is judged as a key, so ``env: 5`` gets ``agent.<node>.env`` is a
      namespace, under ``self:`` as under ``agent: <node>:``;
   2. every PATH, category contents included, through the launch's whole-snapshot audit
-     (``settings_keyspace.undeclared_store_paths`` over ``keyspace_verdict``): an undeclared
-     bind arm (``bindings: {zz: …}``), a malformed ``env`` VAR, an ``agent: {self: {}}`` node.
+     (``settings_keyspace.undeclared_store_paths``): bad bind arms, malformed VARs, or
+     an ``agent: {self: {}}`` node. With *valid_agents*, both passes use its leaf map;
+     otherwise this pass retains ``keyspace_verdict``.
 
   ⚑ ``self:``'s shown key stays BARE (``'model'``), as the record names it.
   """
   from kanibako.settings.config_keys import agent_key_reason
   from kanibako.settings.settings_keyspace import (
     display_store_path,
+    key_class,
     render_store_path,
     undeclared_store_paths,
   )
-  from kanibako.settings.settings_keyspace_probe import keyspace_verdict
+  from kanibako.settings.settings_keyspace_probe import ANY_AGENT, keyspace_verdict
 
+  oracle = (
+    keyspace_verdict
+    if valid_agents is None
+    else partial(key_class, valid_agents=ANY_AGENT, agent_leaf_map=valid_agents.leaf_map)
+  )
   tables = _node_tables(own, scope, node=node)
   for judged, table, spelling in tables:
     for raw_key, value in table.items():
       key = str(raw_key)
       if key in _FLAT_AGENT_CATEGORIES and isinstance(value, dict):
         continue
-      reason = agent_key_reason(judged, key)
+      reason = agent_key_reason(judged, key, valid_agents=valid_agents)
       if reason is not None:
         shown = key if spelling is file_spelling else spelling(key)
         yield shown, spelling(key), reason
   for judged, table, spelling in tables:
     found = undeclared_store_paths(
       {judged: _str_keys(table)},
-      oracle=keyspace_verdict,
+      oracle=oracle,
       prefix=(FILE_SCOPE,),
     )
     for segments, judgment in found:

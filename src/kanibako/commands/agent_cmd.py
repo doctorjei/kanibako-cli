@@ -10,7 +10,6 @@ from typing import TYPE_CHECKING
 from kanibako.agent_ref import (
   ADDRESSABLE_PSEUDO_AGENTS,
   display_agent_ref,
-  harness_of,
 )
 from kanibako.commands.flags import add_null_flag, add_set_force_flag
 
@@ -18,8 +17,13 @@ if TYPE_CHECKING:
   from pathlib import Path
   from typing import Mapping
 
+  from kanibako.agent_ref import AgentIdentity
   from kanibako.settings.agent_config import AgentConfig
+  from kanibako.settings.config import AgentResolution
   from kanibako.settings.paths import StandardPaths
+  from kanibako.settings.settings_categories import PersonaCredential
+  from kanibako.settings.settings_prefs import AgentNames
+  from kanibako.targets.base import Target
 
 _log = logging.getLogger(__name__)
 
@@ -234,7 +238,6 @@ def _reserved_tier_refusal_for(args: argparse.Namespace) -> str:
 def run_list(args: argparse.Namespace) -> int:
   """List configured agents."""
   from kanibako.settings.config import AGENT_META_FILE
-  from kanibako.settings.settings_assemble import ReadPurpose, agent_record
 
   try:
     std = _load_std()
@@ -268,17 +271,7 @@ def run_list(args: argparse.Namespace) -> int:
   # ⚑ One refused file stops the listing, by name, before anything prints: no list verb here
   # reports an error per row, and printing the row anyway would be the silent accept the
   # closed keyspace bars.
-  rows = [
-    (
-      f.parent.name,
-      agent_record(
-        f,
-        node=_store_node(f.parent),
-        purpose=ReadPurpose.RESOLVE,
-      ),
-    )
-    for f in settings_files
-  ]
+  rows = [(f.parent.name, _display_record(f, _store_node(f.parent))[0]) for f in settings_files]
   print(f"{'NAME':<20} {'MODEL'}")
   for dirname, cfg in rows:
     model = cfg.state.get("model", "-")
@@ -304,11 +297,48 @@ def _store_node(store: Path) -> str:
     raise agent_store_refusal(store, str(e)) from None
 
 
+def _agent_live_input(
+  resolved: AgentResolution | None,
+) -> tuple[Target | None, Mapping[str, str | None] | None, PersonaCredential | None, str | None]:
+  """Project the captured input; unavailable values leave the repair door open."""
+  from kanibako.settings.config_interface import project_agent_input
+  from kanibako.targets import get_target
+
+  if resolved is None:
+    return None, None, None, None
+  if resolved.unavailable is not None:
+    return None, None, None, str(resolved.unavailable)
+  try:
+    target = get_target(resolved.identity.target_name)()
+  except Exception as exc:
+    return None, None, None, str(exc)
+  try:
+    values, credential = project_agent_input(resolved, target)
+  except Exception as exc:
+    return target, None, None, str(exc)
+  return target, values, credential, None
+
+
+def _display_record(
+  path: Path, agent_id: str
+) -> tuple[AgentConfig, AgentResolution, AgentNames | None]:
+  from kanibako.settings.config import resolve_named_agent_input
+  from kanibako.settings.config_dest import check_agent_node
+  from kanibako.settings.config_interface import identity_valid_agents
+  from kanibako.settings.settings_assemble import ReadPurpose, agent_record
+
+  if check_agent_node(agent_id) is not None:
+    agent_record(path, node=agent_id, purpose=ReadPurpose.RESOLVE)
+  resolved = resolve_named_agent_input(agent_id)
+  valid_agents = identity_valid_agents(resolved.identity)
+  cfg = agent_record(path, node=agent_id, purpose=ReadPurpose.RESOLVE, valid_agents=valid_agents)
+  return cfg, resolved, valid_agents
+
+
 def run_info(args: argparse.Namespace) -> int:
   """Show agent configuration details."""
   from kanibako.settings.agent_config import agent_settings_path
   from kanibako.settings.agent_file import stored_leaf_display
-  from kanibako.settings.settings_assemble import ReadPurpose, agent_record
 
   try:
     std = _load_std()
@@ -332,10 +362,10 @@ def run_info(args: argparse.Namespace) -> int:
     )
     return 1
 
-  cfg = agent_record(path, node=agent_id, purpose=ReadPurpose.RESOLVE)
+  cfg, resolved, valid_agents = _display_record(path, agent_id)
   # ⚑ THE §2d KEY, RESOLVED — not a field of the file. The line is spelled for the key it
   # prints, so a reader can reach it: `kanibako agent set <agent> label=…`.
-  print(f"Label:        {_agent_label(std, agent_id)}")
+  print(f"Label:        {_agent_label(std, resolved, valid_agents=valid_agents)}")
   if cfg.run_args:
     # ⚑ THE FILE'S OWN JOIN, not a second one: ``agent_file`` owns the argv
     # translation, and a hand-rolled ``' '.join`` here was a second answer to
@@ -416,7 +446,12 @@ def run_show(args: argparse.Namespace) -> int:
 
 
 def _agent_file_verdict_after_edit(
-  path: "Path", agent_id: str, key: str, value: "object"
+  path: "Path",
+  agent_id: str,
+  key: str,
+  value: "object",
+  *,
+  valid_agents: AgentNames | None = None,
 ) -> "str | None":
   """The agent file's verdict on the file AS IT WOULD STAND AFTER this edit; ``None`` reads clean.
 
@@ -464,7 +499,7 @@ def _agent_file_verdict_after_edit(
       except KanibakoError as exc:
         raise ConfigError(real(exc)) from None
       try:
-        agent_record(probe, node=agent_id, purpose=ReadPurpose.RESOLVE)
+        agent_record(probe, node=agent_id, purpose=ReadPurpose.RESOLVE, valid_agents=valid_agents)
       except SettingsError as exc:
         return real(exc)
       typed = _ill_typed_stored_entries(scope_view(load_doc(probe), node=agent_id))
@@ -482,18 +517,17 @@ def _run_agent_config(args: argparse.Namespace) -> int:
   Each verb addresses ONE agent's settings file by a bare TAIL (``model``, ``env.<VAR>``,
   ``secret_path.<VAR>``); the canonical key it names is ``agent.<node>.<tail>``.
 
-  ⚑ ``set`` AND ``reset`` ROUTE THEIR WRITES to ``config_interface``'s ``set_config_value`` /
-  ``reset_config_value``, the pair every other noun shares — this verb is not a second writer
-  of that slot.  ⚑ THERE IS NO EXCEPTION TO THAT ANY MORE: ``name`` was the one tail written
-  by hand, because it was not a key and the shared setter had no slot to route it to.  D8b
-  retired it (2026-09-15), so every tail this verb accepts is a declared key and takes the one
-  route.  ``get`` still addresses the file directly through ``agent_file``'s slot boundary.
+  Set/reset share the config engines, retaining one addressed input through validation.
+  Get reads the file through ``agent_file``; live values never become stored answers.
   """
   from kanibako.settings.agent_config import agent_settings_path
   from kanibako.settings.agent_file import (
     read_leaf,
     slot_for,
   )
+  from kanibako.settings.config import resolve_named_agent_input
+  from kanibako.settings.config_dest import check_agent_node
+  from kanibako.settings.config_interface import identity_valid_agents
   from kanibako.settings.settings_assemble import ReadPurpose, agent_record
   from kanibako.settings.config_keys import agent_read_key_error
 
@@ -544,11 +578,14 @@ def _run_agent_config(args: argparse.Namespace) -> int:
       return 1
 
     key = reset_key.strip()
+    resolved = resolve_named_agent_input(agent_id) if check_agent_node(agent_id) is None else None
+    identity = None if resolved is None else resolved.identity
+    valid_agents = identity_valid_agents(identity)
     # ⚑ THE SAME GATE ``set`` TAKES, and the symmetry is the point (spec §0): a
     # reset is a WRITE, so "No override for …" on a spelling that is not a key —
     # or on one whose write route is RETIRED — is a lie in both directions.  This
     # is the order ``config_interface.reset_config_value`` uses.
-    gate_err = _agent_key_gate(agent_id, key, path=path, verb="reset")
+    gate_err = _agent_key_gate(agent_id, key, path=path, verb="reset", valid_agents=valid_agents)
     if gate_err is not None:
       print(gate_err, file=sys.stderr)
       return 1
@@ -563,12 +600,17 @@ def _run_agent_config(args: argparse.Namespace) -> int:
     from kanibako.settings.config_interface import reset_config_value
     from kanibako.settings.config_keys import ConfigLevel
 
+    _, persona_values, persona_credential, target_error = _agent_live_input(resolved)
     msg = reset_config_value(
       f"agent.{agent_id}.{key}",
       config_path=_config_file(),
       system_settings_path=std.settings,
       cascade_system_path=std.settings,
       cascade_agent_name=agent_id,
+      cascade_agent_identity=identity,
+      cascade_persona_values=persona_values,
+      cascade_persona_credential=persona_credential,
+      target_error=target_error,
       command_scope=ConfigLevel.system,
       agents_root=std.agents,
     )
@@ -619,14 +661,16 @@ def _run_agent_config(args: argparse.Namespace) -> int:
 
   # Parse key/value argument
   if action == ConfigAction.show:
-    # Show mode — read the config only where the READ paths need it.
-    cfg = agent_record(path, node=agent_id, purpose=ReadPurpose.RESOLVE)
-    # ⚑ RESOLVED HERE, where ``std`` is in scope; the formatter stays a formatter.
+    cfg, resolved, valid_agents = _display_record(path, agent_id)
     return _show_agent_config(
       cfg,
-      _agent_label(std, agent_id),
+      _agent_label(std, resolved, valid_agents=valid_agents),
       effective=args.effective,
     )
+
+  resolved = resolve_named_agent_input(agent_id) if check_agent_node(agent_id) is None else None
+  identity = None if resolved is None else resolved.identity
+  valid_agents = identity_valid_agents(identity)
 
   if action == ConfigAction.set:
     # ⚑ THE NOUN'S OWN §0 GATE, ahead of the shared setter and NOT a duplicate of it: it
@@ -635,7 +679,7 @@ def _run_agent_config(args: argparse.Namespace) -> int:
     # ``self.model`` parses as a node ``claude.self`` and the ``self`` spelling, which
     # [spec:14-18, "self"] confines to the agent file, would be refused for the wrong reason,
     # blaming the agent name rather than naming the key.
-    gate_err = _agent_key_gate(agent_id, key, path=path, verb="set")
+    gate_err = _agent_key_gate(agent_id, key, path=path, verb="set", valid_agents=valid_agents)
     if gate_err is not None:
       print(gate_err, file=sys.stderr)
       return 1
@@ -648,12 +692,11 @@ def _run_agent_config(args: argparse.Namespace) -> int:
     # legitimate ``self.endpoint`` a non-key.  [Jei:2026-10-05]: the reader judges this tier.
     # ⚑ RESERVED ``default`` skipped — it owns no agent store.
     from kanibako.errors import ConfigError
-    from kanibako.settings.config_dest import check_agent_node
 
     tier = check_agent_node(agent_id)
     if tier is None or tier.reason != "reserved":
       try:
-        bad = _agent_file_verdict_after_edit(path, agent_id, key, value)
+        bad = _agent_file_verdict_after_edit(path, agent_id, key, value, valid_agents=valid_agents)
       except ConfigError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
@@ -687,6 +730,7 @@ def _run_agent_config(args: argparse.Namespace) -> int:
     from kanibako.settings.config_interface import _set_confirmation, set_config_value
     from kanibako.settings.config_keys import ConfigLevel
 
+    _, persona_values, persona_credential, target_error = _agent_live_input(resolved)
     msg = set_config_value(
       f"agent.{agent_id}.{key}",
       value,
@@ -694,6 +738,10 @@ def _run_agent_config(args: argparse.Namespace) -> int:
       system_settings_path=std.settings,
       cascade_system_path=std.settings,
       cascade_agent_name=agent_id,
+      cascade_agent_identity=identity,
+      cascade_persona_values=persona_values,
+      cascade_persona_credential=persona_credential,
+      target_error=target_error,
       command_scope=ConfigLevel.system,
       agents_root=std.agents,
       # SYSTEM scope routes the engine; the node_store default picks the node's own file.
@@ -714,11 +762,15 @@ def _run_agent_config(args: argparse.Namespace) -> int:
 
   # Get mode
   # (``parse_config_arg`` already returned the stripped key for this action.)
-  read_err = agent_read_key_error(agent_id, key)
+  if resolved is not None and resolved.unavailable is not None:
+    _log.warning("Warning: live agent input is unavailable: %s", resolved.unavailable)
+  read_err = agent_read_key_error(agent_id, key, valid_agents=valid_agents)
   if read_err is not None:
     print(read_err, file=sys.stderr)
     return 1
-  val = _get_agent_key(agent_record(path, node=agent_id, purpose=ReadPurpose.RESOLVE), key)
+  val = _get_agent_key(
+    agent_record(path, node=agent_id, purpose=ReadPurpose.RESOLVE, valid_agents=valid_agents), key
+  )
   if val is None:
     # ⚑ D-6: THE RECORD FIRST, THE FILE SECOND.  ``AgentConfig`` models a
     # SUBSET of what the file may hold — no field answers for the CATEGORY
@@ -742,7 +794,14 @@ def _run_agent_config(args: argparse.Namespace) -> int:
   return 0
 
 
-def _agent_key_gate(agent_id: str, key: str, *, path: "Path", verb: str) -> str | None:
+def _agent_key_gate(
+  agent_id: str,
+  key: str,
+  *,
+  path: "Path",
+  verb: str,
+  valid_agents: AgentNames | None = None,
+) -> str | None:
   """The WRITE gate for ``agent set`` / ``agent reset``: refusal text, or ``None``.
 
   ⚑ THE ORDER MIRRORS ``set_config_value``'s PREAMBLE, and each step is there because the next
@@ -757,13 +816,15 @@ def _agent_key_gate(agent_id: str, key: str, *, path: "Path", verb: str) -> str 
   """
   from kanibako.settings.agent_file import table_value_error
 
-  key_err = _agent_write_vocab_error(agent_id, key, verb=verb)
+  key_err = _agent_write_vocab_error(agent_id, key, verb=verb, valid_agents=valid_agents)
   if key_err is not None:
     return key_err
   return table_value_error(key, path=path, verb=verb)
 
 
-def _agent_write_vocab_error(agent_id: str, key: str, *, verb: str) -> str | None:
+def _agent_write_vocab_error(
+  agent_id: str, key: str, *, verb: str, valid_agents: AgentNames | None = None
+) -> str | None:
   """Steps 1–2 of :func:`_agent_key_gate` — the retired route, then the closed keyspace.
 
   Split out for the one caller with no file to judge a value shape against: the missing-store
@@ -778,11 +839,11 @@ def _agent_write_vocab_error(agent_id: str, key: str, *, verb: str) -> str | Non
   retired = agent_node_bind_retired_error(f"agent.{agent_id}.{key}", verb=verb)
   if retired is not None:
     return retired
-  return agent_write_key_error(agent_id, key, verb=verb)
+  return agent_write_key_error(agent_id, key, verb=verb, valid_agents=valid_agents)
 
 
-def _label_floor(agent_id: str) -> dict[str, object]:
-  """The §2d ``label`` FLOORS for *agent_id*, keyed where the launch places them.
+def _label_floor(identity: AgentIdentity, target: Target | None) -> dict[str, object]:
+  """The §2d ``label`` floors, keyed where the launch places them.
 
   ⚑ THE SAME TWO SOURCES AND TIERS THE LAUNCH FLOORS ON ([Q91]): core's backstop at
   ``agent.default.label`` and the plugin's declared row at ``agent.<node>.label``, so a
@@ -796,9 +857,9 @@ def _label_floor(agent_id: str) -> dict[str, object]:
   """
   from kanibako.settings import core_defaults
   from kanibako.settings.config_keys import AGENT_DEFAULT_SUB
-  from kanibako.targets import get_target
   from kanibako.targets.base import descriptor_floor
 
+  agent_id = identity.node
   if agent_id in ADDRESSABLE_PSEUDO_AGENTS:
     # ⚑ The built-in's tier declaration (D2): no descriptor to read, so the
     # pseudo-agent's own tier label IS the declaration — the same artifact the
@@ -813,9 +874,11 @@ def _label_floor(agent_id: str) -> dict[str, object]:
       agent_id,
     ),
   }
+  if target is None:
+    return floor
   try:
-    descriptors = get_target(harness_of(agent_id))().setting_descriptors()
-    plugin_floor = descriptor_floor(descriptors, plugin=harness_of(agent_id))
+    descriptors = target.setting_descriptors()
+    plugin_floor = descriptor_floor(descriptors, plugin=identity.target_name)
   except Exception:  # pragma: no cover - a plugin must not break a display verb
     _log.debug("a target's behavior rows could not be floored", exc_info=True)
     return floor
@@ -824,8 +887,16 @@ def _label_floor(agent_id: str) -> dict[str, object]:
   return floor
 
 
-def _refuse_null_label(std: "StandardPaths", agent_id: str) -> None:
-  """Raise when ``agent.<agent_id>.label`` resolves to a stored ``null`` (keyspec §2h).
+def _refuse_null_label(
+  std: StandardPaths,
+  identity: AgentIdentity,
+  *,
+  valid_agents: AgentNames | None,
+  floor: Mapping[str, object],
+  persona_values: Mapping[str, str | None] | None,
+  persona_credential: PersonaCredential | None,
+) -> None:
+  """Raise when the selected agent's label resolves to stored ``null`` (keyspec §2h).
 
   A ``null`` gives a label no meaning, so the display verbs refuse it, naming the file
   and the key, as the launch refuses one at its keys: the same check
@@ -845,7 +916,7 @@ def _refuse_null_label(std: "StandardPaths", agent_id: str) -> None:
 
   from kanibako.settings.settings_resolve import SettingsError
 
-  floor = _label_floor(agent_id)
+  agent_id = identity.node
   own = floor.get(f"agent.{agent_id}.label")
   written: list = []
   try:
@@ -853,6 +924,7 @@ def _refuse_null_label(std: "StandardPaths", agent_id: str) -> None:
       subject=ResolveSubject.SYSTEM,
       std=std,
       agent_name=agent_id,
+      agent_identity=identity,
       system_path=std.settings,
     )
     snapshot = build_launch_snapshot(
@@ -860,6 +932,9 @@ def _refuse_null_label(std: "StandardPaths", agent_id: str) -> None:
       agent_name=agent_id,
       agent_path=agent_settings_path(std.agents, agent_id),
       written_out=written,
+      valid_agents=valid_agents,
+      persona_values=persona_values,
+      persona_credential=persona_credential,
       behavior_floor={"label": core_defaults.behavior_default("label")},
       agent_behavior_floor={"label": own} if own is not None else None,
       default_categories={
@@ -875,7 +950,7 @@ def _refuse_null_label(std: "StandardPaths", agent_id: str) -> None:
     raise ConfigError(refusal)
 
 
-def _default_label_text(agent_id: str, ref: str) -> str:
+def _default_label_text(identity: AgentIdentity, ref: str) -> str:
   """*ref*, core's bound ``agent.default.label`` floor, as text with no settings to resolve it.
 
   The floor is ``{meta.agent.<agent_id>.name}`` (spec §2d: the agent's own name), so this
@@ -884,14 +959,16 @@ def _default_label_text(agent_id: str, ref: str) -> str:
   """
   from kanibako.settings.settings_launch import meta_agent_identity_floor
 
-  name_key = f"meta.agent.{agent_id}.name"
+  name_key = f"meta.agent.{identity.node}.name"
   if ref != f"{{{name_key}}}":
     return ref
-  return str(meta_agent_identity_floor(agent_id, None, False)[name_key])
+  return str(meta_agent_identity_floor(identity.node, None, False, identity=identity)[name_key])
 
 
-def _agent_label(std: "StandardPaths", agent_id: str) -> str:
-  """*agent_id*'s human-readable DESCRIPTION — ``agent.<node>.label`` RESOLVED (spec §2d).
+def _agent_label(
+  std: StandardPaths, resolved: AgentResolution, *, valid_agents: AgentNames | None
+) -> str:
+  """The selected agent's description — ``agent.<node>.label`` resolved (spec §2d).
 
   THE ONE RESOLVE BOTH DISPLAY VERBS SHARE.  ``agent info`` and ``agent show`` used to print
   the agent file's ``name`` field, which was not a key; ``label`` is, so reading it means
@@ -926,6 +1003,7 @@ def _agent_label(std: "StandardPaths", agent_id: str) -> str:
   ``label`` explicitly set to the empty string.  When the settings files do not read, both
   display verbs fall back to that floor with one warning line on stderr.
   """
+  from kanibako.errors import AgentNotInstalledError
   from kanibako.settings.agent_config import agent_settings_path
   from kanibako.settings.agent_file import (
     read_leaf,
@@ -949,18 +1027,28 @@ def _agent_label(std: "StandardPaths", agent_id: str) -> str:
   # is the same test ``effective_value`` makes for the same reason, on the same key.
   # ⚑ A present-``None`` answers ``None`` here too, together with absent; the refusal
   # below tells it apart and refuses it, so only absent and ``""`` fall through.
+  identity = resolved.identity
+  agent_id = identity.node
   slot = slot_for(std.agents, agent_id, "label")
   stored = stored_leaf_value(slot)
   if stored is not None and stored != "":
     return stored_leaf_display("label", stored)
-  _refuse_null_label(std, agent_id)
+  target, persona_values, persona_credential, target_error = _agent_live_input(resolved)
+  floor = _label_floor(identity, target)
+  _refuse_null_label(
+    std,
+    identity,
+    valid_agents=valid_agents,
+    floor=floor,
+    persona_values=persona_values,
+    persona_credential=persona_credential,
+  )
   # ⚑ A label the file HOLDS but this door declined (``""``) sits on the
   # ``agent.<node>`` level too, where it would shadow the system file and the plugin's
   # declaration and send doors 2 and 3 to ``agent.default.label``. So those doors resolve
   # without the file then; a file that names no label is still read whole.
   agent_path = None if read_leaf(slot) is not None else agent_settings_path(std.agents, agent_id)
 
-  floor = _label_floor(agent_id)
   doors: tuple[tuple[str, str], ...] = (("agent", agent_id),)
   if agent_id not in ADDRESSABLE_PSEUDO_AGENTS:
     doors += (("agent", AGENT_DEFAULT_SUB),)
@@ -969,19 +1057,28 @@ def _agent_label(std: "StandardPaths", agent_id: str) -> str:
     str(floor[own])
     if own in floor
     else _default_label_text(
-      agent_id,
+      identity,
       str(floor[f"agent.{AGENT_DEFAULT_SUB}.label"]),
     )
   )
   try:
+    if target_error is not None and (
+      target is not None
+      or (
+        resolved.unavailable is not None
+        and not isinstance(resolved.unavailable, AgentNotInstalledError)
+      )
+    ):
+      raise SettingsError(target_error)
     inputs = resolve_inputs(
       subject=ResolveSubject.SYSTEM,
       std=std,
       agent_name=agent_id,
+      agent_identity=identity,
       system_path=std.settings,
     )
     for sections in doors:
-      resolved = effective_value(
+      label_value = effective_value(
         ".".join((*sections, "label")),
         sections,
         "label",
@@ -992,9 +1089,12 @@ def _agent_label(std: "StandardPaths", agent_id: str) -> str:
         box_path=None,
         floor=floor,
         inputs=inputs,
+        valid_agents=valid_agents,
+        persona_values=persona_values,
+        persona_credential=persona_credential,
       )
-      if resolved is not None:
-        return resolved[0]
+      if label_value is not None:
+        return label_value[0]
   except SettingsError as e:
     reason = str(e).splitlines()[0] if str(e) else type(e).__name__
     print(
@@ -1189,10 +1289,14 @@ def run_reauth(args: argparse.Namespace) -> int:
   # third-party endpoint.
   from kanibako.settings.agent_config import agent_settings_path
   from kanibako.commands.start import (
-    _persona_values_for,
     _resolve_box_launch_decisions,
+    _selected_persona_bundle,
   )
 
+  persona_bundle = _selected_persona_bundle(selection, target)
+  persona_values = (
+    persona_bundle.to_persona_values() or None if persona_bundle is not None else None
+  )
   agent_cfg_path = agent_settings_path(std.agents, agent_name)
   auth_src, active_endpoint, _active_model, _secret_paths = _resolve_box_launch_decisions(
     std=std,
@@ -1202,12 +1306,7 @@ def run_reauth(args: argparse.Namespace) -> int:
     agent_identity=selection.identity,
     system_settings_path=std.settings,
     agent_cfg_path=agent_cfg_path,
-    # The persona store's LIVE tier — the SAME one a launch resolves against.
-    # ``suppress_oauth`` below is ``active_endpoint is not None``, so this is
-    # the reauth path's half of the cred fork: a persona endpoint that did not
-    # reach this resolve would let a reauth sync the host Anthropic token into
-    # a box pointed at a third-party endpoint. ``None`` for a bare agent.
-    persona_values=_persona_values_for(agent_name, target),
+    persona_values=persona_values,
     # ⚑ REQUIRED (P7): reauth must resolve the SAME per-agent credential dir the
     # launch delivers from (``{workset.auth.path}/{system.agent}``); without the
     # §1A selection level it would name the agent the STORED settings select, or

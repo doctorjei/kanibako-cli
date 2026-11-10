@@ -71,6 +71,9 @@ def _launch(start_mocks, secrets, cli_env, endpoint):
     m.resolve_agent.return_value = agent_selection(node=NODE_ID, source="settings")
     m.target.name = "claude"
     m.target.descriptor = real.descriptor
+    m.target.setting_descriptors.return_value = real.setting_descriptors()
+    m.agent_cfg.secret_path.update(secrets)
+    m.agent_cfg.state.update(endpoint=endpoint, model="m-1")
     m.target.verify_persona = real.verify_persona
     return _run_container(
       project_dir=None,
@@ -467,3 +470,548 @@ class TestTheETokenNeverLeaks:
     ev = ProbeEvidence(endpoint="https://e.example", token_by_value=True)
     assert E_TOKEN not in repr(ev)
     assert "-e on the command line" in "\n".join(ev.lines())
+
+
+class TestResolvedPersonaGate:
+  def deliveries(self, kind, var=VAR, *, node=NODE_ID, declared=True, keyless=False):
+    from pathlib import Path
+    from kanibako.settings.settings_categories import (
+      MOUNT,
+      CategoryEntry,
+      CredentialState,
+      LaunchDeliveries,
+      PersonaCredential,
+      SECRET_MOUNT_DIR,
+    )
+
+    declaration = CategoryEntry(
+      "secret_path",
+      "agent",
+      f"{SECRET_MOUNT_DIR}/{var}",
+      "/unread-credential" if kind in ("file", "exact-mask-suppressed") else None,
+      MOUNT,
+      "ro",
+      var,
+      ("agent", node, "secret_path", var),
+      persona_credential=PersonaCredential("Guide", Path("/unread-store"), var, False)
+      if kind == "pg"
+      else None,
+    )
+    return LaunchDeliveries(
+      [],
+      frozenset(),
+      credential_states={} if kind is None else {var: CredentialState(kind, declaration)},
+      active_secret_names={var: [declaration.key]} if declared else {},
+      keyless_persona=PersonaCredential("Guide", Path("/unread-store"), None, True)
+      if keyless
+      else None,
+    )
+
+  def gate(self, deliveries, *, target=None, node=NODE_ID, cli=None, **kw):
+    from kanibako.commands.start import _preflight_resolved_persona_load
+
+    return _preflight_resolved_persona_load(
+      node,
+      deliveries,
+      "https://endpoint.invalid",
+      None,
+      target=target or ClaudeTarget(),
+      env={"FINAL": "env"},
+      cli_env=cli or {},
+      probe_model="final-model",
+      provider_model="stored-model",
+      **kw,
+    )
+
+  @pytest.mark.parametrize("kind", ["file", "keyless-null", "cli-value"])
+  def test_final_probe_uses_only_returned_state_and_explicit_inputs(self, kind):
+    from kanibako.targets.base import PersonaProbeOutcome
+
+    deliveries = self.deliveries(kind)
+    with (
+      patch("kanibako.commands.start._secret_pointer_usable", return_value=True) as usable,
+      patch.object(
+        ClaudeTarget, "verify_persona", return_value=PersonaProbeOutcome.passed()
+      ) as probe,
+      patch(
+        "kanibako.settings.settings_launch.snapshot_category_entries", side_effect=AssertionError
+      ),
+      patch(
+        "kanibako.settings.settings_categories.secret_path_winners", side_effect=AssertionError
+      ),
+      patch("kanibako.settings.store_collapse.collapse_env", side_effect=AssertionError),
+      patch("kanibako.settings.config_io.fetch_persona_secret", side_effect=AssertionError),
+    ):
+      result = self.gate(deliveries, cli={VAR: E_TOKEN, "UNRELATED": "ignored"})
+    assert result == ("https://endpoint.invalid", None, None)
+    assert usable.call_count == (1 if kind == "file" else 0)
+    args, kwargs = probe.call_args
+    assert args[0] == "https://endpoint.invalid"
+    assert str(args[1]) == ("/unread-credential" if kind == "file" else "None")
+    assert args[2] == "final-model"
+    assert kwargs["env"] == {"FINAL": "env"}
+    assert kwargs.get("token") == (E_TOKEN if kind == "cli-value" else None)
+
+  @pytest.mark.parametrize("kind", ["absent", "exact-mask-suppressed"])
+  def test_absence_and_exact_mask_refuse_without_access_or_probe(self, kind):
+    with (
+      patch("kanibako.commands.start._secret_pointer_usable", side_effect=AssertionError),
+      patch.object(ClaudeTarget, "verify_persona", side_effect=AssertionError),
+    ):
+      endpoint, error, provider = self.gate(self.deliveries(kind))
+    assert endpoint is None and provider is None
+    assert "no usable auth token" in error
+
+  @pytest.mark.parametrize("value", ["", "   ", "\t"])
+  def test_blank_cli_skips_every_material_operation_and_warns_once(self, value, capsys):
+    with (
+      patch("kanibako.commands.start._secret_pointer_usable", side_effect=AssertionError),
+      patch.object(ClaudeTarget, "verify_persona", side_effect=AssertionError),
+      patch("kanibako.settings.config_io.fetch_persona_secret", side_effect=AssertionError),
+    ):
+      result = self.gate(self.deliveries("cli-blank-suppressed"), cli={VAR: value})
+    assert result == ("https://endpoint.invalid", None, None)
+    assert capsys.readouterr().err.count("UNVERIFIED") == 1
+
+  def test_dynamic_names_ignore_other_scopes_and_provider_model_stays_stored(self):
+    from kanibako.targets.base import PersonaProbeOutcome
+
+    deliveries = self.deliveries("keyless-null", "TOKEN", node=CODEX_ID)
+    deliveries.active_secret_names["OTHER"] = [
+      "box.secret_path.OTHER",
+      "agent.default.secret_path.OTHER",
+    ]
+    with patch.object(
+      CodexTarget, "verify_persona", return_value=PersonaProbeOutcome.passed()
+    ) as probe:
+      endpoint, error, provider = self.gate(deliveries, target=CodexTarget(), node=CODEX_ID)
+    assert error is None and endpoint == "https://endpoint.invalid"
+    assert provider.env_key == "TOKEN" and provider.model == "stored-model"
+    assert probe.call_args.args[2] == "final-model"
+    assert probe.call_args.kwargs["env"] == {"FINAL": "env"}
+
+  def test_dynamic_multiple_own_names_preserve_ambiguity(self):
+    deliveries = self.deliveries("keyless-null", "TOKEN", node=CODEX_ID)
+    deliveries.active_secret_names["OTHER"] = [f"agent.{CODEX_ID}.secret_path.OTHER"]
+    endpoint, error, provider = self.gate(deliveries, target=CodexTarget(), node=CODEX_ID)
+    assert endpoint is None and provider is None
+    assert "ambiguous" in error
+
+  def test_keyless_without_var_keeps_empty_provider_env_key(self):
+    from kanibako.targets.base import PersonaProbeOutcome
+
+    with patch.object(
+      CodexTarget, "verify_persona", return_value=PersonaProbeOutcome.passed()
+    ) as probe:
+      endpoint, error, provider = self.gate(
+        self.deliveries(None, declared=False, keyless=True),
+        target=CodexTarget(),
+        node=CODEX_ID,
+      )
+    assert error is None and endpoint == "https://endpoint.invalid"
+    assert provider.env_key == ""
+    assert probe.call_args.args[1] is None
+    assert "token" not in probe.call_args.kwargs
+
+  def test_pg_is_not_adapted_to_null_or_probed_as_keyless(self):
+    from kanibako.commands.start import _resolved_persona_secret_table
+
+    deliveries = self.deliveries("pg")
+    assert VAR not in _resolved_persona_secret_table(deliveries, NODE_ID, {})
+    with (
+      patch("kanibako.commands.start._secret_pointer_usable", side_effect=AssertionError),
+      patch.object(ClaudeTarget, "verify_persona", side_effect=AssertionError),
+      patch("kanibako.settings.config_io.fetch_persona_secret", side_effect=AssertionError),
+    ):
+      assert self.gate(deliveries) == ("https://endpoint.invalid", None, None)
+
+  def test_preparation_is_material_free_but_compatibility_probe_false_still_gates(self):
+    from kanibako.commands.start import _prepare_persona_load, _preflight_persona_load
+
+    with (
+      patch("kanibako.commands.start._secret_pointer_usable", side_effect=AssertionError),
+      patch.object(ClaudeTarget, "verify_persona", side_effect=AssertionError),
+    ):
+      assert _prepare_persona_load(NODE_ID, "https://endpoint.invalid", target=ClaudeTarget()) == (
+        "https://endpoint.invalid",
+        None,
+        None,
+      )
+      endpoint, error, provider = _preflight_persona_load(
+        NODE_ID,
+        {},
+        "https://endpoint.invalid",
+        None,
+        target=ClaudeTarget(),
+        probe=False,
+      )
+    assert endpoint is None and provider is None
+    assert "no usable auth token" in error
+
+
+class TestPreparedPersonaDelivery:
+  deliveries = TestResolvedPersonaGate.deliveries
+
+  def prepare(
+    self,
+    deliveries,
+    *,
+    target=None,
+    node=NODE_ID,
+    cli=None,
+    endpoint="https://endpoint.invalid",
+    **kw,
+  ):
+    from kanibako.commands.start import _prepare_resolved_persona_delivery
+
+    return _prepare_resolved_persona_delivery(
+      node,
+      deliveries,
+      endpoint,
+      None,
+      target=target or ClaudeTarget(),
+      env={"FINAL": "env"},
+      cli_env=cli or {},
+      probe_model="final-model",
+      provider_model="stored-model",
+      **kw,
+    )
+
+  def test_pg_fetches_once_from_captured_root_and_probes_payload_value(self):
+    from pathlib import Path
+    from kanibako.targets.base import PersonaProbeOutcome
+
+    deliveries = self.deliveries("pg")
+    token = " synthetic-credential-λ\t "
+    with (
+      patch("kanibako.settings.config_io.fetch_persona_secret", return_value=token) as fetch,
+      patch("kanibako.commands.start._secret_pointer_usable", side_effect=AssertionError),
+      patch.object(
+        ClaudeTarget, "verify_persona", return_value=PersonaProbeOutcome.passed()
+      ) as probe,
+    ):
+      result, payload = self.prepare(deliveries)
+    assert result == ("https://endpoint.invalid", None, None)
+    fetch.assert_called_once_with("Guide", root=Path("/unread-store"))
+    probe.assert_called_once_with(
+      "https://endpoint.invalid", None, "final-model", env={"FINAL": "env"}, token=token
+    )
+    assert payload.names == (VAR,)
+    assert payload.values[0].value == token.encode("utf-8")
+    assert token not in repr(payload)
+    assert deliveries.credential_states[VAR].kind == "pg"
+
+  def test_every_pg_winner_is_fetched_not_only_the_harness_token(self):
+    from dataclasses import replace
+    from pathlib import Path
+    from kanibako.targets.base import PersonaProbeOutcome
+
+    deliveries = self.deliveries("pg")
+    other = self.deliveries("pg", "OTHER_KEY").credential_states["OTHER_KEY"]
+    other = replace(
+      other,
+      declaration=replace(
+        other.declaration,
+        persona_credential=replace(other.declaration.persona_credential, registered_name="Other"),
+      ),
+    )
+    deliveries.credential_states["OTHER_KEY"] = other
+    with (
+      patch(
+        "kanibako.settings.config_io.fetch_persona_secret",
+        side_effect=["first-value", "second-value"],
+      ) as fetch,
+      patch.object(
+        ClaudeTarget, "verify_persona", return_value=PersonaProbeOutcome.passed()
+      ) as probe,
+    ):
+      result, payload = self.prepare(deliveries)
+    assert result[1] is None
+    assert fetch.call_args_list == [
+      (("Guide",), {"root": Path("/unread-store")}),
+      (("Other",), {"root": Path("/unread-store")}),
+    ]
+    assert [(entry.name, entry.value) for entry in payload.values] == [
+      (VAR, b"first-value"),
+      ("OTHER_KEY", b"second-value"),
+    ]
+    assert probe.call_count == 1 and probe.call_args.kwargs["token"] == "first-value"
+
+  @pytest.mark.parametrize(
+    "kind",
+    [
+      "file",
+      "keyless-null",
+      "cli-value",
+      "cli-blank-suppressed",
+      "absent",
+      "exact-mask-suppressed",
+    ],
+  )
+  def test_eliminated_pg_sources_never_open_a_manager_or_fetch(self, kind):
+    from kanibako.targets.base import PersonaProbeOutcome
+
+    with (
+      patch("kanibako.settings.config_io.fetch_persona_secret", side_effect=AssertionError),
+      patch("persona_grata.AgentStore", side_effect=AssertionError),
+      patch("subprocess.Popen", side_effect=AssertionError),
+      patch("kanibako.commands.start._secret_pointer_usable", return_value=True) as usable,
+      patch.object(
+        ClaudeTarget, "verify_persona", return_value=PersonaProbeOutcome.passed()
+      ) as probe,
+    ):
+      result, payload = self.prepare(
+        self.deliveries(kind), cli={VAR: "cli-value" if kind == "cli-value" else " "}
+      )
+    assert payload.names == ()
+    assert usable.call_count == (1 if kind == "file" else 0)
+    assert probe.call_count == (1 if kind in ("file", "keyless-null", "cli-value") else 0)
+    if kind == "keyless-null":
+      assert probe.call_args.args[1] is None and "token" not in probe.call_args.kwargs
+    if kind in ("absent", "exact-mask-suppressed"):
+      assert result[0] is None and "no usable auth token" in result[1]
+    else:
+      assert result[1] is None
+
+  @pytest.mark.parametrize("failure", ["endpoint", "bundle", "ambiguous", "missing"])
+  def test_loadability_and_provider_failures_precede_every_pg_access(self, failure):
+    from types import SimpleNamespace
+
+    dynamic = failure in ("ambiguous", "missing")
+    deliveries = self.deliveries(
+      "pg", "OWN_KEY" if dynamic else VAR, node=CODEX_ID if dynamic else NODE_ID
+    )
+    if failure == "ambiguous":
+      deliveries.active_secret_names["SECOND"] = [f"agent.{CODEX_ID}.secret_path.SECOND"]
+    elif failure == "missing":
+      deliveries.active_secret_names.clear()
+    with (
+      patch("kanibako.settings.config_io.fetch_persona_secret", side_effect=AssertionError),
+      patch("persona_grata.AgentStore", side_effect=AssertionError),
+      patch("subprocess.Popen", side_effect=AssertionError),
+      patch("kanibako.commands.start._secret_pointer_usable", side_effect=AssertionError),
+      patch.object(ClaudeTarget, "verify_persona", side_effect=AssertionError),
+      patch.object(CodexTarget, "verify_persona", side_effect=AssertionError),
+    ):
+      result, payload = self.prepare(
+        deliveries,
+        target=CodexTarget() if dynamic else ClaudeTarget(),
+        node=CODEX_ID if dynamic else NODE_ID,
+        endpoint=None if failure == "endpoint" else "https://endpoint.invalid",
+        bundle=SimpleNamespace(reject_reason="unusable config") if failure == "bundle" else None,
+      )
+    assert result[0] is None and result[1] is not None and result[2] is None
+    assert payload.names == ()
+
+  @pytest.mark.parametrize("token", [None, b"bytes", "", "  ", "a\nb", "a\rb", "a\x00b", "\udcff"])
+  def test_invalid_public_fetch_values_never_probe_or_reach_payload(self, token, capsys):
+    with (
+      patch("kanibako.settings.config_io.fetch_persona_secret", return_value=token),
+      patch.object(ClaudeTarget, "verify_persona", side_effect=AssertionError),
+    ):
+      result, payload = self.prepare(self.deliveries("pg"))
+    assert result[0] is None and "PG credential" in result[1]
+    assert payload.names == () and capsys.readouterr() == ("", "")
+
+  def test_public_fetch_exceptions_are_never_rendered(self, capsys):
+    with (
+      patch(
+        "kanibako.settings.config_io.fetch_persona_secret",
+        side_effect=RuntimeError("synthetic-private-value"),
+      ),
+      patch.object(ClaudeTarget, "verify_persona", side_effect=AssertionError),
+    ):
+      result, payload = self.prepare(self.deliveries("pg"))
+    assert "retrieval failed" in result[1] and "synthetic-private-value" not in result[1]
+    assert payload.names == () and capsys.readouterr() == ("", "")
+
+  def test_cancellation_is_not_swallowed(self):
+    with patch("kanibako.settings.config_io.fetch_persona_secret", side_effect=KeyboardInterrupt):
+      with pytest.raises(KeyboardInterrupt):
+        self.prepare(self.deliveries("pg"))
+
+  def test_dynamic_pg_provider_reuses_final_model_and_exact_token(self):
+    from kanibako.targets.base import PersonaProbeOutcome
+
+    with (
+      patch("kanibako.settings.config_io.fetch_persona_secret", return_value="value"),
+      patch.object(
+        CodexTarget, "verify_persona", return_value=PersonaProbeOutcome.passed()
+      ) as probe,
+    ):
+      result, payload = self.prepare(
+        self.deliveries("pg", "OWN_KEY", node=CODEX_ID), target=CodexTarget(), node=CODEX_ID
+      )
+    assert result[2].env_key == "OWN_KEY" and result[2].model == "stored-model"
+    assert probe.call_args.args == ("https://endpoint.invalid", None, "final-model")
+    assert probe.call_args.kwargs == {"env": {"FINAL": "env"}, "token": "value"}
+    assert payload.names == ("OWN_KEY",)
+
+  @pytest.mark.parametrize("verdict", ["rejected", "inconclusive", "not-applicable", "raised"])
+  @pytest.mark.parametrize("token", ["q", "short", "a'\\\"λ", "synthetic-sensitive-value"])
+  def test_exact_token_echoes_are_scrubbed_and_pg_source_is_truthful(self, verdict, token, capsys):
+    from kanibako.targets.base import PersonaProbeOutcome, ProbeEvidence
+    from kanibako.commands.start import _prepare_resolved_persona_delivery
+
+    logger = MagicMock()
+    evidence = ProbeEvidence(
+      endpoint="https://endpoint.invalid",
+      model="final-model",
+      status=401,
+      provider_text=f"echo={token}",
+      token_by_value=True,
+    )
+    outcome = (
+      PersonaProbeOutcome.rejected(evidence)
+      if verdict == "rejected"
+      else PersonaProbeOutcome.inconclusive(f"echo={token}", evidence)
+      if verdict == "inconclusive"
+      else PersonaProbeOutcome.not_applicable(f"echo={token}")
+    )
+    with (
+      patch("kanibako.settings.config_io.fetch_persona_secret", return_value=token),
+      patch.object(
+        ClaudeTarget,
+        "verify_persona",
+        side_effect=RuntimeError(token) if verdict == "raised" else None,
+        return_value=outcome,
+      ),
+    ):
+      result, payload = _prepare_resolved_persona_delivery(
+        NODE_ID,
+        self.deliveries("pg"),
+        "https://endpoint.invalid",
+        logger,
+        target=ClaudeTarget(),
+        env={},
+        cli_env={},
+        probe_model="final-model",
+        provider_model=None,
+      )
+    output = capsys.readouterr()
+    rendered = str(result[1] or "") + output.out + output.err + repr(logger.debug.call_args_list)
+    assert token not in rendered
+    assert not any(call.kwargs.get("exc_info") for call in logger.debug.call_args_list)
+    if verdict in ("rejected", "inconclusive"):
+      assert "persona-grata credential" in rendered and "-e on the command line" not in rendered
+    if verdict == "rejected":
+      assert result[0] is None and payload.names == () and "HTTP 401" in result[1]
+    else:
+      assert result[1] is None and payload.values[0].value == token.encode()
+
+  def test_late_fetch_failure_discards_partial_payload_before_probe(self):
+    deliveries = self.deliveries("pg")
+    deliveries.credential_states["OTHER_KEY"] = self.deliveries(
+      "pg", "OTHER_KEY"
+    ).credential_states["OTHER_KEY"]
+    with (
+      patch(
+        "kanibako.settings.config_io.fetch_persona_secret",
+        side_effect=["first-private-value", RuntimeError("second-private-value")],
+      ) as fetch,
+      patch.object(ClaudeTarget, "verify_persona", side_effect=AssertionError),
+    ):
+      result, payload = self.prepare(deliveries)
+    assert fetch.call_count == 2
+    assert result[0] is None and payload.names == ()
+    assert "first-private-value" not in result[1] and "second-private-value" not in result[1]
+
+  @pytest.mark.parametrize("broken", ["missing", "mismatched", "keyless"])
+  def test_malformed_final_source_never_fetches(self, broken):
+    from dataclasses import replace
+
+    deliveries = self.deliveries("pg")
+    state = deliveries.credential_states[VAR]
+    source = state.declaration.persona_credential
+    declaration = (
+      None
+      if broken == "missing"
+      else self.deliveries("pg", "OTHER_KEY").credential_states["OTHER_KEY"].declaration
+      if broken == "mismatched"
+      else replace(state.declaration, persona_credential=replace(source, keyless=True))
+    )
+    deliveries.credential_states[VAR] = replace(state, declaration=declaration)
+    with (
+      patch("kanibako.settings.config_io.fetch_persona_secret", side_effect=AssertionError),
+      patch.object(ClaudeTarget, "verify_persona", side_effect=AssertionError),
+    ):
+      result, payload = self.prepare(deliveries)
+    assert result[0] is None and "invalid PG credential source" in result[1]
+    assert payload.names == ()
+
+  def test_keyless_without_var_is_still_probed_without_any_fetch(self):
+    from kanibako.targets.base import PersonaProbeOutcome
+
+    with (
+      patch("kanibako.settings.config_io.fetch_persona_secret", side_effect=AssertionError),
+      patch("persona_grata.AgentStore", side_effect=AssertionError),
+      patch.object(
+        CodexTarget, "verify_persona", return_value=PersonaProbeOutcome.passed()
+      ) as probe,
+    ):
+      result, payload = self.prepare(
+        self.deliveries(None, declared=False, keyless=True), target=CodexTarget(), node=CODEX_ID
+      )
+    assert result[1] is None and result[2].env_key == "" and payload.names == ()
+    assert probe.call_count == 1 and probe.call_args.args[1] is None
+    assert "token" not in probe.call_args.kwargs
+
+  def test_old_plugin_is_unverified_without_a_false_cli_source(self, capsys):
+    from kanibako.targets.base import PersonaProbeOutcome
+
+    class OldTarget:
+      descriptor = ClaudeTarget().descriptor
+
+      def verify_persona(self, endpoint, pointer, model, *, env=None):
+        pytest.fail("old plugin must not probe a different token")
+        return PersonaProbeOutcome.passed()
+
+    with patch("kanibako.settings.config_io.fetch_persona_secret", return_value="private-value"):
+      result, payload = self.prepare(self.deliveries("pg"), target=OldTarget())
+    assert result[1] is None and payload.values[0].value == b"private-value"
+    output = capsys.readouterr().err
+    assert "is not verified" in output and "persona-grata credential" in output
+    assert "from -e" not in output and "private-value" not in output
+
+  def test_both_probe_axes_scrub_exact_token_echoes(self):
+    from kanibako.targets.base import (
+      AccessReport,
+      AxisResult,
+      GeneralAccess,
+      ModelAccess,
+      PersonaProbeOutcome,
+      PersonaProbeVerdict,
+      ProbeEvidence,
+    )
+
+    token = "sensitive-value"
+    general = ProbeEvidence(
+      endpoint="https://endpoint.invalid",
+      status=403,
+      provider_text=f"general {token}",
+      request="GET /models",
+      token_by_value=True,
+    )
+    model = ProbeEvidence(
+      endpoint="https://endpoint.invalid",
+      model="final-model",
+      status=401,
+      provider_text=f"model {token}",
+      request="POST /messages",
+      token_by_value=True,
+    )
+    outcome = PersonaProbeOutcome(
+      PersonaProbeVerdict.REJECTED,
+      evidence=model,
+      access=AccessReport(
+        AxisResult(GeneralAccess.DENIED, general), AxisResult(ModelAccess.DENIED, model)
+      ),
+    )
+    with (
+      patch("kanibako.settings.config_io.fetch_persona_secret", return_value=token),
+      patch.object(ClaudeTarget, "verify_persona", return_value=outcome),
+    ):
+      result, payload = self.prepare(self.deliveries("pg"))
+    assert result[0] is None and payload.names == () and token not in result[1]
+    assert "HTTP 401" in result[1] and "HTTP 403" in result[1]
+    assert "persona-grata credential" in result[1] and "-e on the command line" not in result[1]

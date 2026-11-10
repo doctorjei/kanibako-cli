@@ -177,8 +177,8 @@ class ProbeEvidence:
     request: str = ''
     token_by_value: bool = False
 
-    def lines(self, indent: str='  ', *, resolved_from: str='') -> tuple[str, ...]
-    def block(self, indent: str='  ', *, resolved_from: str='') -> str
+    def lines(self, indent: str='  ', *, resolved_from: str='', credential_source: str='') -> tuple[str, ...]
+    def block(self, indent: str='  ', *, resolved_from: str='', credential_source: str='') -> str
 
 class GeneralAccess(Enum):
     VERIFIED = 'verified'
@@ -222,7 +222,7 @@ class PersonaProbeOutcome(NamedTuple):
     def inconclusive(cls, reason: str, evidence: 'ProbeEvidence | None'=None) -> 'PersonaProbeOutcome'
     @classmethod
     def not_applicable(cls, reason: str) -> 'PersonaProbeOutcome'
-    def evidence_block(self, indent: str='  ', *, resolved_from: str='') -> str
+    def evidence_block(self, indent: str='  ', *, resolved_from: str='', credential_source: str='') -> str
     def refusal_phrase(self, endpoint: str) -> str
 
 @dataclass(frozen=True)
@@ -276,6 +276,8 @@ class Target(ABC):
     def checks_box_login(self) -> bool
     def box_login_present(self, box_home: Path, delivered: frozenset[str]) -> bool
     def prepare_host(self, install: 'AgentInstall', *, auto_auth: bool, data_path: Path) -> None
+    def prepare_host_binary(self, install: 'AgentInstall', *, data_path: Path) -> None
+    def refresh_host_auth(self, install: 'AgentInstall', *, data_path: Path) -> None
     def default_common(self) -> dict[str, BindArm]
     def default_seeds(self) -> dict[str, BindArm]
     def default_envs(self) -> dict[str, str]

@@ -1339,6 +1339,66 @@ class TestAVarNamedByBothScalarFamiliesRefusesTheLaunch:
     assert deliveries.secrets == []
 
 
+class TestCredentialStateAtTheLiveCategorySeam:
+  @pytest.mark.parametrize("pointer,kind", [("/synthetic/token", "file"), (None, "keyless-null")])
+  def test_snapshot_adapter_preserves_file_and_null_decisions(self, pointer, kind):
+    deliveries = TestAVarNamedByBothScalarFamiliesRefusesTheLaunch._deliveries(
+      {"box.secret_path.TOK": pointer}
+    )
+    state = deliveries.credential_states["TOK"]
+    assert state.kind == kind
+    assert state.declaration.key == "box.secret_path.TOK"
+    assert deliveries.active_secret_names["TOK"] == ["box.secret_path.TOK"]
+    assert deliveries.secret_names == ({} if pointer is None else {"TOK": ["box.secret_path.TOK"]})
+    assert deliveries.secrets == ([] if pointer is None else [state.declaration])
+
+  def test_null_scope_winner_is_retained_after_snapshot_adaptation(self):
+    deliveries = TestAVarNamedByBothScalarFamiliesRefusesTheLaunch._deliveries(
+      {"system.secret_path.TOK": "/synthetic/system", "box.secret_path.TOK": None}
+    )
+    state = deliveries.credential_states["TOK"]
+    assert state.kind == "keyless-null"
+    assert state.declaration.key == "box.secret_path.TOK"
+    assert deliveries.secrets == []
+    assert set(deliveries.active_secret_names["TOK"]) == {
+      "system.secret_path.TOK",
+      "box.secret_path.TOK",
+    }
+    assert deliveries.secret_names == {"TOK": ["system.secret_path.TOK"]}
+
+  def test_keyless_without_an_auth_variable_creates_no_entry_or_name(self):
+    from pathlib import Path
+
+    from kanibako.settings.settings_categories import PersonaCredential, launch_deliveries
+
+    source = PersonaCredential("Registered", Path("/captured/store"), None, True)
+    deliveries = launch_deliveries([], agent_dests=frozenset(), keyless_persona=source)
+    assert deliveries.keyless_persona is source
+    assert deliveries.credential_states == {}
+    assert deliveries.active_secret_names == {}
+    assert deliveries.secret_names == {}
+    assert deliveries.secrets == []
+
+  @pytest.mark.parametrize("var,keyless", [(None, False), ("", True), ("NOT-A-VAR", False)])
+  def test_invalid_metadata_cannot_become_a_source(self, var, keyless):
+    from pathlib import Path
+
+    from kanibako.settings.settings_categories import PersonaCredential
+
+    with pytest.raises(ValueError, match="authentication variable"):
+      PersonaCredential("Registered", Path("/captured/store"), var, keyless)
+
+  @pytest.mark.parametrize("keyless", [False, True])
+  def test_named_metadata_cannot_impersonate_unnamed_keyless_context(self, keyless):
+    from pathlib import Path
+
+    from kanibako.settings.settings_categories import PersonaCredential, launch_deliveries
+
+    source = PersonaCredential("Registered", Path("/captured/store"), "TOK", keyless)
+    with pytest.raises(ValueError, match="without an authentication variable"):
+      launch_deliveries([], agent_dests=frozenset(), keyless_persona=source)
+
+
 class TestANullWorkspaceNeverBecomesTheWordNone:
   """``ProjectPaths.project_path`` is ``None`` for a standalone box whose root nulls
   ``workset.workspaces`` (Q106). ``str()`` of it is the WORD ``"None"``, and a bind

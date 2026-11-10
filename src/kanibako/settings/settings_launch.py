@@ -28,6 +28,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, fields
 from enum import Enum
+from functools import partial
 from pathlib import Path
 from typing import (
   TYPE_CHECKING,
@@ -53,6 +54,7 @@ if TYPE_CHECKING:
   from kanibako.targets.base import PluginDescriptor
 
 from kanibako import kuid
+from kanibako.identifiers import agent_node_case
 from kanibako.agent_ref import (
   ADDRESSABLE_PSEUDO_AGENTS,
   AgentIdentity,
@@ -92,7 +94,7 @@ from kanibako.settings.config import (
 )
 from kanibako.settings.kb_store import SCOPE_CONTAINMENT, Bind, BindEntry
 from kanibako.settings.kb_store import __MISSING__
-from kanibako.settings.keystore import KeyStore
+from kanibako.settings.keystore import KeyStore, clone_store
 from kanibako.settings.messages import (
   ERR_BOX_STORE_EMPTY_REASON,
   ERR_BOX_STORE_TRAILING_REASON,
@@ -126,6 +128,7 @@ from kanibako.settings.settings_categories import (
   BARE_RELATIVE_SOURCE_HAZARD,
   SECRET_MOUNT_DIR,
   CategoryEntry,
+  PersonaCredential,
   _bind_options,
   is_path_key_value,
   refuse_non_scalar_family_value,
@@ -146,6 +149,8 @@ from kanibako.settings.settings_keyspace import (
   BIND_LEAF_CATEGORIES,
   Judgment,
   KeyClass,
+  KeyJudgment,
+  key_class,
   entry_label,
   is_terminal_category_key,
   display_store_path,
@@ -154,10 +159,11 @@ from kanibako.settings.settings_keyspace import (
   undeclared_store_paths,
   walk_store_paths,
 )
-from kanibako.settings.settings_keyspace_probe import keyspace_verdict
+from kanibako.settings.settings_keyspace_probe import ANY_AGENT, keyspace_verdict
 from kanibako.settings.settings_keyspace_probe import observe as observe_keyspace
 from kanibako.settings.settings_merge import merge
 from kanibako.settings.settings_prefs import (
+  AgentNames,
   PrefRequest,
   apply_prefs,
   collect_prefs,
@@ -1159,6 +1165,7 @@ def _refuse_undeclared_snapshot(
   files: Sequence[SettingsFile],
   written: Sequence[_WrittenLevel],
   subject: ResolveSubject,
+  oracle: Callable[[str], KeyJudgment] = keyspace_verdict,
 ) -> None:
   """RAISE naming EVERY resolved path the CLOSED keyspace does not declare (§0).
 
@@ -1196,7 +1203,7 @@ def _refuse_undeclared_snapshot(
   name-keyed escape is the carve-out the closed keyspace exists to refuse, and it
   would hide the next finding behind itself.
   """
-  findings = undeclared_store_paths(store, oracle=keyspace_verdict)
+  findings = undeclared_store_paths(store, oracle=oracle)
   if not findings:
     return
   retired_cure(_loaded_tiers(files))
@@ -1262,19 +1269,24 @@ def _carrying_files(
   return {path: keys for path, keys in carriers.items() if keys}
 
 
-def _path_key_leaves(store: KeyStore) -> list[tuple[str, object]]:
+def _path_key_leaves(
+  store: KeyStore,
+  *,
+  oracle: Callable[[str], KeyJudgment] = keyspace_verdict,
+  valid_agents: AgentNames | None = None,
+) -> list[tuple[str, object]]:
   """``(key, value)`` for every leaf of *store* that is a PATH key, in walk order.
 
   ⚑ THE PATH-KEY SET IS :func:`~kanibako.settings.config_keys.is_path_valued_key`,
   asked of every leaf — the registry's ``type: path`` rows plus the parametric
-  families it recognizes by parser. No list is kept here, so a key added to the
-  registry is swept the day it lands (P13).
+  families its parsers recognize using *valid_agents*, or lazy discovery. No list
+  is kept here; new registry keys are swept immediately (P13).
   ⚑ A LEAF IS SWEPT ONLY IF THE §0 ORACLE CALLS IT A KEY. The predicate parses CLI
   spellings, so it also accepts the bare ``template`` / ``canon`` and nested shapes
   such as ``agent.claude.nav.template``; in a store those are undeclared entries
   (§0), and a BARE RELATIVE refusal naming one would send the user to fix a key
-  that does not exist. :func:`keyspace_verdict` is the oracle
-  :func:`_refuse_undeclared_snapshot` refuses on, so the two cannot disagree (P10).
+  that does not exist. *oracle* is the resolve's judgment, shared with
+  :func:`_refuse_undeclared_snapshot`; omission uses :func:`keyspace_verdict`.
   ⚑ A SEGMENT WITH A DOT STOPS THE KEY: it is data (a bind destination), never key
   path — the same rule ``settings_keyspace.classify_store_path`` applies. The
   oracle cannot catch it: ``("box", "secret_path.X")`` joins to a declared key.
@@ -1288,7 +1300,7 @@ def _path_key_leaves(store: KeyStore) -> list[tuple[str, object]]:
     if any("." in seg for seg in segments):
       continue
     key = ".".join(segments)
-    if is_path_valued_key(key) and keyspace_verdict(key).cls is KeyClass.KEY:
+    if is_path_valued_key(key, valid_agents=valid_agents) and oracle(key).cls is KeyClass.KEY:
       leaves.append((key, snapshot_leaf(store, key)))
   return leaves
 
@@ -1321,6 +1333,8 @@ def _refuse_ambiguous_path_values(
   expanded: KeyStore,
   *,
   ctx: ResolveCtx,
+  oracle: Callable[[str], KeyJudgment] = keyspace_verdict,
+  valid_agents: AgentNames | None = None,
 ) -> None:
   """RAISE naming EVERY path key a settings file stores as a BARE RELATIVE (read time).
 
@@ -1363,7 +1377,7 @@ def _refuse_ambiguous_path_values(
   (``workset_dirkeys._stored_repoint``) ask the same predicate on their own doors.
   """
   for level, path, floor_store in written:
-    for key, value in _path_key_leaves(level):
+    for key, value in _path_key_leaves(level, oracle=oracle, valid_agents=valid_agents):
       if is_path_key_value(value):
         continue
       if floor_store is not None and snapshot_leaf(floor_store, key) == value:
@@ -1379,7 +1393,7 @@ def _refuse_ambiguous_path_values(
   offenders = [
     (key, value, path)
     for level, path, floor_store in written
-    for key, value in _path_key_leaves(level)
+    for key, value in _path_key_leaves(level, oracle=oracle, valid_agents=valid_agents)
     if isinstance(value, str)
     and value
     and not is_unambiguous_path_value(value)
@@ -1391,7 +1405,9 @@ def _refuse_ambiguous_path_values(
   lookup = _terminal_lookup(expanded)
   refusals = []
   for key, value, path in offenders:
-    anchor_ref, anchor_label = path_key_anchor(key, active_agent=ctx.agent_name)
+    anchor_ref, anchor_label = path_key_anchor(
+      key, active_agent=ctx.agent_name, valid_agents=valid_agents
+    )
     try:
       anchor: str | None = expand_expr(
         anchor_ref,
@@ -1424,6 +1440,8 @@ def refuse_read_time_faults(
   tiers: Sequence[str],
   active_agent: str = "",
   plugin_owners: Mapping[str, str] | None = None,
+  oracle: Callable[[str], KeyJudgment] = keyspace_verdict,
+  valid_agents: AgentNames | None = None,
 ) -> None:
   """RAISE for any stored value a resolve may not proceed with.
 
@@ -1442,12 +1460,15 @@ def refuse_read_time_faults(
   ⚑ Each raises on its own, so a file with both faults reports the path value first
   and the undeclared entry on the next run.
   """
-  _refuse_ambiguous_path_values(written, expanded, ctx=ctx)
+  _refuse_ambiguous_path_values(
+    written, expanded, ctx=ctx, oracle=oracle, valid_agents=valid_agents
+  )
   _refuse_undeclared_snapshot(
     expanded,
     files=files,
     written=written,
     subject=subject,
+    oracle=oracle,
   )
   _refuse_internal_bind_entries(written)
   _refuse_inherited_per_owner(
@@ -2422,6 +2443,40 @@ class Cascade:
   written: tuple[_WrittenLevel, ...]
   #: Each ``written`` level's scope name, parallel to it.
   tiers: tuple[str, ...]
+  persona_credential: PersonaCredential | None = None
+
+
+def _check_persona_credential_node(credential: PersonaCredential, agent_name: str) -> None:
+  """Refuse metadata captured for another active node."""
+  if agent_node_case(credential.registered_name) != agent_name:
+    raise SettingsError(
+      f"PG credential for '{credential.registered_name}' does not belong to agent '{agent_name}'"
+    )
+
+
+def _eligible_persona_credential(
+  levels: list[KeyStore],
+  *,
+  persona_index: int,
+  agent_name: str,
+  credential: PersonaCredential | None,
+) -> PersonaCredential | None:
+  """Judge source eligibility through a private merge; no marker enters the snapshot."""
+  if credential is None:
+    return None
+  _check_persona_credential_node(credential, agent_name)
+  if credential.var is None:
+    return credential
+  marker = object()
+  source = KeyStore()
+  segments = ("agent", agent_name, "secret_path", credential.var)
+  source.insert_segments(segments, marker)
+  projected: object = merge([*levels[:persona_index], source, *levels[persona_index:]])
+  for segment in segments:
+    if not isinstance(projected, KeyStore):
+      return None
+    projected = dict.get(projected, segment, __MISSING__)
+  return credential if projected is marker else None
 
 
 def assemble_cascade(
@@ -2431,6 +2486,7 @@ def assemble_cascade(
   files: Sequence[SettingsFile],
   agent_partial: KeyStore | None = None,
   persona_values: Mapping[str, str | None] | None = None,
+  persona_credential: PersonaCredential | None = None,
   prefs: "Sequence[PrefRequest] | None" = None,
   valid_agents: "Collection[str] | None" = None,
   cli_level: Mapping[str, object] | None = None,
@@ -2504,12 +2560,9 @@ def assemble_cascade(
     levels.append(ws_prefs)  # workset pref REQUESTS
   levels.append(base_levels[2])  # agent.<active> (the agent file)
   if persona_partial is not None:
-    # persona store — LIVE, never persisted. BELOW the per-agent FILE and ABOVE
-    # ``agent.default``. ⚑ The ordering is semantically FORCED: the agent file
-    # stores ONLY non-default values, so a value present in it can only be a
-    # DELIBERATE user edit, and a user edit must outrank one the store re-renders
-    # every launch. (The rung is UNOBSERVABLE in the merge — llm-doc.)
+    # Live persona values stay below user-intent file values and above defaults.
     levels.append(persona_partial)  # persona store (live)
+  persona_index = len(levels)
   levels.append(base_levels[3])  # agent.default
   if agent_partial is not None:
     levels.append(agent_partial)  # 7a descriptor default
@@ -2539,7 +2592,17 @@ def assemble_cascade(
   written: list[_WrittenLevel] = [(level, path, None) for level, path, _ in labeled]
   written.append((base_levels[5], base_path, dotted_partial(floor)))
   tiers = (*(tier for _, _, tier in labeled), "base")
-  return Cascade(snapshot=snapshot, written=tuple(written), tiers=tiers)
+  return Cascade(
+    snapshot=snapshot,
+    written=tuple(written),
+    tiers=tiers,
+    persona_credential=_eligible_persona_credential(
+      levels,
+      persona_index=persona_index,
+      agent_name=agent_name,
+      credential=persona_credential,
+    ),
+  )
 
 
 def build_launch_snapshot(
@@ -2555,6 +2618,7 @@ def build_launch_snapshot(
   default_categories: Mapping[str, object] | None = None,
   agent_partial: KeyStore | None = None,
   persona_values: Mapping[str, str | None] | None = None,
+  persona_credential: PersonaCredential | None = None,
   auth_chain: Mapping[str, object] | None = None,
   meta_runtime: Mapping[str, object] | None = None,
   meta_identity: Mapping[str, object] | None = None,
@@ -2566,6 +2630,7 @@ def build_launch_snapshot(
   refs_read: RefsRead | None = None,
   dest_keys: DestKeys | None = None,
   written_out: "list[_WrittenLevel] | None" = None,
+  persona_credential_out: list[PersonaCredential] | None = None,
   descriptor: "PluginDescriptor | None" = None,
   box_ref: str | None = None,
 ) -> KeyStore:
@@ -2609,14 +2674,14 @@ def build_launch_snapshot(
   *prefs* are the ``pref.*`` REQUESTS (spec §2h) of the workset + box files, in
   application order. ⚑ ``None`` means COLLECT THEM HERE — the fail-safe default, so
   a caller cannot omit them by accident. Supplying them is a CACHE, not a second
-  source. *valid_agents* injects the agent-validity set (defaults to plugin
-  discovery); tests supply their own.
+  source. *valid_agents* supplies names; ``AgentNames`` also supplies expansion vocabulary.
+  Plain collections retain legacy expansion.
 
   *dest_keys*, when given, receives ``expand``'s record of the key each bind entry was
   filed under (:data:`~kanibako.settings.settings_expand.DestKeys`).
 
-  *written_out*, when given, receives the cascade's labeled levels, most-specific-first,
-  so a caller can name the file whose value won (:func:`_none_setter`).
+  *written_out* receives the labeled file levels. *persona_credential_out* receives
+  eligible *persona_credential* metadata only after validation.
 
   *descriptor* is the ACTIVE plugin's; its bind rows' owners join §0's per-owner refusal.
 
@@ -2638,6 +2703,10 @@ def build_launch_snapshot(
   runtime. No resolve whose output is WRITTEN TO DISK may see a flag. Both lists,
   caller by caller: the llm-doc.
   """
+  oracle: Callable[[str], KeyJudgment] = keyspace_verdict
+  agent_leaf_map = getattr(valid_agents, "leaf_map", None)
+  if agent_leaf_map is not None:
+    oracle = partial(key_class, valid_agents=ANY_AGENT, agent_leaf_map=agent_leaf_map)
   floor = fold_floor(
     subject=subject,
     agent_name=agent_name,
@@ -2674,6 +2743,7 @@ def build_launch_snapshot(
     files=files,
     agent_partial=agent_partial,
     persona_values=persona_values,
+    persona_credential=persona_credential,
     prefs=prefs,
     valid_agents=valid_agents,
     cli_level=cli_level,
@@ -2689,14 +2759,15 @@ def build_launch_snapshot(
       null_sources=null_sources,
       refs_read=refs_read,
       dest_keys=dest_keys,
-      derive=post_expand_keys(snapshot, agent_name),
+      valid_agents=valid_agents if isinstance(valid_agents, AgentNames) else None,
+      derive=post_expand_keys(snapshot, agent_name, oracle=oracle),
     )
   except ExprSyntaxError as exc:
     # The grammar refusal names its key; the file holding the value is the address.
     raise exc.in_file(_value_holder(written, exc.chain)) from None
   # The meta.box.agent.* RO mirror (B5) — a COPY step, AFTER expand so the values
   # are resolved terminals; a reference read them already (:func:`post_expand_keys`).
-  _materialize_box_agent_mirror(expanded, active_agent=agent_name)
+  _materialize_box_agent_mirror(expanded, active_agent=agent_name, oracle=oracle)
   # The three computed sharing-state keys (Q61) — a COMPUTE step, AFTER expand
   # for the same reason: expand does not evaluate &&, so the ANDs only exist in
   # Python. Before the §0 refusal below, which must see the finished tree.
@@ -2709,7 +2780,7 @@ def build_launch_snapshot(
   # is nearly every kanibako command. Raising BEFORE it would blind the instrument to
   # exactly the resolves that matter, so a future re-measurement would see only the
   # snapshots that already conform.
-  observe_keyspace(expanded, origin="build_launch_snapshot")
+  observe_keyspace(expanded, origin="build_launch_snapshot", oracle=oracle)
   # keyspec §2a "A path key's stored value" at read time, for EVERY path key a
   # settings file stores. It JUDGES the levels a user writes — each beside its file —
   # and RESOLVES its anchors off the expanded snapshot. The persona, descriptor, CLI
@@ -2726,12 +2797,14 @@ def build_launch_snapshot(
     subject=subject,
     tiers=cascade.tiers,
     active_agent=agent_name,
+    oracle=oracle,
+    valid_agents=valid_agents if isinstance(valid_agents, AgentNames) else None,
     plugin_owners={
       normalize_bind_dest(b.box_dest): b.owner
       for b in (descriptor.bindings if descriptor is not None else ())
     },
   )
-  refuse_undeclared_per_file(files)
+  refuse_undeclared_per_file(files, oracle=oracle)
   _warn_lone_none_standard_binds(
     floor,
     snapshot,
@@ -2747,6 +2820,8 @@ def build_launch_snapshot(
     written=written,
     ctx=ctx,
   )
+  if persona_credential_out is not None and cascade.persona_credential is not None:
+    persona_credential_out.append(cascade.persona_credential)
   return expanded
 
 
@@ -3110,28 +3185,16 @@ def resolve_selected_agent(
   prefs: "Sequence[PrefRequest] | None" = None,
   valid_agents: "Collection[str] | None" = None,
 ) -> object:
-  """Resolve ``system.agent`` as the settings files + their prefs give it.
+  """Validate prefs, then resolve ``system.agent`` without reading its agent file.
 
-  Returns the resolved value in THREE states the caller MUST keep apart (see
-  :mod:`kanibako.settings.agent_select`): a ``str`` name · present-``None``, an
-  explicit ``pref.system.agent: null`` ⇒ NO DEFAULT IS SET, so the caller REFUSES
-  unless an agent was named explicitly (spec §2b) · ``__MISSING__``, nothing ever
-  set it ⇒ setup has never chosen one, and the caller REFUSES directing the user
-  to ``kanibako setup``. 🛑 **Both refusals, never an implicit pick — the
-  installed-agent count decides nothing** (retired 2026-09-19).
+  Keep three results distinct: a name; present-``None`` (no default was set);
+  ``__MISSING__`` (setup never chose one). Both no-name states refuse unless an
+  explicit agent was supplied; installed-agent count never chooses one (spec §2b).
+  Present nulls survive as scalar leaves, not as absent requests.
 
-  ⚑ The present-``None`` arm is only reachable because ``_resolve_present_none``
-  KEEPS a present-``None`` on a SCALAR leaf — an ``if value is None: continue``
-  anywhere on this path silently deletes the capability.
-
-  ⚑ **LENIENT expand, deliberately.** ``expand`` is whole-tree, so in STRICT mode an
-  unrelated defect would abort selection — a legitimate ``{$AGENT}`` in some other
-  bind source raises here, this pass having no active agent yet. LENIENT records
-  each defective leaf and omits it, while a defect ON ``system.agent`` itself is
-  RAISED below, naming the key. Never a silent fall-through to no-agent.
-
-  No ``agent_path`` is passed: the agent-tier FILE is selected BY this key, so
-  reading it here would be the chicken-and-egg this function exists to break.
+  Expansion is lenient: unrelated defects, including unavailable ``{$AGENT}``,
+  cannot choose the agent. A defect on ``system.agent`` itself still raises by
+  name. The selected agent file is unavailable until this pass returns.
   """
   requests = (
     list(prefs)
@@ -3142,6 +3205,28 @@ def resolve_selected_agent(
     )
   )
   ws_prefs, box_prefs = apply_prefs(requests, valid_agents=valid_agents)
+  return selection_from_overlays(
+    ctx=ctx,
+    system_path=system_path,
+    workset_path=workset_path,
+    box_path=box_path,
+    workset_overlay=ws_prefs,
+    box_overlay=box_prefs,
+    valid_agents=valid_agents,
+  )
+
+
+def selection_from_overlays(
+  *,
+  ctx: ResolveCtx,
+  system_path: Path | None,
+  workset_path: Path | None,
+  box_path: Path | None,
+  workset_overlay: KeyStore,
+  box_overlay: KeyStore,
+  valid_agents: "Collection[str] | None" = None,
+) -> object:
+  """Resolve provisional overlays; callers validate requests before exposing selection."""
   base_levels = assemble_levels(
     agent_name="",
     files=cascade_files(
@@ -3154,13 +3239,18 @@ def resolve_selected_agent(
     floor={},
   )
   levels: list[KeyStore] = [base_levels[0]]  # box
-  if box_prefs:
-    levels.append(box_prefs)  # box pref REQUESTS
+  if box_overlay:
+    levels.append(box_overlay)
   levels.append(base_levels[1])  # workset
-  if ws_prefs:
-    levels.append(ws_prefs)  # workset pref REQUESTS
+  if workset_overlay:
+    levels.append(workset_overlay)
   levels.extend([base_levels[4], base_levels[5]])  # system, base
-  result = expand(merge(levels), ctx, collect_errors=True)
+  result = expand(
+    merge(levels),
+    ctx,
+    collect_errors=True,
+    valid_agents=valid_agents if isinstance(valid_agents, AgentNames) else None,
+  )
   # ⚑ The lenient overload is typed ``KeyStore | tuple[KeyStore, dict]`` (because
   # ``collect_errors`` is a plain ``bool``), so the pair must be narrowed at the call
   # site. A ``KeyStore`` unpacks into two ``str``s without complaint — it IS a
@@ -3264,7 +3354,12 @@ def _assert_box_root_resolved(snapshot: KeyStore) -> None:
 # PINNED in tests/test_settings/test_settings_launch.py; the llm-doc has the shape.
 
 
-def _materialize_box_agent_mirror(snapshot: KeyStore, *, active_agent: str) -> None:
+def _materialize_box_agent_mirror(
+  snapshot: KeyStore,
+  *,
+  active_agent: str,
+  oracle: Callable[[str], KeyJudgment] = keyspace_verdict,
+) -> None:
   """Materialize ``meta.box.agent.*`` = the resolved active-agent subtree (B5).
 
   Mutates *snapshot* in place — it is the launch-local expanded tree, owned by the
@@ -3283,7 +3378,7 @@ def _materialize_box_agent_mirror(snapshot: KeyStore, *, active_agent: str) -> N
   # The PURE pick (agent.default ⊕ agent.<active>), which already carries any ``pref.agent.<agent>.*`` the box
   # requested (a pref is a cascade INPUT).
   effective = _agent_pick_node(snapshot, active_agent)
-  _drop_non_mirror_keys(effective)
+  _drop_non_mirror_keys(effective, oracle=oracle)
   if not dict.__len__(effective):
     return  # no leaves anywhere — nothing to mirror.
   meta_node = dict.get(snapshot, "meta", __MISSING__)
@@ -3305,7 +3400,12 @@ def _materialize_box_agent_mirror(snapshot: KeyStore, *, active_agent: str) -> N
 _MIRROR_SEGMENTS: tuple[str, ...] = ("meta", "box", "agent")
 
 
-def post_expand_keys(snapshot: KeyStore, active_agent: str) -> Derive:
+def post_expand_keys(
+  snapshot: KeyStore,
+  active_agent: str,
+  *,
+  oracle: Callable[[str], KeyJudgment] = keyspace_verdict,
+) -> Derive:
   """Answer, during ``expand`` of the RAW *snapshot*, a reference to a key the two
   materializers above write only afterwards: the mirror and the auth keys (spec §2b).
 
@@ -3327,7 +3427,7 @@ def post_expand_keys(snapshot: KeyStore, active_agent: str) -> Derive:
     if not dotted.startswith(head) or not active_agent.strip():
       return __MISSING__
     if not sources:
-      sources.append(_mirror_sources(snapshot, active_agent))
+      sources.append(_mirror_sources(snapshot, active_agent, oracle=oracle))
     picked, fallback = sources[0]
     leaf = dotted[len(head) :]
     source = snapshot_leaf(picked, leaf)
@@ -3342,7 +3442,12 @@ def post_expand_keys(snapshot: KeyStore, active_agent: str) -> Derive:
   return derive
 
 
-def _mirror_sources(snapshot: KeyStore, active_agent: str) -> tuple[KeyStore, object]:
+def _mirror_sources(
+  snapshot: KeyStore,
+  active_agent: str,
+  *,
+  oracle: Callable[[str], KeyJudgment] = keyspace_verdict,
+) -> tuple[KeyStore, object]:
   """The mirror's shape over the RAW *snapshot*, each leaf the key it is copied from,
   and the fallback tier (:func:`_fallback_node`) in the same form, or ``__MISSING__``.
 
@@ -3359,7 +3464,7 @@ def _mirror_sources(snapshot: KeyStore, active_agent: str) -> tuple[KeyStore, ob
   root = KeyStore()
   dict.__setitem__(root, "agent", tiers)
   effective = _agent_pick_node(root, active_agent)
-  _drop_non_mirror_keys(effective)
+  _drop_non_mirror_keys(effective, oracle=oracle)
   return effective, _fallback_node(tiers, active_agent)
 
 
@@ -3374,7 +3479,11 @@ def _source_keys(node: KeyStore, prefix: str) -> KeyStore:
   return out
 
 
-def _drop_non_mirror_keys(effective: KeyStore) -> None:
+def _drop_non_mirror_keys(
+  effective: KeyStore,
+  *,
+  oracle: Callable[[str], KeyJudgment] = keyspace_verdict,
+) -> None:
   """Remove from *effective*, in place, every entry the §0 oracle refuses AT the mirror.
 
   Spec §2b declares ``meta.box.agent.<key>`` for a KEY of the active agent's
@@ -3391,7 +3500,7 @@ def _drop_non_mirror_keys(effective: KeyStore) -> None:
   """
   findings = undeclared_store_paths(
     effective,
-    oracle=keyspace_verdict,
+    oracle=oracle,
     prefix=_MIRROR_SEGMENTS,
   )
   # Sorted by path: a refused node goes before its children, which then are gone.
@@ -3740,18 +3849,14 @@ def snapshot_category_entries(
   *,
   active_agent: str,
   box_ctx: ResolveCtx,
+  persona_credential: PersonaCredential | None = None,
 ) -> list[CategoryEntry]:
   """Walk the snapshot's category subtrees → the ONE ``list[CategoryEntry]``.
 
-  Every delivery seam downstream reads THIS list and no other: the per-scope
-  ``store_shape`` producer, the assembly collapse, and the launch seam's
-  ``LaunchDeliveries``. The shape is the one the retired by-name resolver produced,
-  unchanged. The four scopes are walked in the SAME ``system, agent, workset,
-  box`` apply order, so a same-scope tie breaks identically, and every emitted
-  entry's ``scope`` is the BARE scope token — the load-bearing scope identity (§7),
-  NOT the snapshot's agent discriminator. The agent tier is picked
-  active-over-default per name (§2d), the delivery-side analog of
-  :func:`effective_behavior`'s read.
+  All delivery seams share this list. Scopes retain their ``system, agent, workset,
+  box`` order and BARE precedence tokens; the agent pick is active-over-default.
+  *persona_credential* must be the cascade's eligible metadata. It joins a private
+  adapter view before that pick; no metadata enters or mutates the snapshot.
 
   🛑 host_src is read from the expanded ``Bind`` and used AS-IS: NOTHING is prefixed
   here, ever. A stored source resolves ON ITS OWN (spec §2a); an assembly-time
@@ -3764,6 +3869,13 @@ def snapshot_category_entries(
   GUEST-spelled now, copies included (spec §0 "ONE DEST SPACE, TWO DELIVERIES"), so
   there is no second namespace for a key set to select. Do not reintroduce one.
   """
+  if persona_credential is not None:
+    _check_persona_credential_node(persona_credential, active_agent)
+    if persona_credential.var is not None:
+      snapshot = clone_store(snapshot)
+      snapshot.insert_segments(
+        ("agent", active_agent, "secret_path", persona_credential.var), persona_credential
+      )
   collected: list[tuple[tuple[int, str, str], CategoryEntry]] = []
   scope_order = {s: i for i, s in enumerate(_SCOPES)}
 
@@ -4146,20 +4258,14 @@ def _emit_scope_node(
         )
       )
 
-  # secret_path — the SECRET category (spec §2a): a scalar host PATH keyed by VAR,
-  # delivered as a ro MOUNT to SECRET_MOUNT_DIR/{VAR}. Modeled on the env branch but
-  # MOUNT. ⚑ start.py emits the ro Mount plus the box-side export shim — kanibako
-  # NEVER reads the file VALUE — and options stays ``ro`` with NO ``:U`` chown of
-  # the host secret.
+  # File sources remain arm's-length ro mounts; PG metadata has no host path.
   secret = dict.get(scope_node, "secret_path", __MISSING__)
   if isinstance(secret, KeyStore):
     for var in dict.keys(secret):
       path_val = dict.__getitem__(secret, var)
-      # ⚑ A PRESENT ``None`` IS EMITTED, with no source: it is the keyless
-      # declaration (§2a) and a VALUE in the per-VAR cascade (§2h), so a lower
-      # scope's pointer must not win past it. ``secret_path_winners`` picks it
-      # and ``secret_path_deliveries`` mounts nothing for it.
-      if path_val is None:
+      credential = path_val if isinstance(path_val, PersonaCredential) else None
+      # Null and PG declarations share this route but retain distinct source states.
+      if path_val is None or credential is not None:
         collected.append(
           (
             (order, "secret_path", var),
@@ -4176,6 +4282,7 @@ def _emit_scope_node(
                 "secret_path",
                 var,
               ),
+              persona_credential=credential,
             ),
           )
         )
@@ -4400,6 +4507,7 @@ def resolve_box_scalars(
   agent_name: str = GENERAL_SLOT,
   agent_path: Path | None = None,
   refuse_null_scalars: bool = True,
+  persona_values: Mapping[str, str | None] | None = None,
 ) -> dict[str, object]:
   """The box scalars resolved through the keyspace, as ``{dotted key: value}``.
 
@@ -4432,12 +4540,20 @@ def resolve_box_scalars(
       system_path=std.settings,
     )
   if inputs is not None:
+    valid_agents = None
+    identity = inputs.agent_identity
+    if identity is not None and identity.registered_name is not None:
+      from kanibako.settings.settings_prefs import default_valid_agents
+
+      valid_agents = default_valid_agents().with_harnesses({identity.node: identity.target_name})
     snapshot = build_launch_snapshot(
       **inputs.as_kwargs(),
       agent_name=agent_name,
       agent_path=agent_path,
+      valid_agents=valid_agents,
       cli_level=cli_level,
       written_out=written,
+      persona_values=persona_values,
     )
   else:
     snapshot = build_launch_snapshot(
@@ -4454,15 +4570,25 @@ def resolve_box_scalars(
       box_path=box_path,
       cli_level=cli_level,
       written_out=written,
+      persona_values=persona_values,
     )
-  resolved: dict[str, object] = {}
-  for dotted in _BOX_SCALAR_FIELDS:
-    node = snapshot_leaf(snapshot, dotted)
-    if node is not __MISSING__:
-      resolved[dotted] = node
+  resolved = _snapshot_box_scalars(snapshot)
   if refuse_null_scalars:
     _refuse_null_box_scalars(resolved, written)
   return resolved
+
+
+def _snapshot_box_scalars(snapshot: KeyStore) -> dict[str, object]:
+  return {
+    dotted: value
+    for dotted in _BOX_SCALAR_FIELDS
+    if (value := snapshot_leaf(snapshot, dotted)) is not __MISSING__
+  }
+
+
+def box_scalar_config(snapshot: KeyStore) -> KanibakoConfig:
+  """Convert captured display scalars without resolving again; preserve nulls."""
+  return _box_scalar_config(_snapshot_box_scalars(snapshot))
 
 
 def _refuse_null_box_scalars(
@@ -4506,6 +4632,7 @@ def load_merged_config(
   agent_name: str = GENERAL_SLOT,
   agent_path: Path | None = None,
   refuse_null_scalars: bool = True,
+  persona_values: Mapping[str, str | None] | None = None,
 ) -> KanibakoConfig:
   """The box scalars as a :class:`KanibakoConfig`: each file's present values, then the keyspace resolve.
 
@@ -4518,15 +4645,7 @@ def load_merged_config(
   """
   if inputs is not None:
     workset_path, project_path = inputs.cascade_workset_path, inputs.cascade_box_path
-  defaults = KanibakoConfig()
-  cfg = KanibakoConfig()
-  if cli_overrides:
-    valid_keys = {fld.name for fld in fields(cfg)}
-    for k, v in cli_overrides.items():
-      if k in valid_keys:
-        setattr(cfg, k, v)
-  # ⚑ The files reach the fields ONLY through the resolve, so every tier's value — a
-  # present ``None`` included — is judged once, after the whole cascade.
+  # Files reach fields only after the whole cascade, including present nulls.
   resolved = resolve_box_scalars(
     workset_path=workset_path,
     box_path=project_path,
@@ -4535,7 +4654,22 @@ def load_merged_config(
     agent_name=agent_name,
     agent_path=agent_path,
     refuse_null_scalars=refuse_null_scalars,
+    persona_values=persona_values,
   )
+  return _box_scalar_config(resolved, cli_overrides)
+
+
+def _box_scalar_config(
+  resolved: Mapping[str, object],
+  cli_overrides: dict[str, object] | None = None,
+) -> KanibakoConfig:
+  defaults = KanibakoConfig()
+  cfg = KanibakoConfig()
+  if cli_overrides:
+    valid_keys = {fld.name for fld in fields(cfg)}
+    for k, v in cli_overrides.items():
+      if k in valid_keys:
+        setattr(cfg, k, v)
   for dotted, field_name in _BOX_SCALAR_FIELDS.items():
     if dotted in resolved:
       value = resolved[dotted]

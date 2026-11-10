@@ -40,6 +40,7 @@ from kanibako.utils.files import stat_unless_gone
 
 if TYPE_CHECKING:
   from kanibako.agent_ref import AgentIdentity
+  from kanibako.persona_store import RegisteredPersona
   from kanibako.settings.paths import BoxMode
 
 # ---------------------------------------------------------------------------
@@ -938,8 +939,21 @@ def resolve_agent(
   return resolve_agent_identity(explicit_agent=explicit_agent, requested=requested).node
 
 
-def resolve_named_agent_identity(name: str) -> AgentIdentity:
-  """Address a legacy agent without plugin discovery, PG access, or launch eligibility."""
+@dataclass(frozen=True)
+class AgentResolution:
+  """Operation-local input."""
+
+  identity: AgentIdentity
+  registered_persona: RegisteredPersona | None = field(default=None, repr=False, compare=False)
+  unavailable: Exception | None = field(default=None, repr=False, compare=False)
+
+  def __post_init__(self) -> None:
+    if self.registered_persona is not None and self.registered_persona.identity != self.identity:
+      raise ValueError("registered input does not own the resolved identity")
+
+
+def _legacy_agent_identity(name: str) -> AgentIdentity:
+  """Parse before I/O."""
   from kanibako.agent_ref import (
     ADDRESSABLE_PSEUDO_AGENTS,
     AgentIdentity,
@@ -969,53 +983,104 @@ def resolve_named_agent_identity(name: str) -> AgentIdentity:
   )
 
 
-def resolve_agent_identity(
-  *,
-  explicit_agent: str | None,
-  requested: str | None = None,
-) -> AgentIdentity:
-  """Require an installed target for the first present selection; None means unset."""
-  # Target discovery imports paths/config indirectly and must remain lazy.
+def resolve_named_agent_input(name: str) -> AgentResolution:
+  """Classify once; unavailable input remains addressable."""
   from dataclasses import replace
 
-  from kanibako.agent_ref import ADDRESSABLE_PSEUDO_AGENTS, persona_of, with_harness
-  from kanibako.errors import AgentNotInstalledError, AgentUnsetError
+  from kanibako.agent_ref import (
+    ADDRESSABLE_PSEUDO_AGENTS,
+    CANONICAL_SEP,
+    persona_of,
+    with_harness,
+  )
+  from kanibako.errors import AgentNotInstalledError
   from kanibako.identifiers import find_identifier
   from kanibako.install_method import install_command
   from kanibako.targets import discover_targets
 
-  raw_resolved = explicit_agent if explicit_agent is not None else requested
+  identity = _legacy_agent_identity(name)
+  if identity.node in ADDRESSABLE_PSEUDO_AGENTS:
+    return AgentResolution(identity)
+  try:
+    installed = set(discover_targets())
+  except Exception as exc:
+    return AgentResolution(identity, unavailable=exc)
 
-  if raw_resolved is not None:
-    identity = resolve_named_agent_identity(raw_resolved)
-    if identity.node in ADDRESSABLE_PSEUDO_AGENTS:
-      return identity
-    installed = set(discover_targets().keys())
-    found = find_identifier(identity.target_name, installed)
-    if found is not None:
-      if identity.registered_name is not None:
-        return replace(identity, harness=found, target_name=found)
+  registered = None
+  if CANONICAL_SEP not in identity.node and find_identifier(name.strip(), installed) is None:
+    try:
+      from kanibako.persona_store import read_registered_persona
+
+      registered = read_registered_persona(name.strip())
+    except Exception as exc:
+      return AgentResolution(identity, unavailable=exc)
+    if registered is not None:
+      identity = registered.identity
+
+  found = find_identifier(identity.target_name, installed)
+  if found is not None:
+    if registered is not None:
+      identity = replace(identity, harness=found, target_name=found)
+      registered = replace(registered, identity=identity)
+    else:
       node = with_harness(identity.node, found)
-      return replace(
-        identity,
-        node=node,
-        persona=persona_of(node),
-        harness=found,
-        target_name=found,
+      identity = replace(
+        identity, node=node, persona=persona_of(node), harness=found, target_name=found
       )
-    raise AgentNotInstalledError(
+    return AgentResolution(identity, registered)
+
+  if registered is not None:
+    error = AgentNotInstalledError(
+      f"PG agent '{identity.registered_name}' requires harness "
+      f"'{identity.target_name}'. Install it with:\n"
+      f"  {install_command(f'kanibako-agent-{identity.target_name}')}"
+    )
+  else:
+    error = AgentNotInstalledError(
       f"Agent '{identity.target_name}' is not installed. Install it with:\n"
       f"  {install_command(f'kanibako-agent-{identity.target_name}')}\n"
       f"Or run 'kanibako agent list' to see installed agents."
     )
+  return AgentResolution(identity, registered, error)
 
-  raise AgentUnsetError(
-    "No default agent is configured (system.agent is unset).\n"
-    "Choose one with:\n"
-    "  kanibako setup\n"
-    "Or name one for a single run with '--agent <name>'.\n"
-    "'kanibako shell' reaches the box's container without an agent."
-  )
+
+def resolve_named_agent_identity(name: str) -> AgentIdentity:
+  """Project identity without launch eligibility."""
+  return resolve_named_agent_input(name).identity
+
+
+def resolve_agent_input(
+  *, explicit_agent: str | None, requested: str | None = None
+) -> AgentResolution:
+  """Require usable classified input."""
+  from kanibako.errors import AgentUnsetError
+
+  name = explicit_agent if explicit_agent is not None else requested
+  if name is None:
+    raise AgentUnsetError(
+      "No default agent is configured (system.agent is unset).\n"
+      "Choose one with:\n"
+      "  kanibako setup\n"
+      "Or name one for a single run with '--agent <name>'.\n"
+      "'kanibako shell' reaches the box's container without an agent."
+    )
+  resolved = resolve_named_agent_input(name)
+  if resolved.unavailable is not None:
+    raise resolved.unavailable
+  return resolved
+
+
+def resolve_agent_identity(
+  *,
+  explicit_agent: str | None,
+  requested: str | None = None,
+  registered_persona_out: list[RegisteredPersona] | None = None,
+) -> AgentIdentity:
+  """Project launch identity and captured input."""
+  resolved = resolve_agent_input(explicit_agent=explicit_agent, requested=requested)
+  if registered_persona_out is not None and resolved.registered_persona is not None:
+    registered_persona_out.append(resolved.registered_persona)
+  return resolved.identity
 
 
 def _flatten_leaves(

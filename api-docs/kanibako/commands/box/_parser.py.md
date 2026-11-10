@@ -52,7 +52,7 @@ def run_get(args: argparse.Namespace) -> int
 def run_show(args: argparse.Namespace) -> int
 def _add_target_group(parser: argparse.ArgumentParser, *, required: bool=False) -> None
 def _assert_primary_home_free_for_create(std, name: str) -> None
-def _check_persona_store_for_create(agent_ref: str) -> str | None
+def _check_persona_store_for_create(agent_ref: str, *, prepared=None) -> str | None
 def _create_recovery_refusal(args, std, probe, *, already: bool, pending: dict | None) -> 'str | None'
 def _drop_gone_parked_primary(std, name: str) -> None
 def _orphaned_primary_box_dir(args, std, probe) -> 'Path | None'
@@ -100,6 +100,7 @@ def _format_credential_age(creds_path: Path) -> str
 def _running_image(runtime: ContainerRuntime, name: str, listed: Iterable[tuple[str, str, str]], *, check: bool) -> str | None
 def _check_container_running(proj, *, fail_closed: bool=False, container_name: str | None=None) -> tuple[bool, str]
 def _resolve_config_subject(std, config, project_dir: str | None)
+def _box_config_agent_input(std, proj)
 def _run_box_config(args: argparse.Namespace) -> int
 ```
 

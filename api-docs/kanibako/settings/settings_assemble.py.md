@@ -48,8 +48,8 @@ def announce_drop_once(path: Path | None, token: str) -> bool
 def fold_agent_nodes(raw: Any, *, path: Path | None) -> Any
 def refuse_doubled_agent_nodes(raw: Any, *, path: Path | None) -> None
 def read_settings_files(files: Iterable[tuple[str, Path | None]], *, purpose: ReadPurpose, subject: str | None=None, box_ref: str | None=None) -> tuple[SettingsFile, ...]
-def refuse_undeclared_per_file(files: Iterable[SettingsFile]) -> None
-def refuse_undeclared_entries(view: Any, *, level: str, path: Path | None, stored: Any=None) -> None
+def refuse_undeclared_per_file(files: Iterable[SettingsFile], *, oracle: Callable[[str], KeyJudgment]=keyspace_verdict) -> None
+def refuse_undeclared_entries(view: Any, *, level: str, path: Path | None, stored: Any=None, oracle: Callable[[str], KeyJudgment]=keyspace_verdict) -> None
 def undeclared_listing(findings: Sequence[tuple[tuple[str, ...], Judgment]]) -> tuple[str, str, str]
 def refuse_retired_registry_key(raw: Any, *, level: str, path: Path | None, standalone_root: bool=False) -> None
 def retired_cure(files: Iterable[SettingsFile]) -> None
@@ -62,7 +62,7 @@ def file_partial(raw: dict, *, path: Path | None=None, for_pref_requests: bool=F
 def agent_file_partial(raw: dict, *, sub_key: str, path: Path | None=None, node: str | None=None) -> KeyStore
 def dotted_partial(floor: dict[str, object] | None, *, active_agent: str | None=None) -> KeyStore
 def assemble_levels(*, agent_name: str, files: Iterable[SettingsFile], floor: dict[str, object] | None=None) -> list[KeyStore]
-def agent_record(path: Path, *, node: str, purpose: ReadPurpose) -> AgentConfig
+def agent_record(path: Path, *, node: str, purpose: ReadPurpose, valid_agents: AgentNames | None=None) -> AgentConfig
 def agent_store_refusal(store: Path, why: str, *, fix: str | None=None) -> SettingsError
 def cascade_files(*, purpose: ReadPurpose, system_path: Path | None, agent_path: Path | None, workset_path: Path | None, box_path: Path | None, base_path: Path | None=None, subject: str | None=None, box_ref: str | None=None) -> tuple[SettingsFile, ...]
 def _declaration_root_ref(path: tuple[str, ...], category: str, active_agent: str | None=None) -> str | None

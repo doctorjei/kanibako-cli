@@ -1,8 +1,8 @@
 # Credential Writeback Watcher — the trusted host half
 
-`launch/creds_watcher.py` returns credentials to the host store.
-`box_writeback_context` resolves the stamped identity: target_name selects the plugin;
-node keys settings and auth paths. Design:
+`launch/creds_watcher.py` writes credentials to host stores.
+`box_writeback_context` projects stamped input: target_name selects plugins;
+node keys files; live values resolve auth paths. Design:
 `~/canon/workbook/designs/split-brain-persistence-DESIGN.md` (GAP-1).
 
 ## Why writeback is a correctness need

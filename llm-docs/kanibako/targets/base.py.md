@@ -616,8 +616,8 @@ states the status, the inputs and the provider's own words, and the reading is t
 *model* is what went ON THE WIRE, which is not always what the user configured: a harness that
 resolves a tier alias through an env var records the id it SENT and says where it came from in
 *model_origin*, or the message reads as if kanibako invented an id. *token_path* is a PATH, never a
-value, so it carries no secret by construction; *token_by_value* marks a token sent from `-e`, and
-is a flag for the same reason. *provider_text* is different: `http_probe` capped
+value; *token_by_value* marks a credential supplied by value. Neither contains it.
+*provider_text* is different: `http_probe` capped
 and scrubbed it of every header value the request carried, and it is also **re-serialized** when the
 body was JSON — the provider's meaning, not its bytes. 🛑 **Scrubbed is not proven clean.** The
 record inherits `ProbeResponse.body`'s documented residue verbatim; read this block as an error
@@ -653,18 +653,16 @@ not be delimiter-free (a base64 token carries `/`). It starts past the scheme an
 a `://` ends an RFC 3986 scheme at index 0, else at index 0. The cost is over-redaction in printed
 text only; the check runs on the raw string, so no working box is refused.
 
-`evidence_block()` takes a `resolved_from` the CALLER supplies (and passes it down to
-`ProbeEvidence.lines` / `.block`, which declare it the same way); `refusal_phrase` takes the
-endpoint and nothing else. It names where *endpoint* and *model* came from, and it is a render-time
-argument rather than a `ProbeEvidence` field because the plugin that builds the record was handed
-both values and cannot know; `""` prints no provenance, so a caller that cannot answer stays silent
-instead of guessing. 🛑 It names a SOURCE, never a cascade RUNG — the create path can say "the
-persona store at `<dir>`" exactly, while the launch path reads a collapsed snapshot whose level
-`settings_merge.merge` has already dropped, so the most it may honestly say is which keys and which
-carriers could hold them (`agent.<node>` or its `agent.default` fallback, in a settings file or the
-persona-grata store — both readers consult the fallback, and the store is a cascade rung of its
-own). 🛑 AND ITS SUBJECT HAS **THREE** ARMS, one per state of the model line above it, because
-attributing provenance to something that line does not show is the one way this sentence can lie:
+`evidence_block()` forwards caller-supplied `resolved_from` and `credential_source` to
+`ProbeEvidence.lines` / `.block`; no plugin hook signature changes. These are render-time facts
+unknown to the plugin. `resolved_from` names the endpoint/model SOURCE, never a cascade RUNG:
+create can name its store directory, while launch's merged snapshot has lost the level and can
+name only the keys/carriers consulted (`agent.<node>` or `agent.default`, settings files or PG).
+`credential_source` replaces the token description with nonsecret source text, never its value;
+`""` preserves CLI/path/keyless rendering. A label never changes authentication or verdicts:
+`token_path` / `token_by_value` still distinguish keyed from keyless. Neither label certifies
+provider text as secret-free. `refusal_phrase` still takes only the endpoint. `resolved_from`'s
+subject has **THREE** arms,matching what the model line actually shows:
 
 | model line | subject | why |
 |---|---|---|
@@ -852,7 +850,7 @@ The declarative data a plugin exposes via `Target.descriptor`; divergent LOGIC s
 * *operations* — standalone ops, no mode.
 * *persona* — harness-specific persona endpoint/token delivery; `None` = no persona block, so no
   persona checks (see "No `PersonaSpec`, no persona checks").
-* *host_prep* — `True` makes core call `Target.prepare_host` before mounts.
+* *host_prep* — retained field; launch invokes phase methods directly.
 * *init_dirs* — extra dirs to `mkdir` in the project home (home-relative).
 * *auth_share_support* — an **RO CAPABILITY** (spec §2d): does this agent SUPPORT shared
   credentials? Materialized as `meta.agent.<agent>.auth.share_support` (plugin-set).
@@ -967,19 +965,17 @@ from it. **Every shipped agent plugin returns a descriptor.** The sole descripto
 
 ```python
 def prepare_host(self, install: "AgentInstall", *, auto_auth: bool, data_path: Path) -> None
+def prepare_host_binary(self, install: "AgentInstall", *, data_path: Path) -> None
+def refresh_host_auth(self, install: "AgentInstall", *, data_path: Path) -> None
 ```
-Plugin-owned pre-launch host preparation. Default: no-op.
+Launch calls `prepare_host_binary` before mounts, then authorized `refresh_host_auth` after
+its final credential verdict. Both default to no-op; implementations log/swallow failures.
+`prepare_host` composes them for direct callers, honoring *auto_auth*. Launch refuses
+combined-only overrides. Plugins must require phase-capable core before publication.
+`check_auth` / `_validate_agent_binary` separately surface hard failures.
 
-Called by core `start.py` once a host install is detected and BEFORE mounts are built, so the
-plugin can own everything agent-specific that must touch the host FIRST (updating the host binary
-to a stable version, refreshing host auth with the right environment). Core stays agent-agnostic:
-it just invokes this hook.
-
-⚑ **Implementations MUST NOT crash the launch** — a failure here should be logged and swallowed; a
-hard auth/binary failure is surfaced separately via `check_auth` / `_validate_agent_binary`.
-
-*install* is the detected `AgentInstall`; *auto_auth* says whether automated browser auth should be
-attempted; *data_path* is the kanibako data dir, for auth cookie storage.
+*install* is the detected installation; *data_path* is the caller's data directory. Claude
+ignores it because `browser_state` owns its OAuth jar.
 
 ### The declared AGENT-level defaults
 

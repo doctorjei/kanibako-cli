@@ -325,6 +325,7 @@ def test_a_packaging_defect_reaches_the_user_as_an_error_line_not_a_traceback(
 
   from kanibako.cli import main
   from kanibako.commands import agent_cmd
+  from kanibako.settings.config import resolve_named_agent_identity
 
   # THE PACKAGING DEFECT: the shipped floor has no ``label`` row to read.
   monkeypatch.setattr(core_defaults, "_load_doc", lambda: {"agent_default": {}})
@@ -339,7 +340,7 @@ def test_a_packaging_defect_reaches_the_user_as_an_error_line_not_a_traceback(
     args.command = "agent"
     args.agent_command = "info"
     # The adapter is the only seam: below it the production read runs for real.
-    args.func = lambda _ns: agent_cmd._label_floor("claude")
+    args.func = lambda _ns: agent_cmd._label_floor(resolve_named_agent_identity("claude"), None)
     mock_bp.return_value.parse_args.return_value = args
     main(["agent", "info", "claude"])
 

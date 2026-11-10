@@ -59,7 +59,7 @@ from kanibako.settings.settings_keyspace import (
   leaf_name_reason,
   unread_harnesses,
 )
-from kanibako.settings.settings_prefs import PREF_ROOT
+from kanibako.settings.settings_prefs import PREF_ROOT, AgentNames
 from kanibako.settings.bootstrap import CONFIG_FILE, CONFIG_PATH_DEFAULTS, SYSTEM_PATH_DEFAULTS
 
 _log = logging.getLogger(__name__)
@@ -472,19 +472,19 @@ def _coerce_value(canonical: str, value: "str | None") -> object | None:
 # ---------------------------------------------------------------------------
 
 
-def is_path_valued_key(canonical: str) -> bool:
+def is_path_valued_key(canonical: str, *, valid_agents: AgentNames | None = None) -> bool:
   """True iff *canonical* names a key whose value is a HOST PATH (registry ``type: path``).
 
   The FIXED spellings come from :data:`KEY_TYPES`; the three PARAMETRIC families —
   the bare agent leaves the CLI serves for the any-agent tier, the per-node
   ``agent.<node>.{template,canon}``, and ``secret_path.<VAR>`` at every scope — have
-  no fixed string and are recognized by their own parsers.
+  no fixed string; their parsers use *valid_agents*' vocabulary, or lazy discovery.
   """
   if KEY_TYPES.get(canonical) == "path":
     return True
   if canonical in PATH_VALUED_AGENT_LEAVES:
     return True
-  parsed = _parse_persona_agent_key(canonical)
+  parsed = _parse_persona_agent_key(canonical, valid_agents=valid_agents)
   if parsed is not None and parsed[1] in PATH_VALUED_AGENT_LEAVES:
     return True
   return _is_scope_secret_key(canonical) or _is_agent_node_secret_key(canonical)
@@ -494,6 +494,7 @@ def path_key_anchor(
   canonical: str,
   *,
   active_agent: str | None = None,
+  valid_agents: AgentNames | None = None,
 ) -> "tuple[str, str]":
   """``(anchor ref, label)`` for the OTHER reading of a bare relative at *canonical*
   (keyspec §2a "A path key's stored value").
@@ -541,7 +542,7 @@ def path_key_anchor(
     return DECLARATION_ROOT_REF["box"], DEFAULT_ROOT_LABEL
   # The two agent-scope path leaves, anchored at the NODE'S OWN store root. The bare
   # CLI spelling writes the any-agent tier, whose node is the reserved ``default``.
-  parsed = _parse_persona_agent_key(canonical)
+  parsed = _parse_persona_agent_key(canonical, valid_agents=valid_agents)
   node = parsed[0] if parsed is not None else AGENT_DEFAULT_SUB
   root = agent_declaration_root_ref(agent_tier_node(node, active_agent, "<agent>"))
   return root, DEFAULT_ROOT_LABEL
@@ -552,26 +553,16 @@ def path_key_anchor(
 ANY_AGENT_ROOT_REF: Final[str] = agent_declaration_root_ref("<agent>")
 
 
-def agent_node_of(canonical: str) -> str:
-  """The agent NODE a per-node *canonical* key ADDRESSES, or ``""`` when it names none.
+def agent_node_of(canonical: str, *, valid_agents: AgentNames | None = None) -> str:
+  """The node *canonical* addresses, or ``""``; used to anchor set-time resolution.
 
-  THE QUESTION A WRITE VERB ASKS to name the agent its command is about when the KEY is
-  the only place that says so.  ``agent set`` is handed the node; ``system set
-  agent.<node>.canon=…`` holds it nowhere but the key, and without it the set-time
-  snapshot floors no ``meta.agent.<node>.path`` — so a value spelled against the very
-  store root the write lands in is refused as a dangling ``{key}``-reference.
-
-  ⚑ DERIVED FROM THE SAME TWO PARSERS :func:`path_key_anchor` CONSULTS, in the same
-  order, so the anchor a refusal NAMES and the anchor the set-time floor PROVIDES cannot
-  disagree about which store root a key hangs off.  No third parser is introduced.
-
-  ⚑ THE BIND ARM IS DELIBERATELY ABSENT, and its absence is the lesson the removed
-  ``_agent_scope_node`` left: an ``agent.<node>.bindings.{ro,rw}.<name>`` set is refused
-  BY NAME in the verb preamble (R-9), so an arm for it could never change an outcome —
-  it would be dead the day it was written.  :func:`resolve_key` carries that arm because
-  it canonicalizes a key the READ verbs still serve; this answers a WRITE-time question.
+  Reuse :func:`path_key_anchor`'s secret/persona parsers and supplied vocabulary.
+  No bind arm: its write route is retired (R-9), unlike :func:`resolve_key`'s
+  surviving read-side canonicalization. Context and examples: llm-docs.
   """
-  parsed = _parse_agent_node_secret_key(canonical) or _parse_persona_agent_key(canonical)
+  parsed = _parse_agent_node_secret_key(canonical) or _parse_persona_agent_key(
+    canonical, valid_agents=valid_agents
+  )
   return parsed[0] if parsed is not None else ""
 
 
@@ -695,16 +686,19 @@ def _typed_key_node(node_raw: str, *, prefix: str) -> str:
   return node
 
 
-def resolve_key(raw: str) -> str:
-  """Return the canonical config key for a user-supplied key name."""
+def resolve_key(raw: str, *, valid_agents: AgentNames | None = None) -> str:
+  """Canonicalize a typed key using its supplied vocabulary, or lazy discovery."""
   # A §2h request for an agent key names its node exactly as the key does, and folds with it.
   pref_agent = f"{PREF_ROOT}.agent."
   if raw.startswith(pref_agent):
-    return f"{PREF_ROOT}.{_resolve_agent_key(raw[len(PREF_ROOT) + 1 :], prefix=pref_agent[:-1])}"
-  return _resolve_agent_key(raw, prefix="agent")
+    target = _resolve_agent_key(
+      raw[len(PREF_ROOT) + 1 :], prefix=pref_agent[:-1], valid_agents=valid_agents
+    )
+    return f"{PREF_ROOT}.{target}"
+  return _resolve_agent_key(raw, prefix="agent", valid_agents=valid_agents)
 
 
-def _resolve_agent_key(raw: str, *, prefix: str) -> str:
+def _resolve_agent_key(raw: str, *, prefix: str, valid_agents: AgentNames | None = None) -> str:
   """:func:`resolve_key` for a key that is not a ``pref.``; *prefix* is for the warning only."""
   # ⚑ The bind arm is matched BEFORE the persona form; each takes the node segment
   # as a WHOLE through :func:`agent_key_node`. Order and reasons: llm-docs.
@@ -724,7 +718,7 @@ def _resolve_agent_key(raw: str, *, prefix: str) -> str:
     except ConfigError:
       return raw
     return f"agent.{node}.secret_path.{var}"
-  parsed = _parse_persona_agent_key(raw)
+  parsed = _parse_persona_agent_key(raw, valid_agents=valid_agents)
   if parsed is None:
     return raw
   node_raw, tail = parsed
@@ -857,18 +851,16 @@ _AGENT_DEFAULT_TIER_CURE: Final = (
 )
 
 
-def _parse_persona_agent_key(key: str) -> "tuple[str, str] | None":
+def _parse_persona_agent_key(
+  key: str, *, valid_agents: AgentNames | None = None
+) -> "tuple[str, str] | None":
   """Split an ``agent.<node>.<tail>`` persona key into ``(node_raw, tail)``.
 
-  ⚑⚑ THE LEAF TEST IS WHAT DECIDES WHERE THE NODE ENDS, so the node is a BY-PRODUCT
-  of the leaf verdict rather than the other way round — which is why the
-  per-agent judgment (keyspec §0 "The leaf VOCABULARY is partitioned by TIER") had
-  to reach in here and not merely sit beside it.  The node offered to
-  :func:`~kanibako.settings.settings_keyspace.agent_leaf_is_declared` is the whole
-  of ``parts[:-1]``, and that function normalizes it: the keys arriving here are
-  RAW (``resolve_key`` calls this BEFORE canonicalization), and ``harness_of``
-  splits on ``℘`` alone, so a raw ``nav+claude`` judged without normalizing would
-  miss the map and be silently CONCEDED.
+  The leaf verdict determines where the node ends (keyspec §0 "The leaf VOCABULARY
+  is partitioned by TIER"). Keys arrive RAW, before :func:`resolve_key` folds them.
+  Judge the whole node through :func:`agent_key_node` so case/separator variants
+  reach the same vocabulary; return its original spelling for typed-key warnings.
+  This recognizer does not replace strict stored-key validation.
 
   🛑 IT IS NOT PURELY STRUCTURAL, AND MUST NOT BECOME SO.  Returning
   ``("claude", "zippity")`` for an undeclared tail flips :func:`_is_persona_agent_key`
@@ -880,8 +872,8 @@ def _parse_persona_agent_key(key: str) -> "tuple[str, str] | None":
   describes was live at that spelling.  A new section admitted to
   :data:`_PERSONA_ENV_SECTIONS` owes a judgment of its own tail — never a shape test
   alone.
-  ⚑ NON-RAISING, like every recognizer: a malformed ref is not a key, and saying so
-  is the whole of the answer.
+  ⚑ NON-RAISING: malformed refs are not keys. *valid_agents* supplies vocabulary;
+  omission keeps lazy discovery.
   """
   if not key.startswith("agent."):
     return None
@@ -904,26 +896,30 @@ def _parse_persona_agent_key(key: str) -> "tuple[str, str] | None":
       return None
     return (".".join(parts[:-2]), f"{parts[-2]}.{parts[-1]}")
   # Flat state leaf — the last segment, judged against THAT NODE's vocabulary.
-  if len(parts) >= 2 and agent_leaf_is_declared(
-    ".".join(parts[:-1]),
+  if len(parts) < 2:
+    return None
+  node_raw = ".".join(parts[:-1])
+  try:
+    node = agent_key_node(node_raw)
+  except ConfigError:
+    node = node_raw
+  if agent_leaf_is_declared(
+    node,
     parts[-1],
-    AGENT_LEAF_MAP,
+    AGENT_LEAF_MAP if valid_agents is None else valid_agents.leaf_map,
   ):
-    return (".".join(parts[:-1]), parts[-1])
+    return (node_raw, parts[-1])
   return None
 
 
-def _is_persona_agent_key(key: str) -> bool:
-  """True iff *key* is a settable per-persona ``agent.<node>.<key>`` key (B1)."""
-  return _parse_persona_agent_key(key) is not None
+def _is_persona_agent_key(key: str, *, valid_agents: AgentNames | None = None) -> bool:
+  """Whether *key* is a settable ``agent.<node>.<key>`` in this vocabulary."""
+  return _parse_persona_agent_key(key, valid_agents=valid_agents) is not None
 
 
 def is_access_key(canonical: str) -> bool:
   """True iff *canonical* is the auth-critical ``access`` permission key."""
-  if canonical == "access":
-    return True
-  parsed = _parse_persona_agent_key(canonical)
-  return parsed is not None and parsed[1] == "access"
+  return _names_agent_leaf(canonical, "access")
 
 
 def access_value_error(canonical: str, value: str) -> str | None:
@@ -993,9 +989,9 @@ def _is_agent_node_secret_key(key: str) -> bool:
   return _parse_agent_node_secret_key(key) is not None
 
 
-def _persona_display_key(canonical: str) -> str:
-  """Render a canonical persona key for USER-FACING output (``℘`` -> ``+``)."""
-  parsed = _parse_persona_agent_key(canonical)
+def _persona_display_key(canonical: str, *, valid_agents: AgentNames | None = None) -> str:
+  """Render a canonical persona key for output (``℘`` -> ``+``)."""
+  parsed = _parse_persona_agent_key(canonical, valid_agents=valid_agents)
   if parsed is None:
     return canonical
   node, tail = parsed
@@ -1113,8 +1109,10 @@ def agent_default_tier_leaf(key: str) -> str | None:
   section form parses to a dotted tail, which is in no leaf set; the two SCALAR CATEGORY
   families of the same tier are :func:`agent_default_tier_category`'s, not this one's.
   """
+  if not key.startswith(f"agent.{AGENT_DEFAULT_SUB}."):
+    return None
   parsed = _parse_persona_agent_key(key)
-  if parsed is None or parsed[0] != AGENT_DEFAULT_SUB:
+  if parsed is None:
     return None
   # ⚑ NOT REDUNDANT WITH THE PARSE: the ``env.`` arm yields a DOTTED tail
   # (``env.FOO``), which is in no leaf set, and that is exactly how this family is
@@ -1156,8 +1154,10 @@ def agent_default_tier_category(key: str) -> "tuple[str, str] | None":
   if secret is not None:
     node, var = secret
     return ("secret_path", var) if node == AGENT_DEFAULT_SUB else None
+  if not key.startswith(f"agent.{AGENT_DEFAULT_SUB}."):
+    return None
   parsed = _parse_persona_agent_key(key)
-  if parsed is None or parsed[0] != AGENT_DEFAULT_SUB:
+  if parsed is None:
     return None
   # ⚑ The DOTTED tail is the section arm's signature and the flat leaf arm cannot
   # produce one, so the split is a fact about which arm answered — not a re-parse.
@@ -1302,8 +1302,12 @@ def _names_agent_leaf(canonical: str, leaf: str) -> bool:
   # ⚑ The two spellings the CLI accepts for one key, and NOTHING else: a ``<scope>`` key
   # that merely ENDS in the same word (a hypothetical ``box.transform_settings``) is not
   # an agent leaf and must not inherit its refusal.
+  if canonical == leaf:
+    return True
+  if canonical.rsplit(".", 1)[-1] != leaf:
+    return False
   parsed = _parse_persona_agent_key(canonical)
-  return canonical == leaf or (parsed is not None and parsed[1] == leaf)
+  return parsed is not None and parsed[1] == leaf
 
 
 def _is_box_agent_key(key: str) -> bool:
@@ -1547,6 +1551,8 @@ def _pref_write_site_error(
 def _pref_target_error(
   canonical: str,
   command_scope: "ConfigLevel | None",
+  *,
+  valid_agents: AgentNames | None = None,
 ) -> str | None:
   """Run the three §2h filters on the ``pref.*`` TARGET KEY at SET time."""
   # ⚑ The KEY is only half of a request — the VALUE is checked separately by
@@ -1563,7 +1569,7 @@ def _pref_target_error(
   target = canonical[len(PREF_ROOT) + 1 :]
   why = validate_pref(
     PrefRequest(target=target, value=None, level=level),
-    valid_agents=default_valid_agents(),
+    valid_agents=default_valid_agents() if valid_agents is None else valid_agents,
   )
   if why is None:
     return None
@@ -1768,7 +1774,9 @@ def agent_node_bind_retired_error(canonical: str, *, verb: str) -> str | None:
   )
 
 
-def agent_key_reason(node: str, tail: str) -> str | None:
+def agent_key_reason(
+  node: str, tail: str, *, valid_agents: AgentNames | None = None
+) -> str | None:
   """The §0 reason *tail* is not a declared key of agent *node*, or ``None`` when it is.
 
   ⚑ ONE CONSTRUCTION, THREE CONSUMERS — the ``agent`` verb's write gate, its read gate, and the
@@ -1786,15 +1794,13 @@ def agent_key_reason(node: str, tail: str) -> str | None:
 
   *node* is the agent whose file this is — it is KNOWN GOOD (the on-disk store dir), so it is
   supplied AS the valid-agent set rather than re-litigated: an agent-discovery result must never
-  be able to refuse a key on an agent the user is demonstrably running.  The PLUGIN-declared
-  leaves are unioned in the OTHER direction (§0 *"Agent specifics are PLUGIN-declared"*), without
-  which a legitimate ``agent.goose.provider`` would be refused.
+  be able to refuse a key on an agent the user is demonstrably running. *valid_agents*
+  supplies ONLY its ``leaf_map``: per-resolve node/harness facts, plugin leaves, and
+  unreadable-harness concessions. Its membership never re-judges *node*.
 
-  ⚑ :data:`AGENT_LEAF_MAP`, THE MODULE'S ONE SUPPLIER, and it is passed rather than
-  materialized.  ``default_valid_agents().leaf_map`` read here directly would be the same
-  VALUE reached a second way, and the per-node recognizer did not read it at all — which is
-  how one verb came to declare a key another called unknown.  Passing it also DEFERS
-  discovery: a core §2d leaf is answered without importing a single plugin.
+  Without that input, :data:`AGENT_LEAF_MAP` stays the lazy supplier, passed rather than
+  materialized: a core §2d leaf is answered without importing a plugin. A supplied map
+  replaces that supplier without discovery or mutation.
 
   ⚑⚑ AND THE MAP IS WHAT MAKES THIS GATE CAPABLE OF CONCEDING AT ALL.  ``key_validity`` took a
   FLAT leaf set and had no concession parameter, so this refused ``agent.goose.provider``
@@ -1817,26 +1823,27 @@ def agent_key_reason(node: str, tail: str) -> str | None:
   return key_validity(
     f"agent.{node}.{tail}",
     valid_agents=(node,),
-    agent_leaf_map=AGENT_LEAF_MAP,
+    agent_leaf_map=AGENT_LEAF_MAP if valid_agents is None else valid_agents.leaf_map,
   )
 
 
-def agent_write_key_error(node: str, tail: str, *, verb: str) -> str | None:
+def agent_write_key_error(
+  node: str, tail: str, *, verb: str, valid_agents: AgentNames | None = None
+) -> str | None:
   """Why ``agent <verb> <node> <tail>`` names no key, or ``None`` when it does (spec §0).
 
-  THE ``agent`` NOUN'S CLOSED-KEYSPACE GATE (D-5).  Its sibling verbs route through
-  ``set_config_value``, which owns this check for every other noun; this one has its own writer
-  and had NO validation at all, so ``agent set claude anything.at.all=x`` stored garbage rc=0 —
-  a closed-keyspace breach on a first-class write path, and the ONE place a user could type
-  ``self.`` and have it land [spec:14-18, "self"].
+  Supplied vocabulary reaches the shared judge unchanged, even when empty;
+  ``None`` retains lazy discovery. This gate also refuses the ``self.`` shape.
   """
-  reason = agent_key_reason(node, tail)
+  reason = agent_key_reason(node, tail, valid_agents=valid_agents)
   if reason is None:
     return None
   return f"Error: '{tail}' cannot be {verb} on agent '{display_agent_ref(node)}': {reason}."
 
 
-def agent_read_key_error(node: str, tail: str) -> str | None:
+def agent_read_key_error(
+  node: str, tail: str, *, valid_agents: AgentNames | None = None
+) -> str | None:
   """Why ``agent get <node> <tail>`` names no key, or ``None`` when it does (spec §0).
 
   The WRITE vocabulary (:func:`agent_write_key_error`) PLUS the one retired spelling whose READ
@@ -1852,7 +1859,7 @@ def agent_read_key_error(node: str, tail: str) -> str | None:
   """
   if _is_agent_node_bind_key(f"agent.{node}.{tail}"):
     return None
-  return agent_write_key_error(node, tail, verb="read")
+  return agent_write_key_error(node, tail, verb="read", valid_agents=valid_agents)
 
 
 #: How a user SPELLS the STORED view at each file scope's own noun — the sibling of
@@ -1867,25 +1874,19 @@ _SCOPE_SHOW_COMMAND = {
 }
 
 
-def scope_key_reason(canonical: str) -> str | None:
+def scope_key_reason(canonical: str, *, valid_agents: AgentNames | None = None) -> str | None:
   """The §0 reason *canonical* names no key, or ``None`` when it does.
 
-  ⚑ ONE CONSTRUCTION, TWO CONSUMERS — the file-scope nouns' READ gate
-  (:func:`scope_read_key_error`) and the STORED view's undeclared-entry block
-  (``config_interface.show_config``).  The rule is one, so neither restates it.
-
-  ⚑⚑ ``key_validity`` VIA ``key_reason``, NEVER ``is_known_key``, for exactly the reason
-  :func:`agent_key_reason` gives: ``is_known_key`` answers *"is this key-SHAPED, as opposed
-  to a project name"*, and §0 asks *"is this a DECLARED key"*.  The two disagree on SEVEN
-  declared keys (the six bind-shaped category terminals and ``<scope>.masks``), which is why
-  NO read gate is on ``is_known_key`` any more: ``system get`` carried one until 2026-08-28
-  and refused all seven by name.
-  ``key_reason`` also unions the PLUGIN-declared agent leaves, without which a legitimate
-  ``pref.agent.goose.provider`` would be refused.
+  Read gates, stored-entry reports, and setter refusals share ``key_reason``.
+  Supplied vocabulary replaces discovery, including an empty map. This asks
+  DECLAREDNESS, not ``is_known_key``'s positional-parser shape question; plugin
+  leaves and unreadable-harness concessions travel with the vocabulary.
   """
   from kanibako.settings.settings_prefs import default_valid_agents, key_reason
 
-  return key_reason(canonical, valid_agents=default_valid_agents())
+  return key_reason(
+    canonical, valid_agents=default_valid_agents() if valid_agents is None else valid_agents
+  )
 
 
 def table_leaf_read_cure(canonical: str, active_agent: str | None = None) -> str | None:
@@ -2059,6 +2060,7 @@ def scope_read_key_error(
   command_scope: "ConfigLevel | None",
   *,
   active_agent: str | None = None,
+  valid_agents: AgentNames | None = None,
 ) -> str | None:
   """Why ``<noun> get <key>`` names no key, or ``None`` when it does (spec §0).
 
@@ -2085,7 +2087,7 @@ def scope_read_key_error(
   ``bare_agent_key_scope_error`` refuse a RECOGNIZED spelling by name and hand back a cure;
   a generic "not a key" arriving before either one would overwrite the cure with less truth.
   """
-  canonical = resolve_key(key)
+  canonical = resolve_key(key, valid_agents=valid_agents)
   redirect = box_agent_redirect_key(canonical, command_scope, active_agent)
   if redirect is not None:
     canonical = redirect
@@ -2117,7 +2119,7 @@ def scope_read_key_error(
     return None
   if _is_path_category_key(canonical) or _is_scope_bind_key(canonical):
     return None
-  reason = scope_key_reason(canonical)
+  reason = scope_key_reason(canonical, valid_agents=valid_agents)
   if reason is None:
     # ⚑ DECLARED — and still not readable HERE, in two families.  The closed keyspace has
     # nothing to say about a key it declares, so the fabricated-answer half of §0 needs
@@ -2187,7 +2189,7 @@ def _is_path_category_key(key: str) -> bool:
   return BIND_KEY_RE.match(key) is not None
 
 
-def _has_dedicated_route(canonical: str) -> bool:
+def _has_dedicated_route(canonical: str, *, valid_agents: AgentNames | None = None) -> bool:
   """Does SOME ``set_config_value`` branch claim *canonical*?"""
   # ⚑ MIRRORS THE DISPATCH CHAIN in :func:`set_config_value`, in the same order — edit
   # the two together (``TestSetDispatchCoverage`` fails if they drift). PREAMBLE guards
@@ -2202,7 +2204,7 @@ def _has_dedicated_route(canonical: str) -> bool:
     or _is_agent_node_secret_key(canonical)
     or _is_scope_secret_key(canonical)
     or _is_scope_env_key(canonical)
-    or _is_persona_agent_key(canonical)
+    or _is_persona_agent_key(canonical, valid_agents=valid_agents)
     or _is_agent_setting(canonical)
     or _is_box_agent_key(canonical)
     # ⚑ THE MARKER ALONE, not ``is_config_file_only_key`` (2026-08-23): that
@@ -2213,7 +2215,7 @@ def _has_dedicated_route(canonical: str) -> bool:
   )
 
 
-def _probes_at_set_time(canonical: str) -> bool:
+def _probes_at_set_time(canonical: str, *, valid_agents: AgentNames | None = None) -> bool:
   """Does a ``config set`` of *canonical* run the E3 RESOLUTION probe?"""
   # ⚑ The test is "does this value reach the expander", NOT "is it a scalar".
   # ⚑ The live ``<scope>.env.<VAR>`` arm is deliberately NOT excluded — do not "fix" a
@@ -2224,4 +2226,4 @@ def _probes_at_set_time(canonical: str) -> bool:
     # then raises ReservedKeyError, breaking the "never raises" contract. The pref
     # route runs the REAL probe at the TARGET path (:func:`_pref_value_error`).
     return False
-  return _has_dedicated_route(canonical)
+  return _has_dedicated_route(canonical, valid_agents=valid_agents)

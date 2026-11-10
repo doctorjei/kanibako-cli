@@ -11,6 +11,8 @@ Prose for these symbols lives in `llm-docs/kanibako/runtime/container.py.md`.
 logger = get_logger('container')
 KEEP_ID_USERNS = f'--userns=keep-id:uid={GUEST_UID},gid={GUEST_GID}'
 STUCK_STATES = frozenset({'removing', 'stopping'})
+_SECRET_LAUNCH_LABEL = 'org.kanibako.credential-launch'
+_SECRET_EXEC = "import os, signal, sys\nsources = [int(value) for value in sys.argv[1:3]]\ntargets = [int(value) for value in sys.argv[3:5]]\nif sys.argv[5] == '1':\n  for fd in {1, 2} - set(sources) - set(targets):\n    os.closerange(fd, fd + 1)\npending = dict(zip(targets, sources))\nwhile pending:\n  for target, source in pending.items():\n    if source == target or target not in pending.values():\n      if source == target:\n        os.set_inheritable(target, True)\n      else:\n        os.dup2(source, target)\n      del pending[target]\n      if source not in targets and source not in pending.values():\n        os.close(source)\n      break\n  else:\n    source = next(iter(pending.values()))\n    copy = os.dup(source)\n    pending = {target: copy if value == source else value for target, value in pending.items()}\nif sys.argv[5] == '1':\n  os.closerange(1, 3)\n  fd = os.open(os.devnull, os.O_WRONLY)\n  for target in (1, 2):\n    if fd == target:\n      os.set_inheritable(target, True)\n    else:\n      os.dup2(fd, target)\n  if fd not in (1, 2):\n    os.close(fd)\nfor name in ('SIGPIPE', 'SIGXFZ', 'SIGXFSZ'):\n  if hasattr(signal, name):\n    signal.signal(getattr(signal, name), signal.SIG_DFL)\nos.execvp(sys.argv[6], sys.argv[6:])\n"
 _IMAGE_REF_RE = re.compile('[A-Za-z0-9][A-Za-z0-9._:/@-]*\\Z')
 _CANON_GUEST_PREFIX = f'{GUEST_HOME}/canon'
 _CANON_SEED_DENY_GUEST_PREFIXES = tuple((f'{GUEST_HOME}/{rel}' for rel in CANON_SEED_DENY_PREFIXES))
@@ -21,6 +23,7 @@ _CANON_SEED_DENY_GUEST_PREFIXES = tuple((f'{GUEST_HOME}/{rel}' for rel in CANON_
 def image_ref_or_none(raw: str) -> str | None
 def running_from_inspect(result: subprocess.CompletedProcess[str]) -> bool
 def env_from_inspect(result: subprocess.CompletedProcess[str], key: str) -> str | None
+def creation_metadata_from_inspect(result: subprocess.CompletedProcess[str]) -> tuple[str, dict[str, str]] | None
 def remove_path(path: Path) -> bool
 def remove_box_tree(target: Path) -> bool
 def detect_shadowed_mounts(shell_path: Path, project_path: Path, extra_mounts: list | None, enable_vault: bool) -> list[str]
@@ -51,7 +54,7 @@ class ContainerRuntime:
     def load(self, archive: Path) -> str | None
     def diff(self, image: str) -> list[str]
     def ensure_image(self, image: str, containers_dir: Path | None=None) -> None
-    def run(self, image: str, *, shell_path: Path, project_path: Path, vault_ro_path: Path | None, vault_rw_path: Path | None, extra_mounts: list | None=None, tmpfs_masks: list[str] | None=None, enable_vault: bool=True, env: dict[str, str] | None=None, name: str | None=None, labels: dict[str, str] | None=None, entrypoint: str | None=None, cli_args: list[str] | None=None, detach: bool=False) -> int
+    def run(self, image: str, *, shell_path: Path, project_path: Path, vault_ro_path: Path | None, vault_rw_path: Path | None, extra_mounts: list | None=None, tmpfs_masks: list[str] | None=None, enable_vault: bool=True, env: dict[str, str] | None=None, name: str | None=None, labels: dict[str, str] | None=None, entrypoint: str | None=None, cli_args: list[str] | None=None, detach: bool=False, secret_payload: SecretPayload | None=None, publication_timeout: float=5.0) -> int
     def exec(self, name: str, command: list[str], *, env: dict[str, str] | None=None, attach: bool=False) -> int
     def exec_ready(self, name: str) -> bool
     def exec_succeeds(self, name: str, command: list[str]) -> bool
@@ -76,5 +79,7 @@ class ContainerRuntime:
 
     @staticmethod
     def _detect() -> tuple[str, bool]
+    def _run_with_secrets(self, cmd: list[str], payload: SecretPayload, nonce: str, detach: bool, timeout: float) -> int
+    def _cancel_secret_launch(self, process: subprocess.Popen[bytes] | None, nonce: str) -> bool
     def _ask_stop(self, name: str) -> bool
 ```

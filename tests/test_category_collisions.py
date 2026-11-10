@@ -452,6 +452,215 @@ class TestSecretDestContentionMovedToTheSeam:
   # against the measured outcome rather than against a second implementation.
 
 
+class TestEffectiveCredentialArbitration:
+  @staticmethod
+  def secret(*, scope="agent", source="pg", var="TOK", keyless=False):
+    from pathlib import Path
+
+    from kanibako.settings.settings_categories import PersonaCredential
+
+    node = ("agent", "registered") if scope == "agent" else (scope,)
+    return CategoryEntry(
+      category="secret_path",
+      scope=scope,
+      box_dest=f"{SECRET_MOUNT_DIR}/{var}",
+      host_src="/synthetic/token" if source == "file" else None,
+      delivery="MOUNT",
+      options="ro",
+      name=var,
+      key_segments=(*node, "secret_path", var),
+      persona_credential=(
+        PersonaCredential("Registered", Path("/captured/store"), var, keyless)
+        if source == "pg"
+        else None
+      ),
+    )
+
+  @staticmethod
+  def resolve(entries, **kwargs):
+    from kanibako.settings.settings_categories import launch_deliveries
+
+    return launch_deliveries(entries, agent_dests=frozenset(), **kwargs)
+
+  @pytest.mark.parametrize(
+    "source,kind", [("file", "file"), ("pg", "pg"), ("null", "keyless-null")]
+  )
+  def test_source_state_and_material_agree(self, source, kind):
+    secret = self.secret(source=source)
+    result = self.resolve([secret])
+    assert result.credential_states["TOK"].kind == kind
+    assert result.credential_states["TOK"].declaration is secret
+    assert result.secrets == ([] if source == "null" else [secret])
+    assert result.active_secret_names == {"TOK": [secret.key]}
+    assert result.secret_names == ({} if source == "null" else {"TOK": [secret.key]})
+    assert secret_path_deliveries([secret]) == result.secrets
+
+  @pytest.mark.parametrize("source", ["file", "pg", "null"])
+  @pytest.mark.parametrize(
+    "cli,kind",
+    [("", "cli-blank-suppressed"), (" \t", "cli-blank-suppressed"), ("literal", "cli-value")],
+  )
+  def test_cli_replaces_effective_material_without_carrying_its_value(self, source, cli, kind):
+    secret = self.secret(source=source)
+    result = self.resolve([secret], cli_env={"TOK": cli})
+    assert result.credential_states["TOK"].kind == kind
+    assert result.credential_states["TOK"].declaration is secret
+    assert result.secrets == []
+    assert "literal" not in repr(result)
+
+  @pytest.mark.parametrize("override", ["file", "null"])
+  @pytest.mark.parametrize("reverse", [False, True])
+  def test_higher_scope_file_or_null_wins_over_pg(self, override, reverse):
+    pg = self.secret()
+    box = self.secret(scope="box", source=override)
+    entries = [box, pg] if reverse else [pg, box]
+    result = self.resolve(entries)
+    state = result.credential_states["TOK"]
+    assert state.declaration is box
+    assert state.kind == ("file" if override == "file" else "keyless-null")
+    assert result.secrets == ([box] if override == "file" else [])
+
+  @pytest.mark.parametrize("source", ["file", "pg"])
+  def test_exact_mask_is_suppression_not_keyless(self, source):
+    secret = self.secret(source=source)
+    mask = entry("masks", name=secret.box_dest, box_dest=secret.box_dest)
+    result = self.resolve([secret, mask])
+    state = result.credential_states["TOK"]
+    assert state.kind == "exact-mask-suppressed"
+    assert state.declaration is secret
+    assert state.suppressed_by is mask
+    assert result.secrets == []
+    assert result.secret_names == {"TOK": [secret.key]}
+    assert (
+      self.resolve([secret, mask], cli_env={"TOK": "override"}).credential_states["TOK"].kind
+      == "cli-value"
+    )
+
+  @pytest.mark.parametrize("category", ["masks", "bindings.ro", "bindings.rw"])
+  @pytest.mark.parametrize("dest", ["/run", SECRET_MOUNT_DIR])
+  def test_pg_preserves_covering_mount_compatibility(self, category, dest):
+    secret = self.secret()
+    covering = entry(category, name=dest, box_dest=dest)
+    result = self.resolve([secret, covering])
+    assert result.credential_states["TOK"].kind == "pg"
+    assert result.secrets == [secret]
+
+  @pytest.mark.parametrize("cli", ["", "literal"])
+  @pytest.mark.parametrize("category", ["bindings.ro", "bindings.rw", "common"])
+  def test_cli_cannot_cure_an_exact_material_collision(self, category, cli):
+    secret = self.secret()
+    collision = entry(category, name=secret.box_dest, box_dest=secret.box_dest)
+    with pytest.raises(CategoryCollisionError) as caught:
+      self.resolve([secret, collision], cli_env={"TOK": cli})
+    assert secret.key in str(caught.value)
+    assert collision.label in str(caught.value)
+
+  @pytest.mark.parametrize("cli", ["", "literal"])
+  def test_cli_cannot_cure_a_pg_env_twin(self, cli):
+    from kanibako.settings.settings_resolve import SettingsError
+
+    secret = self.secret()
+    env = entry("env", name="TOK", box_dest="TOK")
+    with pytest.raises(SettingsError, match="named by BOTH scalar families"):
+      self.resolve([secret, env], cli_env={"TOK": cli})
+
+  @pytest.mark.parametrize(
+    "sources,claim,cure",
+    [
+      (
+        ("pg",),
+        "'agent.registered.secret_path.TOK' provides credential material for it",
+        "for credential material",
+      ),
+      (
+        ("pg", "file"),
+        "'agent.registered.secret_path.TOK' and 'box.secret_path.TOK' provide credential material for it",
+        "for credential material",
+      ),
+      (
+        ("file",),
+        "'box.secret_path.TOK' points at a host file the box exports it from",
+        "when the value is secret material kanibako must never read",
+      ),
+    ],
+  )
+  def test_env_twin_diagnostic_describes_the_actual_material_sources(self, sources, claim, cure):
+    from kanibako.settings.settings_resolve import SettingsError
+
+    secrets = [
+      self.secret(source=source, scope="agent" if source == "pg" else "box") for source in sources
+    ]
+    env = entry("env", name="TOK", box_dest="TOK")
+    with pytest.raises(SettingsError) as caught:
+      self.resolve([*secrets, env])
+    assert str(caught.value) == (
+      "the environment variable 'TOK' is named by BOTH scalar families: "
+      "'box.env.TOK' holds a VALUE for it, and "
+      f"{claim}. The two families share ONE delivery target, so naming a variable "
+      "with both is a mistake rather than a preference: NO precedence between "
+      "them is defined, and none may be inferred from the order a box happens "
+      "to receive them. Keep exactly ONE and remove the other - 'secret_path' "
+      f"{cure}, 'env' otherwise."
+    )
+
+  def test_required_absence_is_explicit_and_cli_can_supply_it(self):
+    result = self.resolve([], required_var="TOK")
+    assert result.credential_states["TOK"].kind == "absent"
+    assert result.credential_states["TOK"].declaration is None
+    assert result.secrets == []
+    assert result.active_secret_names == {}
+    for cli, kind in (("", "cli-blank-suppressed"), ("literal", "cli-value")):
+      supplied = self.resolve([], required_var="TOK", cli_env={"TOK": cli})
+      assert supplied.credential_states["TOK"].kind == kind
+      assert supplied.secrets == []
+
+  def test_keyless_pg_with_a_real_name_remains_named(self):
+    secret = self.secret(keyless=True)
+    result = self.resolve([secret])
+    assert result.credential_states["TOK"].kind == "keyless-null"
+    assert result.active_secret_names == {"TOK": [secret.key]}
+    assert result.secret_names == {}
+    assert result.secrets == []
+
+  def test_metadata_and_host_path_are_exclusive(self):
+    from dataclasses import replace
+
+    secret = self.secret()
+    for changes in ({"host_src": "/forbidden"}, {"name": "OTHER"}, {"category": "env"}):
+      with pytest.raises(ValueError, match="PG secret entry"):
+        replace(secret, **changes)
+
+  def test_states_are_immutable_and_inputs_are_not_mutated(self):
+    from dataclasses import FrozenInstanceError
+
+    secret = self.secret()
+    entries = [secret]
+    cli = {"TOK": "literal"}
+    result = self.resolve(entries, cli_env=cli)
+    with pytest.raises(TypeError):
+      result.credential_states["OTHER"] = result.credential_states["TOK"]
+    with pytest.raises(FrozenInstanceError):
+      result.credential_states["TOK"].kind = "absent"
+    assert entries == [secret]
+    assert cli == {"TOK": "literal"}
+
+  def test_arbitration_performs_no_material_io(self, monkeypatch):
+    from pathlib import Path
+
+    from kanibako.settings import config_io
+
+    def forbidden(*args, **kwargs):
+      raise AssertionError("material operation reached pure arbitration")
+
+    monkeypatch.setattr(Path, "stat", forbidden)
+    monkeypatch.setattr(Path, "open", forbidden)
+    monkeypatch.setattr(config_io, "fetch_persona_secret", forbidden)
+    for source in ("file", "pg", "null"):
+      result = self.resolve([self.secret(source=source)], cli_env={"TOK": ""})
+      assert result.credential_states["TOK"].kind == "cli-blank-suppressed"
+      assert result.secrets == []
+
+
 class TestANarrowResolveEmitsOnlyItsOwnTable:
   """T10d — the narrow-resolve DISSOLUTION (cutover 6-R2), §0 at its new seam.
 

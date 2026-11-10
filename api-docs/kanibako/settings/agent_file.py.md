@@ -43,7 +43,7 @@ def read_leaf(slot: AgentFileSlot) -> str | None
 def write_leaf(slot: AgentFileSlot, value: object) -> None
 def remove_leaf(slot: AgentFileSlot) -> bool
 def clear_overrides(path: Path) -> int
-def record(level: AgentFileLevel, *, node: str) -> AgentConfig
+def record(level: AgentFileLevel, *, node: str, valid_agents: AgentNames | None=None) -> AgentConfig
 def save(path: Path, cfg: AgentConfig) -> None
 def contributed_tables(raw: Any) -> dict
 def scope_view(raw: Any, *, node: str) -> dict
@@ -73,7 +73,7 @@ def _setting_leaves(table: dict, trail: tuple[str, ...]=()) -> dict[tuple[str, .
 def _refuse_undeclared_state(entries: 'Iterable[tuple[str, str, str]]', *, node: str, path: Path | None) -> None
 def _node_tables(own: Any, scope: Any, *, node: str) -> 'list[tuple[str, dict, Callable[..., str]]]'
 def _scope_spelling(seg: Any, *tail: str) -> str
-def _undeclared_entries(own: Any, scope: Any, *, node: str) -> 'Iterator[tuple[str, str, str]]'
+def _undeclared_entries(own: Any, scope: Any, *, node: str, valid_agents: AgentNames | None=None) -> 'Iterator[tuple[str, str, str]]'
 def _str_keys(table: dict) -> dict
 ```
 

@@ -53,7 +53,7 @@ def meta_identity_floor(*, box_name: str, project_path: str | None, inbox: str |
 def meta_agent_identity_floor(agent_name: str, agent_real_name: str | None, agent_auth_share_support: bool, *, identity: AgentIdentity | None=None) -> dict[str, object]
 def workset_anchor_floor(*, mode: str, channelroot: str | None=None, workspaces: str | None=None, workset_channels: Mapping[str, str | None] | None=None) -> dict[str, object]
 def resolve_auth_source(snapshot: KeyStore, *, mode: str | None=None) -> AuthSource
-def refuse_read_time_faults(written: Sequence[_WrittenLevel], expanded: KeyStore, *, ctx: ResolveCtx, files: Sequence[SettingsFile], subject: ResolveSubject, tiers: Sequence[str], active_agent: str='', plugin_owners: Mapping[str, str] | None=None) -> None
+def refuse_read_time_faults(written: Sequence[_WrittenLevel], expanded: KeyStore, *, ctx: ResolveCtx, files: Sequence[SettingsFile], subject: ResolveSubject, tiers: Sequence[str], active_agent: str='', plugin_owners: Mapping[str, str] | None=None, oracle: Callable[[str], KeyJudgment]=keyspace_verdict, valid_agents: AgentNames | None=None) -> None
 def internal_bind_refusals(arm: str, entries: dict[str, object], *, where: str, when: Literal['write', 'stored'], floor_entries: dict[str, object] | None=None) -> list[str]
 def depends_on_the_box(refs: Collection[str], *, in_workset: bool) -> bool
 @overload
@@ -64,35 +64,37 @@ def resolve_inputs(*, subject: Literal[ResolveSubject.WORKSET], std, agent_name:
 def resolve_inputs(*, subject: Literal[ResolveSubject.SYSTEM], std, agent_name: str, system_path: Path | None, agent_identity: AgentIdentity | None=None, proj: None=None, ws: None=None) -> LaunchInputs
 def resolve_inputs(*, subject: ResolveSubject, std, agent_name: str, system_path: Path | None, agent_identity: AgentIdentity | None=None, proj=None, ws: Workset | None=None) -> LaunchInputs
 def fold_floor(*, subject: ResolveSubject, agent_name: str, behavior_floor: Mapping[str, object] | None=None, agent_behavior_floor: Mapping[str, object] | None=None, default_categories: Mapping[str, object] | None=None, auth_chain: Mapping[str, object] | None=None, meta_runtime: Mapping[str, object] | None=None, meta_identity: Mapping[str, object] | None=None, workset_anchor: Mapping[str, object] | None=None) -> dict[str, object]
-def assemble_cascade(*, agent_name: str, floor: dict[str, object], files: Sequence[SettingsFile], agent_partial: KeyStore | None=None, persona_values: Mapping[str, str | None] | None=None, prefs: 'Sequence[PrefRequest] | None'=None, valid_agents: 'Collection[str] | None'=None, cli_level: Mapping[str, object] | None=None) -> Cascade
-def build_launch_snapshot(*, agent_name: str, ctx: ResolveCtx, system_path: Path | None, agent_path: Path | None, workset_path: Path | None, box_path: Path | None, behavior_floor: Mapping[str, object] | None=None, agent_behavior_floor: Mapping[str, object] | None=None, default_categories: Mapping[str, object] | None=None, agent_partial: KeyStore | None=None, persona_values: Mapping[str, str | None] | None=None, auth_chain: Mapping[str, object] | None=None, meta_runtime: Mapping[str, object] | None=None, meta_identity: Mapping[str, object] | None=None, workset_anchor: Mapping[str, object] | None=None, prefs: 'Sequence[PrefRequest] | None'=None, valid_agents: 'Collection[str] | None'=None, cli_level: Mapping[str, object] | None=None, subject: ResolveSubject=ResolveSubject.BOX, refs_read: RefsRead | None=None, dest_keys: DestKeys | None=None, written_out: 'list[_WrittenLevel] | None'=None, descriptor: 'PluginDescriptor | None'=None, box_ref: str | None=None) -> KeyStore
+def assemble_cascade(*, agent_name: str, floor: dict[str, object], files: Sequence[SettingsFile], agent_partial: KeyStore | None=None, persona_values: Mapping[str, str | None] | None=None, persona_credential: PersonaCredential | None=None, prefs: 'Sequence[PrefRequest] | None'=None, valid_agents: 'Collection[str] | None'=None, cli_level: Mapping[str, object] | None=None) -> Cascade
+def build_launch_snapshot(*, agent_name: str, ctx: ResolveCtx, system_path: Path | None, agent_path: Path | None, workset_path: Path | None, box_path: Path | None, behavior_floor: Mapping[str, object] | None=None, agent_behavior_floor: Mapping[str, object] | None=None, default_categories: Mapping[str, object] | None=None, agent_partial: KeyStore | None=None, persona_values: Mapping[str, str | None] | None=None, persona_credential: PersonaCredential | None=None, auth_chain: Mapping[str, object] | None=None, meta_runtime: Mapping[str, object] | None=None, meta_identity: Mapping[str, object] | None=None, workset_anchor: Mapping[str, object] | None=None, prefs: 'Sequence[PrefRequest] | None'=None, valid_agents: 'Collection[str] | None'=None, cli_level: Mapping[str, object] | None=None, subject: ResolveSubject=ResolveSubject.BOX, refs_read: RefsRead | None=None, dest_keys: DestKeys | None=None, written_out: 'list[_WrittenLevel] | None'=None, persona_credential_out: list[PersonaCredential] | None=None, descriptor: 'PluginDescriptor | None'=None, box_ref: str | None=None) -> KeyStore
 def convenience_bind_sources(floor: Mapping[str, object], snapshot: KeyStore, ctx: ResolveCtx) -> dict[str, str]
 def reset_none_warnings() -> None
 def key_setter(written: Sequence[_WrittenLevel], key: str) -> str | None
 def resolve_selected_agent(*, ctx: ResolveCtx, system_path: Path | None, workset_path: Path | None, box_path: Path | None, prefs: 'Sequence[PrefRequest] | None'=None, valid_agents: 'Collection[str] | None'=None) -> object
+def selection_from_overlays(*, ctx: ResolveCtx, system_path: Path | None, workset_path: Path | None, box_path: Path | None, workset_overlay: KeyStore, box_overlay: KeyStore, valid_agents: 'Collection[str] | None'=None) -> object
 def snapshot_leaf(snapshot: KeyStore, dotted: str) -> object
-def post_expand_keys(snapshot: KeyStore, active_agent: str) -> Derive
+def post_expand_keys(snapshot: KeyStore, active_agent: str, *, oracle: Callable[[str], KeyJudgment]=keyspace_verdict) -> Derive
 def behavior_pick(snapshot: KeyStore, *, active_agent: str, key: str) -> 'tuple[str | None, object]'
 def behavior_slot(snapshot: KeyStore, *, active_agent: str, key: str) -> 'str | None'
 def null_behavior_setter(snapshot: KeyStore, written: 'Sequence[_WrittenLevel]', *, active_agent: str, key: str) -> 'tuple[str, str | None] | None'
 def effective_behavior(snapshot: KeyStore, *, active_agent: str, keys: 'list[str] | None'=None) -> dict[str, str]
 def meta_agent_grammar(snapshot: KeyStore, *, active_agent: str) -> AgentGrammar
 def resolve_box_dest(raw: str, box_ctx: ResolveCtx) -> str
-def snapshot_category_entries(snapshot: KeyStore, *, active_agent: str, box_ctx: ResolveCtx) -> list[CategoryEntry]
-def resolve_box_scalars(*, workset_path: Path | None, box_path: Path | None, cli_overrides: 'dict[str, object] | None', inputs: LaunchInputs | None=None, agent_name: str=GENERAL_SLOT, agent_path: Path | None=None, refuse_null_scalars: bool=True) -> dict[str, object]
-def load_merged_config(project_path: Path | None=None, *, workset_path: Path | None=None, cli_overrides: 'dict[str, object] | None'=None, inputs: LaunchInputs | None=None, agent_name: str=GENERAL_SLOT, agent_path: Path | None=None, refuse_null_scalars: bool=True) -> KanibakoConfig
+def snapshot_category_entries(snapshot: KeyStore, *, active_agent: str, box_ctx: ResolveCtx, persona_credential: PersonaCredential | None=None) -> list[CategoryEntry]
+def resolve_box_scalars(*, workset_path: Path | None, box_path: Path | None, cli_overrides: 'dict[str, object] | None', inputs: LaunchInputs | None=None, agent_name: str=GENERAL_SLOT, agent_path: Path | None=None, refuse_null_scalars: bool=True, persona_values: Mapping[str, str | None] | None=None) -> dict[str, object]
+def box_scalar_config(snapshot: KeyStore) -> KanibakoConfig
+def load_merged_config(project_path: Path | None=None, *, workset_path: Path | None=None, cli_overrides: 'dict[str, object] | None'=None, inputs: LaunchInputs | None=None, agent_name: str=GENERAL_SLOT, agent_path: Path | None=None, refuse_null_scalars: bool=True, persona_values: Mapping[str, str | None] | None=None) -> KanibakoConfig
 def _is_bind_floor_key(key: str) -> bool
 def _read_auth_inputs(snapshot: KeyStore) -> _AuthInputs
 def _auth_inputs(read: Callable[[str], object], *, floor: bool) -> _AuthInputs
 def _auth_active_values(inputs: _AuthInputs) -> tuple[bool, bool, bool]
 def _materialize_auth_active(snapshot: KeyStore) -> None
 def _loaded_tiers(files: Sequence[SettingsFile]) -> tuple[SettingsFile, ...]
-def _refuse_undeclared_snapshot(store: KeyStore, *, files: Sequence[SettingsFile], written: Sequence[_WrittenLevel], subject: ResolveSubject) -> None
+def _refuse_undeclared_snapshot(store: KeyStore, *, files: Sequence[SettingsFile], written: Sequence[_WrittenLevel], subject: ResolveSubject, oracle: Callable[[str], KeyJudgment]=keyspace_verdict) -> None
 def _finding_name(segments: tuple[str, ...], findings: Sequence[tuple[tuple[str, ...], Judgment]]) -> str
 def _carrying_files(findings: Sequence[tuple[tuple[str, ...], Judgment]], written: Sequence[_WrittenLevel], files: Sequence[SettingsFile]) -> dict[str, list[tuple[str, ...]]]
-def _path_key_leaves(store: KeyStore) -> list[tuple[str, object]]
+def _path_key_leaves(store: KeyStore, *, oracle: Callable[[str], KeyJudgment]=keyspace_verdict, valid_agents: AgentNames | None=None) -> list[tuple[str, object]]
 def _terminal_lookup(store: KeyStore) -> Callable[[str, tuple[str, ...]], str]
-def _refuse_ambiguous_path_values(written: Sequence[_WrittenLevel], expanded: KeyStore, *, ctx: ResolveCtx) -> None
+def _refuse_ambiguous_path_values(written: Sequence[_WrittenLevel], expanded: KeyStore, *, ctx: ResolveCtx, oracle: Callable[[str], KeyJudgment]=keyspace_verdict, valid_agents: AgentNames | None=None) -> None
 def _refuse_internal_bind_entries(written: Sequence[_WrittenLevel]) -> None
 def _refuse_inherited_per_owner(written: Sequence[_WrittenLevel], tiers: Sequence[str], expanded: KeyStore, *, active_agent: str, plugin_owners: Mapping[str, str]) -> None
 def _workset_channel_floor_values(part: 'WorksetPartition', wch: 'WorksetChannels | None') -> 'tuple[str | None, dict[str, str | None]]'
@@ -104,6 +106,8 @@ def _workset_floors(std, *, mode: str, ws_token: str, ws_root: Path, local_chann
 def _box_workset_floors(std, proj, agent_name: str) -> tuple[dict[str, object], dict[str, object], dict[str, object]]
 def _box_inputs(*, std, proj, agent_name: str, system_path: Path | None, agent_identity: AgentIdentity | None) -> LaunchInputs
 def _floored_bind_entry(dest: str, entry: object) -> object
+def _check_persona_credential_node(credential: PersonaCredential, agent_name: str) -> None
+def _eligible_persona_credential(levels: list[KeyStore], *, persona_index: int, agent_name: str, credential: PersonaCredential | None) -> PersonaCredential | None
 def _internal_floor_binds(floor: Mapping[str, object]) -> dict[str, object]
 def _warn_once(message: str) -> None
 def _none_setter(written: Sequence[_WrittenLevel], key: str, dest: str | None) -> str | None
@@ -114,10 +118,10 @@ def _warn_lone_none_standard_binds(floor: Mapping[str, object], merged: KeyStore
 def _warn_rootless_channel_binds(rootless: Sequence[tuple[str, str]], expanded: KeyStore, *, written: Sequence[_WrittenLevel]) -> None
 def _warn_null_ref_secrets(merged: KeyStore, expanded: KeyStore, *, active_agent: str, written: Sequence[_WrittenLevel], ctx: ResolveCtx) -> None
 def _assert_box_root_resolved(snapshot: KeyStore) -> None
-def _materialize_box_agent_mirror(snapshot: KeyStore, *, active_agent: str) -> None
-def _mirror_sources(snapshot: KeyStore, active_agent: str) -> tuple[KeyStore, object]
+def _materialize_box_agent_mirror(snapshot: KeyStore, *, active_agent: str, oracle: Callable[[str], KeyJudgment]=keyspace_verdict) -> None
+def _mirror_sources(snapshot: KeyStore, active_agent: str, *, oracle: Callable[[str], KeyJudgment]=keyspace_verdict) -> tuple[KeyStore, object]
 def _source_keys(node: KeyStore, prefix: str) -> KeyStore
-def _drop_non_mirror_keys(effective: KeyStore) -> None
+def _drop_non_mirror_keys(effective: KeyStore, *, oracle: Callable[[str], KeyJudgment]=keyspace_verdict) -> None
 def _mirror_fill(box_node: KeyStore, agent_node: KeyStore) -> None
 def _persona_partial(agent_name: str, persona_values: Mapping[str, str | None] | None) -> KeyStore | None
 def _fixed_decl_scope_fn(scope: str)
@@ -131,7 +135,9 @@ def _emit_scope_node(collected: list[tuple[tuple[int, str, str], CategoryEntry]]
 def _emit_bind_map(collected: list[tuple[tuple[int, str, str], CategoryEntry]], map_node: KeyStore, *, order: int, scope: str, category: str, box_dest_fn, decl_scope_fn) -> None
 def _emit_bind(collected: list[tuple[tuple[int, str, str], CategoryEntry]], order: int, scope: str, category: str, name: str, host_src: str, box_dest_raw: str, opts: str | None, box_dest_fn, *, key_segments: tuple[str, ...]) -> None
 def _no_lookup(ref: str, chain: tuple[str, ...]) -> str
+def _snapshot_box_scalars(snapshot: KeyStore) -> dict[str, object]
 def _refuse_null_box_scalars(resolved: 'Mapping[str, object]', written: 'Sequence[_WrittenLevel]') -> None
+def _box_scalar_config(resolved: Mapping[str, object], cli_overrides: dict[str, object] | None=None) -> KanibakoConfig
 ```
 
 ## Classes
@@ -183,6 +189,7 @@ class Cascade:
     snapshot: KeyStore
     written: tuple[_WrittenLevel, ...]
     tiers: tuple[str, ...]
+    persona_credential: PersonaCredential | None = None
 
 class AgentGrammar(NamedTuple):
     mode: dict[str, list[str]]

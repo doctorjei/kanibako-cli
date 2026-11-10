@@ -258,6 +258,48 @@ class TestTargetABC:
       IncompleteTarget()  # type: ignore[abstract]
 
 
+class TestHostPreparation:
+  @pytest.fixture
+  def target(self):
+    from kanibako.targets.shell import ShellTarget
+
+    return ShellTarget()
+
+  def test_default_phases_are_inert(self, target, tmp_path):
+    install = AgentInstall(
+      name="shell", binary=tmp_path / "missing", install_dir=tmp_path / "install"
+    )
+    data_path = tmp_path / "absent-data"
+    assert target.prepare_host_binary(install, data_path=data_path) is None
+    assert target.refresh_host_auth(install, data_path=data_path) is None
+    assert target.prepare_host(install, auto_auth=True, data_path=data_path) is None
+    assert target.prepare_host(install, auto_auth=False, data_path=data_path) is None
+    assert list(tmp_path.iterdir()) == []
+
+  @pytest.mark.parametrize("auto_auth", [False, True])
+  def test_combined_dispatches_phases_once_in_order(
+    self, target, tmp_path, monkeypatch, auto_auth
+  ):
+    install = AgentInstall(
+      name="shell", binary=tmp_path / "binary", install_dir=tmp_path / "install"
+    )
+    events = []
+    monkeypatch.setattr(
+      target,
+      "prepare_host_binary",
+      lambda value, *, data_path: events.append(("binary", value, data_path)),
+    )
+    monkeypatch.setattr(
+      target,
+      "refresh_host_auth",
+      lambda value, *, data_path: events.append(("auth", value, data_path)),
+    )
+    assert target.prepare_host(install, auto_auth=auto_auth, data_path=tmp_path) is None
+    assert events == [("binary", install, tmp_path)] + (
+      [("auth", install, tmp_path)] if auto_auth else []
+    )
+
+
 class TestHasResumableSession:
   """Base hook default: True — always attempt continue (byte-identical
   behavior for every target that does not override)."""

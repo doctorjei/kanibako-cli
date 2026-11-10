@@ -28,7 +28,7 @@ def _reserved_tier_read_refusal(tail: str) -> str
 def _reserved_tier_category_refusal(tail: str) -> str
 def _reserved_tier_store_sentence() -> str
 def _reserved_tier_store_refusal() -> str
-def _persona_agent_target(canonical: str, agents_root: 'Path | None', *, verb: str) -> 'AgentFileSlot | str | None'
+def _persona_agent_target(canonical: str, agents_root: 'Path | None', *, verb: str, valid_agents: AgentNames | None=None) -> 'AgentFileSlot | str | None'
 def _node_bind_target(canonical: str, agents_root: 'Path | None') -> 'AgentFileSlot | None'
 def _node_secret_target(canonical: str, agents_root: 'Path | None') -> 'AgentFileSlot | str | None'
 def _category_segments(canonical: str) -> tuple[str, ...]

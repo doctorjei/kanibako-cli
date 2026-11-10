@@ -1,11 +1,8 @@
-"""Unified config interface engine — the get/set/show/reset verbs every noun command shares.
+"""Shared get/set/show/reset engine.
 
-**_Argument grammar_**
-- ``key=value`` → set · ``key`` → get · no args → show overrides · ``--effective`` → resolved
-- ``--null key`` or ``key=None`` → SET an explicit present-``None``; ``reset key`` UNDOES it
-- ``reset --all`` → remove all overrides (with confirmation)
-
-⚑ ``reset`` is a sibling VERB (``box reset <key>``), not a ``--reset`` flag — none is defined.
+``key=value`` sets; ``key`` gets; no args shows overrides; ``--effective`` resolves.
+``--null key`` or ``key=None`` sets present-``None``; sibling verb ``reset key`` removes it.
+``reset --all`` removes all overrides with confirmation. No ``--reset`` flag exists.
 """
 
 from __future__ import annotations
@@ -31,6 +28,7 @@ from kanibako.settings.config import (
   persist_creation_flags,
   reaches_identity,
   read_agent_settings,
+  resolve_named_agent_input,
   ref_order_error,
   refuses_box_store_value,
   refuses_null_box_scalar,
@@ -39,7 +37,7 @@ from kanibako.settings.config import (
   unset_project_config_key,
 )
 from kanibako.agent_ref import GENERAL_SLOT, display_agent_ref
-from kanibako.settings.settings_launch import load_merged_config, snapshot_leaf
+from kanibako.settings.settings_launch import box_scalar_config, load_merged_config, snapshot_leaf
 from kanibako.settings.messages import (
   ERR_BEHAVIOR_NULL_REASON,
   ERR_BEHAVIOR_NULL_SET_HEAD,
@@ -84,6 +82,7 @@ from kanibako.settings.agent_file import (
 )
 from kanibako.settings.config_dest import (
   DestRoute,
+  check_agent_node,
   _write_dest,
   _read_dest,
   noun_settings_file,
@@ -182,7 +181,11 @@ _log = get_logger(__name__)
 
 if TYPE_CHECKING:
   from kanibako.agent_ref import AgentIdentity
+  from kanibako.settings.config import AgentResolution
+  from kanibako.settings.settings_categories import PersonaCredential
   from kanibako.settings.settings_launch import LaunchInputs
+  from kanibako.settings.settings_prefs import AgentNames
+  from kanibako.targets.base import Target
 
 #: The SET doors whose files ``workset_dirkeys.early_repoint`` reads, so the doors that run
 #: that reader's refusal on a workset early key.
@@ -237,6 +240,9 @@ def _pref_value_error(
   box_path: Path | None,
   agent_name: str,
   set_target: "LaunchInputs | None",
+  valid_agents: AgentNames | None = None,
+  persona_values: Mapping[str, str | None] | None = None,
+  persona_credential: PersonaCredential | None = None,
 ) -> str | None:
   """Validate a pref's VALUE against the shape + resolution of its TARGET key."""
   from kanibako.settings.settings_categories import (
@@ -308,8 +314,11 @@ def _pref_value_error(
     command_scope=command_scope,
     target=set_target,
     agent_path=agent_path,
+    persona_values=persona_values,
+    persona_credential=persona_credential,
     agent_name=agent_name,
     agents_root=None,  # a pref is set at box/workset scope, which holds no agents root.
+    valid_agents=valid_agents,
   )
   if path_err is not None:
     return path_err
@@ -326,6 +335,9 @@ def _pref_value_error(
     box_path=box_path,
     agent_name=agent_name,
     target=set_target,
+    persona_values=persona_values,
+    persona_credential=persona_credential,
+    valid_agents=valid_agents,
   )
   defect = resolves(target, value)
   if defect is not None:
@@ -477,11 +489,76 @@ def _set_time_target(
   )
 
 
+def addressed_agent_input(raw_key: str) -> AgentResolution | None:
+  """Address a node without granting its leaf."""
+  target = raw_key[len(PREF_ROOT) + 1 :] if _is_pref_key(raw_key) else raw_key
+  if not target.startswith("agent."):
+    return None
+  name = key_owner(target)[1]
+  if name is None or check_agent_node(name) is not None:
+    return None
+  return resolve_named_agent_input(name)
+
+
+def addressed_agent_identity(raw_key: str) -> AgentIdentity | None:
+  """Project identity without rediscovery."""
+  resolved = addressed_agent_input(raw_key)
+  return None if resolved is None else resolved.identity
+
+
+def project_agent_input(
+  resolved: AgentResolution,
+  target: Target | None,
+) -> tuple[Mapping[str, str | None] | None, PersonaCredential | None]:
+  """Project captured input after target choice; never fetch credentials."""
+  if resolved.unavailable is not None or target is None:
+    return None, None
+  from kanibako.agent_ref import harness_of
+  from kanibako.persona_store import project_registered_persona, read_persona_bundle
+  from kanibako.settings.settings_categories import PersonaCredential
+
+  registered = resolved.registered_persona
+  if registered is not None:
+    bundle = project_registered_persona(registered, target)
+    assert registered.identity.registered_name is not None
+    credential = PersonaCredential(
+      registered.identity.registered_name,
+      registered.store_root,
+      registered.auth_env,
+      registered.keyless,
+    )
+    return bundle.to_persona_values(), credential
+  node = resolved.identity.node
+  if harness_of(node) == node:
+    return None, None
+  legacy_bundle = read_persona_bundle(node, target)
+  if legacy_bundle is not None and legacy_bundle.reject_reason is not None:
+    from kanibako.errors import ConfigError
+
+    raise ConfigError(legacy_bundle.reject_reason)
+  return (None if legacy_bundle is None else legacy_bundle.to_persona_values()), None
+
+
+def identity_valid_agents(identity: AgentIdentity | None) -> AgentNames | None:
+  """Overlay registered identity vocabulary without changing cached discovery."""
+  if identity is None or identity.registered_name is None:
+    return None
+  from kanibako.settings.settings_prefs import default_valid_agents
+
+  return default_valid_agents().with_harnesses({identity.node: identity.target_name})
+
+
+def _set_time_valid_agents(target: LaunchInputs | None) -> AgentNames | None:
+  return identity_valid_agents(None if target is None else target.agent_identity)
+
+
 def _target_scope_anchors(
   target: "LaunchInputs | None",
   *,
   agent_path: "Path | None",
   agent_name: str,
+  persona_values: Mapping[str, str | None] | None = None,
+  persona_credential: PersonaCredential | None = None,
 ) -> dict[str, object]:
   """The ``{meta.workset.path}`` and ``{meta.box.path}`` dirs *target*'s own snapshot resolves.
 
@@ -497,14 +574,20 @@ def _target_scope_anchors(
   # ⚑ THE ANCHOR ONLY NAMES A DIRECTORY IN A REFUSAL that is issued either way, so a
   # cascade that cannot be assembled leaves the anchor spelled, never a crash.
   try:
+    valid_agents = _set_time_valid_agents(target)
     snapshot, ctx = _set_time_snapshot(
       target=target,
+      persona_values=persona_values,
+      persona_credential=persona_credential,
       agent_name=agent_name,
       agent_path=agent_path,
+      valid_agents=valid_agents,
     )
   except Exception:
     return {}
-  expanded, errors = _lenient_expand(clone_store(snapshot), ctx, agent_name)
+  expanded, errors = _lenient_expand(
+    clone_store(snapshot), ctx, agent_name, valid_agents=valid_agents
+  )
   anchors: dict[str, object] = {}
   for ref in ("meta.workset.path", "meta.box.path"):
     if ref in errors:
@@ -569,6 +652,9 @@ def _bare_relative_path_error(
   agent_path: "Path | None",
   agent_name: str,
   agents_root: "Path | None",
+  valid_agents: AgentNames | None = None,
+  persona_values: Mapping[str, str | None] | None = None,
+  persona_credential: PersonaCredential | None = None,
 ) -> "str | None":
   """keyspec §2a "A path key's stored value" at SET TIME — refuse a bare-relative
   value for a PATH key, naming both readings.
@@ -594,11 +680,13 @@ def _bare_relative_path_error(
   there is no bare relative to disambiguate, and calling ``''`` a relative path would be
   a refusal a user cannot act on.
   """
-  if not value or not is_path_valued_key(canonical):
+  if not value or not is_path_valued_key(canonical, valid_agents=valid_agents):
     return None
   if is_unambiguous_path_value(value):
     return None
-  anchor_ref, anchor_label = path_key_anchor(canonical, active_agent=agent_name)
+  anchor_ref, anchor_label = path_key_anchor(
+    canonical, active_agent=agent_name, valid_agents=valid_agents
+  )
   # ⚑ The workset and box roots come from the COMMAND's target (spec §2a), never
   # from where its settings files sit; a root the target lacks is named, unresolved.
   anchor = _set_time_anchor(
@@ -606,6 +694,8 @@ def _bare_relative_path_error(
     scope_anchors=_target_scope_anchors(
       target,
       agent_path=agent_path,
+      persona_values=persona_values,
+      persona_credential=persona_credential,
       agent_name=agent_name,
     ),
     agents_root=agents_root,
@@ -797,6 +887,7 @@ def _cascade_bad_entries(
   box_path: "Path | None",
   edited: "str | None" = None,
   defects: "Callable[[], Mapping[str, str]] | None" = None,
+  valid_agents: AgentNames | None = None,
 ) -> _BadEntries:
   """Keyspec §2a: the entries ``set`` judges and ``get`` warns on, per settings file the
   command reads — one report each, from the view the CASCADE reads, so a table the cascade
@@ -850,7 +941,9 @@ def _cascade_bad_entries(
     paths.insert(0, read.path)
     kept = [
       (segs, shown, v)
-      for segs, (shown, v) in sorted(_undeclared_stored_entries(read.view).items())
+      for segs, (shown, v) in sorted(
+        _undeclared_stored_entries(read.view, valid_agents=valid_agents).items()
+      )
       if not _overwritten_by(edited, segs)
     ]
     if kept:
@@ -911,14 +1004,14 @@ def _set_time_agent_tier(
   *,
   floor_only: bool = False,
   identity: AgentIdentity | None = None,
+  valid_agents: AgentNames | None = None,
 ) -> "tuple[Path | None, dict[str, str | None] | None, dict[str, str | None] | None]":
-  """The launch's agent tier for *agent_name* whose file is *agent_path*:
-  ``(agent_path, behavior_floor, agent_behavior_floor)``, all ``None`` without a file.
+  """Return ``(agent_path, behavior_floor, agent_behavior_floor)`` for *agent_name*.
 
-  The file's own values ride its ``agent.<active>`` level, which the cascade reads from
-  *agent_path*. An agent file that does not read is left out, so a ref into it dangles rather
-  than the set raising. The two behavior floors come as the launch's do, only from a plugin
-  that resolves and declares settings. *floor_only* reads the floors with no file
+  File values ride ``agent.<active>``; *valid_agents* supplies their reader's vocabulary.
+  An unreadable file is omitted so refs dangle and set remains usable for repair.
+  Floors come only from a resolving plugin with declared settings, selected by *identity*
+  when supplied. No file returns all ``None`` unless *floor_only* requests floors
   (:func:`effective_behavior_default`).
   """
   if agent_path is None and not floor_only:
@@ -931,7 +1024,9 @@ def _set_time_agent_tier(
 
   if agent_path is not None and agent_path.exists():
     try:
-      agent_record(agent_path, node=agent_name, purpose=ReadPurpose.RESOLVE)
+      agent_record(
+        agent_path, node=agent_name, purpose=ReadPurpose.RESOLVE, valid_agents=valid_agents
+      )
     except KanibakoError:
       agent_path = None
   target_name = identity.target_name if identity is not None else harness_of(agent_name)
@@ -967,12 +1062,13 @@ NULL_REFUSED_BEHAVIOR_KEYS = frozenset(
 )
 
 
-def effective_behavior_default(node: str, key: str) -> "str | None":
-  """*node*'s EFFECTIVE declared ``<key>`` default (spec §2d): what an unset key reads.
+def effective_behavior_default(
+  node: str, key: str, *, identity: AgentIdentity | None = None
+) -> "str | None":
+  """*node*'s declared ``<key>`` default, using *identity* only for its matching node.
 
-  ``agent.default``'s own row for ``default``; a pseudo-agent's own tier row where its
-  fence states one, else ``agent.default``'s (it has no plugin); for a true agent, its plugin's declared ``agent.<node>.<key>`` row where it has one (claude's
-  ``transform`` is ``tweakcc`` over core's ``<None>``), else ``agent.default``'s.
+  ``default`` and pseudo-agents keep their declared tier rules. True agents use the
+  identity-selected plugin's row, else ``agent.default``'s (spec §2d).
   """
   from kanibako.settings import core_defaults
   from kanibako.settings.config_keys import AGENT_DEFAULT_SUB
@@ -983,13 +1079,21 @@ def effective_behavior_default(node: str, key: str) -> "str | None":
   if pseudo_agent_fence(node) is not None:
     tier = core_defaults.pseudo_tier_defaults()
     return tier.get(f"agent.{node}.{key}", core_defaults.behavior_defaults().get(key))
-  floor = _set_time_agent_tier(node, None, floor_only=True)[2] or {}
+  floor = (
+    _set_time_agent_tier(
+      node,
+      None,
+      floor_only=True,
+      identity=identity if identity is not None and identity.node == node else None,
+    )[2]
+    or {}
+  )
   if key in floor:
     return floor[key]
   return core_defaults.behavior_defaults().get(key)
 
 
-def refuses_null_behavior_key(canonical: str) -> bool:
+def refuses_null_behavior_key(canonical: str, *, identity: AgentIdentity | None = None) -> bool:
   """True iff the launch refuses a present ``null`` at the agent key *canonical* (§2h).
 
   *canonical* is ``agent.<node>.<key>``, a box or workset ``pref.`` of one, or the bare
@@ -1002,7 +1106,7 @@ def refuses_null_behavior_key(canonical: str) -> bool:
     len(parts) == 3
     and parts[0] == "agent"
     and parts[2] in NULL_REFUSED_BEHAVIOR_KEYS
-    and effective_behavior_default(parts[1], parts[2]) is not None
+    and effective_behavior_default(parts[1], parts[2], identity=identity) is not None
   )
 
 
@@ -1017,6 +1121,9 @@ def _set_time_snapshot(
   system_path: "Path | None" = None,
   workset_path: "Path | None" = None,
   box_path: "Path | None" = None,
+  valid_agents: AgentNames | None = None,
+  persona_values: Mapping[str, str | None] | None = None,
+  persona_credential: PersonaCredential | None = None,
 ) -> "tuple[Any, Any]":
   """The set-time cascade, merged and NOT expanded, with the ``ResolveCtx`` to expand it: ``(snapshot, ctx)``.
 
@@ -1028,10 +1135,13 @@ def _set_time_snapshot(
     from kanibako.settings.settings_assemble import ReadPurpose, cascade_files
     from kanibako.settings.settings_launch import assemble_cascade, fold_floor
 
+    if valid_agents is None:
+      valid_agents = _set_time_valid_agents(target)
     agent_path, behavior_floor, agent_behavior_floor = _set_time_agent_tier(
       agent_name,
       agent_path,
       identity=target.agent_identity,
+      valid_agents=valid_agents,
     )
     cascade = assemble_cascade(
       agent_name=agent_name,
@@ -1055,13 +1165,15 @@ def _set_time_snapshot(
       ),
       prefs=target.prefs,
       agent_partial=None,
-      persona_values=None,
+      persona_values=persona_values,
+      persona_credential=persona_credential,
       cli_level=None,
+      valid_agents=valid_agents,
     )
     return cascade.snapshot, target.ctx
 
-  from kanibako.settings.settings_assemble import ReadPurpose, assemble_levels, cascade_files
-  from kanibako.settings.settings_merge import merge
+  from kanibako.settings.settings_assemble import ReadPurpose, cascade_files
+  from kanibako.settings.settings_launch import assemble_cascade
 
   # The box scalars' DECLARED-DEFAULT floor, so a ``{box.image}`` ref RESOLVES at set
   # time.  ⚑⚑ DECLARED DEFAULTS, NOT A SWEEP OF ``kanibako.cfg``.  A
@@ -1139,8 +1251,7 @@ def _set_time_snapshot(
     box_path=box_path,
   )
 
-  # Assemble the FULL cascade with the SAME ``assemble_levels`` the launch uses, then merge.
-  levels = assemble_levels(
+  cascade = assemble_cascade(
     agent_name=agent_name,
     files=cascade_files(
       purpose=ReadPurpose.NARROW,
@@ -1150,8 +1261,13 @@ def _set_time_snapshot(
       box_path=box_p,
     ),
     floor=floor,
+    persona_values=persona_values,
+    persona_credential=persona_credential,
+    # Unreadable prefs may be why the full target is unavailable.
+    prefs=(),
+    valid_agents=valid_agents,
   )
-  return merge(levels), ctx
+  return cascade.snapshot, ctx
 
 
 def _floor_blind_referents(
@@ -1159,6 +1275,8 @@ def _floor_blind_referents(
   value: str,
   candidate: "Any",
   command_scope: "ConfigLevel | None",
+  *,
+  valid_agents: AgentNames | None = None,
 ) -> list[str]:
   """The refs this floor cannot see when *key* is a DOWNWARD DEFAULT, else ``[]``.
 
@@ -1207,7 +1325,15 @@ def _floor_blind_referents(
       # ⚑ A scopeless ref — ``{config.*}``, ``{meta.runtime.*}`` — names no scope, so the
       # command's cascade is not what hides it, and it is not listed. A
       # ``{meta.<scope>.*}`` ref is judged by its SCOPE token.
-      if ref_scope in SCOPE_CONTAINMENT and key_validity(name, valid_agents=()) is None:
+      if (
+        ref_scope in SCOPE_CONTAINMENT
+        and key_validity(
+          name,
+          valid_agents=() if valid_agents is None else valid_agents,
+          agent_leaf_map=None if valid_agents is None else valid_agents.leaf_map,
+        )
+        is None
+      ):
         unseen.append(name)
   return unseen
 
@@ -1224,11 +1350,19 @@ def _category_set_lookups(
   box_path: Path | None = None,
   agent_name: str = "",
   target: "LaunchInputs | None" = None,
+  valid_agents: AgentNames | None = None,
+  persona_values: Mapping[str, str | None] | None = None,
+  persona_credential: PersonaCredential | None = None,
 ):
-  """The set-time lookups over ONE merged cascade snapshot: ``(resolves, raw_bind)``."""
+  """Set-time lookups over one merged cascade: ``(resolves, raw_bind)``."""
 
+  if valid_agents is None:
+    valid_agents = _set_time_valid_agents(target)
   base_snapshot, ctx = _set_time_snapshot(
     target=target,
+    persona_values=persona_values,
+    persona_credential=persona_credential,
+    valid_agents=valid_agents,
     agent_name=agent_name,
     agent_path=agent_path,
     config_path=config_path,
@@ -1247,13 +1381,14 @@ def _category_set_lookups(
     except ReservedKeyError as exc:
       # ⚑ A RESERVED leaf name is a set-time DEFECT, not a crash (the H1 never-raises rule).
       return str(exc)
-    errors = _lenient_expand(candidate, ctx, agent_name)[1]
+    errors = _lenient_expand(candidate, ctx, agent_name, valid_agents=valid_agents)[1]
     if key not in errors or _blindness_forgiven(
       {key: errors[key]},
       candidate,
       ctx,
       agent_name,
       command_scope,
+      valid_agents=valid_agents,
     ):
       return None
     return errors[key]
@@ -1275,16 +1410,32 @@ def _category_set_lookups(
   return resolves, raw_bind
 
 
-def _lenient_expand(snapshot: "Any", ctx: "Any", agent_name: str) -> "tuple[Any, dict[str, str]]":
-  """LENIENT ``expand``: ``(expanded, errors)``, deriving the keys the launch derives."""
+def _lenient_expand(
+  snapshot: "Any",
+  ctx: "Any",
+  agent_name: str,
+  *,
+  valid_agents: AgentNames | None = None,
+) -> "tuple[Any, dict[str, str]]":
+  """LENIENT ``expand``: shared vocabulary and launch-derived keys; returns ``(expanded, errors)``."""
+  from functools import partial
+
   from kanibako.settings.settings_expand import expand
+  from kanibako.settings.settings_keyspace import key_class
+  from kanibako.settings.settings_keyspace_probe import keyspace_verdict
   from kanibako.settings.settings_launch import post_expand_keys
 
+  oracle = (
+    keyspace_verdict
+    if valid_agents is None
+    else partial(key_class, valid_agents=valid_agents, agent_leaf_map=valid_agents.leaf_map)
+  )
   result = expand(
     snapshot,
     ctx,
     collect_errors=True,
-    derive=post_expand_keys(snapshot, agent_name),
+    valid_agents=valid_agents,
+    derive=post_expand_keys(snapshot, agent_name, oracle=oracle),
   )
   assert isinstance(result, tuple)  # lenient mode → (snapshot, errors)
   return result
@@ -1302,12 +1453,21 @@ def _set_time_defects(
   agent_name: str,
   agent_path: "Path | None" = None,
   target: "LaunchInputs | None" = None,
+  valid_agents: AgentNames | None = None,
+  persona_values: Mapping[str, str | None] | None = None,
+  persona_credential: PersonaCredential | None = None,
 ) -> "dict[str, str]":
-  """Keyspec §2a: what the lenient ``expand`` of the command's snapshot MARKS, *edit*
-  ``(key, value)`` applied first, ``{dotted: reason}`` — forgiving cascade blindness
-  exactly as the edited value's probe does (:func:`_blindness_forgiven`)."""
+  """Expand the command's snapshot after *edit*, returning ``{key: reason}`` defects.
+
+  Forgive cascade blindness as the value's probe does (:func:`_blindness_forgiven`).
+  """
+  if valid_agents is None:
+    valid_agents = _set_time_valid_agents(target)
   snapshot, ctx = _set_time_snapshot(
     target=target,
+    persona_values=persona_values,
+    persona_credential=persona_credential,
+    valid_agents=valid_agents,
     agent_name=agent_name,
     agent_path=agent_path,
     config_path=config_path,
@@ -1319,8 +1479,10 @@ def _set_time_defects(
   )
   if edit is not None:
     snapshot.insert_segments(edit[0].split("."), edit[1])
-  errors = _lenient_expand(clone_store(snapshot), ctx, agent_name)[1]
-  forgiven = _blindness_forgiven(errors, snapshot, ctx, agent_name, command_scope)
+  errors = _lenient_expand(clone_store(snapshot), ctx, agent_name, valid_agents=valid_agents)[1]
+  forgiven = _blindness_forgiven(
+    errors, snapshot, ctx, agent_name, command_scope, valid_agents=valid_agents
+  )
   return {k: r for k, r in errors.items() if k not in forgiven}
 
 
@@ -1330,6 +1492,8 @@ def _blindness_forgiven(
   ctx: "Any",
   agent_name: str,
   command_scope: "ConfigLevel | None",
+  *,
+  valid_agents: AgentNames | None = None,
 ) -> "set[str]":
   """The keys of *errors* whose defect is this floor's cascade blindness alone: a blind
   reason that clears once its unseen referents (:func:`_floor_blind_referents`) are
@@ -1341,7 +1505,11 @@ def _blindness_forgiven(
     for dotted, reason in errors.items()
     if is_cascade_blindness(reason)
     and isinstance(raw := snapshot_leaf(candidate, dotted), str)
-    and (names := _floor_blind_referents(dotted, raw, candidate, command_scope))
+    and (
+      names := _floor_blind_referents(
+        dotted, raw, candidate, command_scope, valid_agents=valid_agents
+      )
+    )
   }
   if not unseen:
     return set()
@@ -1351,7 +1519,9 @@ def _blindness_forgiven(
       supplied.insert_segments(name.split("."), "/")
   except ReservedKeyError:
     return set()
-  return set(unseen) - set(_lenient_expand(supplied, ctx, agent_name)[1])
+  return set(unseen) - set(
+    _lenient_expand(supplied, ctx, agent_name, valid_agents=valid_agents)[1]
+  )
 
 
 # ⚑ ``_set_category_value`` and its callee ``settings_configset.repoint_host_src`` are GONE
@@ -1485,7 +1655,9 @@ def _system_verb_slot(
   return _noun_file_slot(slot, noun_file)
 
 
-def _stored_shape_for(canonical: str, value: object) -> object:
+def _stored_shape_for(
+  canonical: str, value: object, *, valid_agents: AgentNames | None = None
+) -> object:
   """*value* in the shape a SETTINGS FILE must hold it in at *canonical* — the WRITE-side
   twin of :func:`_argv_aware`, and the scope files' half of what ``agent_file.write_leaf``
   already does for the per-agent file.
@@ -1510,7 +1682,7 @@ def _stored_shape_for(canonical: str, value: object) -> object:
   if _is_agent_setting(target):
     tail = target  # the BARE CLI spelling of an ``agent.default.<leaf>`` key IS the tail
   else:
-    parsed = _parse_persona_agent_key(target)
+    parsed = _parse_persona_agent_key(target, valid_agents=valid_agents)
     if parsed is None:
       return value
     tail = parsed[1]
@@ -1534,16 +1706,20 @@ def get_config_value(
   std: Any = None,
   proj: Any = None,
   ws: Any = None,
+  cascade_agent_identity: AgentIdentity | None = None,
+  cascade_persona_values: Mapping[str, str | None] | None = None,
+  cascade_persona_credential: PersonaCredential | None = None,
+  target_error: str | None = None,
 ) -> str | None:
-  """Read one config value STORED AT THIS NOUN, or ``None`` when it is not set there.
+  """Read this noun's stored value; warn on its set-time defects with *std*.
 
-  Warns, and reads on, when a file the noun's ``set`` would judge stores an entry that
-  is not a key (spec §2a); the ``cascade_*`` files are the tiers above the noun's own.
-  *std*, *proj* and *ws* name the command's target as for :func:`set_config_value`; a
-  value that does not resolve is judged against that target only, so without *std*
-  it is not reported.
+  Identity supplies vocabulary; live inputs only serve validation. Unavailable
+  target input never blocks the stored read. ``cascade_*`` names higher tiers.
   """
-  canonical = resolve_key(key)
+  valid_agents = identity_valid_agents(cascade_agent_identity)
+  canonical = resolve_key(key, valid_agents=valid_agents)
+  if target_error is not None:
+    _log.warning("Warning: live agent input is unavailable: %s", target_error)
 
   def defects() -> "dict[str, str]":
     from kanibako.settings.agent_config import agent_settings_path
@@ -1566,7 +1742,13 @@ def get_config_value(
         ws=ws,
         agent_name=agent_name,
         system_path=system_path,
-      ),
+        agent_identity=cascade_agent_identity,
+      )
+      if target_error is None
+      else None,
+      persona_values=cascade_persona_values,
+      persona_credential=cascade_persona_credential,
+      valid_agents=valid_agents,
     )
 
   try:
@@ -1577,6 +1759,7 @@ def get_config_value(
       workset_path=cascade_workset_path,
       box_path=None,
       defects=None if std is None else defects,
+      valid_agents=valid_agents,
     )
   except KanibakoError:
     bad = _BadEntries([], [], lambda _dotted: None, [])  # that file's own reader refuses it
@@ -1694,8 +1877,10 @@ def get_config_value(
   # ⚑ The refusal is still the right answer for the WRITE verbs for a declared LEAF; the
   # tier's two SCALAR CATEGORY families are now WRITTEN through the same routed slot, so
   # ``is_agent_default_tier_key`` covers both halves of the tier here.
-  if _is_persona_agent_key(canonical) and not is_agent_default_tier_key(canonical):
-    target = _persona_agent_target(canonical, agents_root, verb="read")
+  if _is_persona_agent_key(canonical, valid_agents=valid_agents) and not is_agent_default_tier_key(
+    canonical
+  ):
+    target = _persona_agent_target(canonical, agents_root, verb="read", valid_agents=valid_agents)
     if not isinstance(target, AgentFileSlot):
       return None
     val = _read_slot(canonical, target) if node_store else None
@@ -1808,7 +1993,7 @@ class _SetValueDoor(NamedTuple):
   :mod:`messages` says why they differ from the read-time ones.
   """
 
-  refuses: "Callable[[str, str | None], bool]"
+  refuses: "Callable[[str, str | None, AgentIdentity | None], bool]"
   head: str
   reason: "Callable[[str | None], str]"  # one sentence, with its own full stop
   noun: str  # what the cure asks the user to set instead
@@ -1820,28 +2005,30 @@ class _SetValueDoor(NamedTuple):
 _SET_VALUE_DOORS: "tuple[_SetValueDoor, ...]" = (
   # §2a — a ``--null`` at a path key.
   _SetValueDoor(
-    lambda key, value: value is None and refuses_null_path_key(key),
+    lambda key, value, identity: value is None and refuses_null_path_key(key),
     ERR_CONFIG_NULL_PATH_SET_HEAD,
     lambda value: ERR_CONFIG_NULL_PATH_REASON,
     "path",
   ),
   # §2b — a ``--null`` at a box scalar whose default is a value.
   _SetValueDoor(
-    lambda key, value: value is None and refuses_null_box_scalar(key),
+    lambda key, value, identity: value is None and refuses_null_box_scalar(key),
     ERR_BOX_SCALAR_NULL_SET_HEAD,
     lambda value: ERR_BOX_SCALAR_NULL_REASON,
     "value",
   ),
   # §2h — a ``--null`` at an agent behavior key whose default is a value.
   _SetValueDoor(
-    lambda key, value: value is None and refuses_null_behavior_key(key),
+    lambda key, value, identity: (
+      value is None and refuses_null_behavior_key(key, identity=identity)
+    ),
     ERR_BEHAVIOR_NULL_SET_HEAD,
     lambda value: ERR_BEHAVIOR_NULL_REASON,
     "value",
   ),
   # §0 — a string at the box store key the launch cannot root boxes at.
   _SetValueDoor(
-    lambda key, value: value is not None and refuses_box_store_value(key, value),
+    lambda key, value, identity: value is not None and refuses_box_store_value(key, value),
     ERR_BOX_STORE_SET_HEAD,
     lambda value: (
       (
@@ -1856,13 +2043,15 @@ _SET_VALUE_DOORS: "tuple[_SetValueDoor, ...]" = (
 )
 
 
-def _set_value_error(canonical: str, value: "str | None") -> "str | None":
+def _set_value_error(
+  canonical: str, value: "str | None", *, identity: AgentIdentity | None = None
+) -> "str | None":
   """Refuse *value* at *canonical* where the LAUNCH refuses it (:data:`_SET_VALUE_DOORS`),
   or ``None``.  ``reset <key>`` reaches what the read-time cue reaches by hand.
 
   The lead names the key and no file: a ``set`` that refused wrote none.
   """
-  door = next((d for d in _SET_VALUE_DOORS if d.refuses(canonical, value)), None)
+  door = next((d for d in _SET_VALUE_DOORS if d.refuses(canonical, value, identity)), None)
   if door is None:
     return None
   error = null_path_keys_error(
@@ -1944,19 +2133,21 @@ def set_config_value(
   proj: Any = None,
   ws: Any = None,
   target_error: "str | None" = None,
+  cascade_agent_identity: AgentIdentity | None = None,
   force: bool = False,
   node_store: bool = True,
+  cascade_persona_values: Mapping[str, str | None] | None = None,
+  cascade_persona_credential: PersonaCredential | None = None,
 ) -> str:
   """Write a config value to the appropriate store; returns a message or error, NEVER raises.
 
-  *std* with *proj* (a box), *ws* (a working set) or neither (the system scope) names
-  the COMMAND's target, whose full cascade the set-time validation resolves against
-  (spec §2a); see :func:`_set_time_target`. *target_error* is why a caller could
-  not name its target; the write is then validated as if the target failed to build.
-  *force* writes past a bad entry the value does not depend on, warning instead of
-  refusing; it does not reach one the value's own upstream chain does.
+  *std*, *proj*, and *ws* name the target (:func:`_set_time_target`, spec §2a).
+  *cascade_agent_identity* supplies local vocabulary and matching-node null defaults,
+  including null/repair writes without a target. *target_error* selects targetless
+  repair validation. *force* bypasses unrelated bad entries, never broken upstreams.
   """
-  canonical = resolve_key(key)
+  valid_agents = identity_valid_agents(cascade_agent_identity)
+  canonical = resolve_key(key, valid_agents=valid_agents)
 
   # ⚑ ``config.*`` foundation keys are NEVER CLI-settable (B2) — refused BEFORE the scope
   # guard so every command scope gets the same ruled message.
@@ -2056,12 +2247,9 @@ def set_config_value(
   # MUST stay usable to FIX a broken config, and the usual reason a target fails is a
   # defect in one of its own settings files (a dotted ``pref:`` entry, say), which a
   # ``set`` is how the user repairs. So the value is judged against the TARGET-LESS
-  # snapshot instead — strictly less context, so it can only refuse more, never accept
-  # more — and a refusal carries the build error, which is why an anchor was missing.
-  # ⚑ "Strictly less" holds ONLY because every caller still threads its tier files: the
-  # fallback reads the same files as the target and differs by the floors alone. A
-  # caller that drops a tier lets a lower tier's value show through, and the fallback
-  # then ACCEPTS what the target refuses.
+  # snapshot instead. A refusal carries the build error, naming missing anchors.
+  # The fallback retains tier files and live input but omits target floors and prefs.
+  # Dropping a tier could expose a lower value and accept a broken dependency.
   # *target_error* is the same case from a caller that could not even load ``std``.
   set_target = None
   target_reason = target_error
@@ -2072,6 +2260,7 @@ def set_config_value(
         proj=proj,
         ws=ws,
         agent_name=cascade_agent_name,
+        agent_identity=cascade_agent_identity,
         system_path=cascade_system_path,
       )
     except KanibakoError as exc:
@@ -2104,7 +2293,7 @@ def set_config_value(
     display_key=(
       _node_secret_display_key(canonical)
       if _is_agent_node_secret_key(canonical)
-      else _persona_display_key(canonical)
+      else _persona_display_key(canonical, valid_agents=valid_agents)
     ),
     route_key=canonical,
     config_path=config_path,
@@ -2112,8 +2301,11 @@ def set_config_value(
     command_scope=command_scope,
     target=set_target,
     agent_path=cascade_agent_path,
+    persona_values=cascade_persona_values,
+    persona_credential=cascade_persona_credential,
     agent_name=cascade_agent_name,
     agents_root=agents_root,
+    valid_agents=valid_agents,
   )
   if path_err is not None:
     return _refusal(path_err)
@@ -2129,7 +2321,7 @@ def set_config_value(
   # ⚑ A value the LAUNCH refuses (spec §0, §2a, §2b, §2h); see :func:`_set_value_error`. AFTER
   # every NAME-level refusal above, so a retired or wrong-scope spelling still gets its own,
   # and BEFORE the E3 probe, which would splice an unusable value into a candidate store.
-  value_err = _set_value_error(canonical, value)
+  value_err = _set_value_error(canonical, value, identity=cascade_agent_identity)
   if value_err is not None:
     return value_err
 
@@ -2141,7 +2333,7 @@ def set_config_value(
   # SET-TIME RESOLUTION PROBE for a value the EXPANDER will see (E3, spec §2a / Q9); see
   # :func:`_probes_at_set_time` for which keys qualify. It blocks ONLY on the edited value's
   # own upstream chain, so ``config set`` stays usable to REPAIR a broken config.
-  if value is not None and _probes_at_set_time(canonical):
+  if value is not None and _probes_at_set_time(canonical, valid_agents=valid_agents):
     from kanibako.settings.settings_configset import Error as _SetError
     from kanibako.settings.settings_configset import validate_config_set
 
@@ -2156,6 +2348,9 @@ def set_config_value(
       box_path=cascade_box_path,
       agent_name=cascade_agent_name,
       target=set_target,
+      persona_values=cascade_persona_values,
+      persona_credential=cascade_persona_credential,
+      valid_agents=valid_agents,
     )
     scalar_verdict = validate_config_set(
       canonical,
@@ -2217,9 +2412,12 @@ def set_config_value(
       workset_path=cascade_workset_path,
       box_path=cascade_box_path,
       edited=canonical,
+      valid_agents=valid_agents,
       defects=lambda: _set_time_defects(
         config_path,
-        edit=(canonical, value) if _probes_at_set_time(canonical) else None,
+        edit=(canonical, value)
+        if _probes_at_set_time(canonical, valid_agents=valid_agents)
+        else None,
         command_scope=command_scope,
         system_settings_path=system_settings_path,
         system_path=cascade_system_path,
@@ -2228,6 +2426,9 @@ def set_config_value(
         agent_name=cascade_agent_name,
         agent_path=cascade_agent_path,
         target=set_target,
+        persona_values=cascade_persona_values,
+        persona_credential=cascade_persona_credential,
+        valid_agents=valid_agents,
       ),
     )
   except KanibakoError:
@@ -2252,9 +2453,14 @@ def set_config_value(
       return "Error: " + "\n".join(bad.warn_reports()) + ERR_CONFIG_BAD_ENTRIES_TAIL
     for report in bad.warn_reports():
       _log.warning("Warning: %s", report)
+  pref_target_err = (
+    _pref_target_error(canonical, command_scope, valid_agents=valid_agents)
+    if _is_pref_key(canonical)
+    else None
+  )
   owner_err = (
     None
-    if (_is_pref_key(canonical) and _pref_target_error(canonical, command_scope) is not None)
+    if pref_target_err is not None
     else _per_owner_set_error(
       canonical,
       value,
@@ -2271,9 +2477,8 @@ def set_config_value(
   # ⚑ Written NESTED, never as a dotted literal: a dotted bind-shaped value is never
   # bind-parsed, so the two spellings would behave differently (see ``settings_prefs``).
   if _is_pref_key(canonical):
-    target_err = _pref_target_error(canonical, command_scope)
-    if target_err is not None:
-      return target_err
+    if pref_target_err is not None:
+      return pref_target_err
     value_err = _pref_value_error(
       canonical,
       value,
@@ -2286,6 +2491,9 @@ def set_config_value(
       box_path=cascade_box_path,
       agent_name=cascade_agent_name,
       set_target=set_target,
+      persona_values=cascade_persona_values,
+      persona_credential=cascade_persona_credential,
+      valid_agents=valid_agents,
     )
     if value_err is not None:
       return _refusal(value_err)
@@ -2303,7 +2511,7 @@ def set_config_value(
       dest.file,
       dest.sections,
       dest.leaf,
-      _stored_shape_for(canonical, value),
+      _stored_shape_for(canonical, value, valid_agents=valid_agents),
     )
     return _set_confirmation(canonical, value)
 
@@ -2360,9 +2568,9 @@ def set_config_value(
 
   # ``agent.<node>.<key>`` — the PER-PERSONA key (B1): a VERBATIM write to the node's OWN
   # ``agents/<node>/agent.yaml`` (the system file without *node_store*), sparse (RMW).
-  if _is_persona_agent_key(canonical):
+  if _is_persona_agent_key(canonical, valid_agents=valid_agents):
     target = _system_verb_slot(
-      _persona_agent_target(canonical, agents_root, verb="set"),
+      _persona_agent_target(canonical, agents_root, verb="set", valid_agents=valid_agents),
       system_settings_path,
       node_store,
     )
@@ -2373,7 +2581,7 @@ def set_config_value(
         f"Error: '{key}' is a per-persona agent setting and is only settable at the system scope."
       )
     write_leaf(target, value)
-    return _set_confirmation(_persona_display_key(canonical), value)
+    return _set_confirmation(_persona_display_key(canonical, valid_agents=valid_agents), value)
 
   # Bare agent settings — the agent-agnostic CLI writes the any-agent ``agent.default`` tier.
   if _is_agent_setting(canonical):
@@ -2388,7 +2596,7 @@ def set_config_value(
       dest.file,
       dest.sections,
       dest.leaf,
-      _stored_shape_for(canonical, value),
+      _stored_shape_for(canonical, value, valid_agents=valid_agents),
     )
     return _set_confirmation(canonical, value)
 
@@ -2423,7 +2631,7 @@ def set_config_value(
     # ⚑ MIRRORS ``reset_config_value``'s tail: a name §0 declares no key gets the
     # reason, in THIS verb. ``cure=""`` — the default cure deletes a STORED entry,
     # and a ``set`` that was refused stored nothing.
-    reason = scope_key_reason(canonical)
+    reason = scope_key_reason(canonical, valid_agents=valid_agents)
     if reason is not None:
       return scope_key_refusal(key, reason, command_scope, verb="set", cure="")
     return f"Error: unknown config key: {key}"
@@ -2620,9 +2828,16 @@ def reset_config_value(
   cascade_agent_name: str = "",
   agents_root: Path | None = None,
   node_store: bool = True,
+  cascade_agent_identity: AgentIdentity | None = None,
+  cascade_persona_values: Mapping[str, str | None] | None = None,
+  cascade_persona_credential: PersonaCredential | None = None,
+  target_error: str | None = None,
 ) -> str:
-  """Remove an override for a single key; returns a confirmation or an error, NEVER raises."""
-  canonical = resolve_key(key)
+  """Remove an override; unavailable live input cannot block repair."""
+  valid_agents = identity_valid_agents(cascade_agent_identity)
+  canonical = resolve_key(key, valid_agents=valid_agents)
+  if target_error is not None:
+    _log.warning("Warning: live agent input is unavailable: %s", target_error)
 
   # ⚑ ``config.*`` foundation keys are NEVER CLI-resettable (B2) — refused FIRST, BEFORE the
   # scope guard, with verb "changed" (a reset is a change, not a "set").
@@ -2693,7 +2908,7 @@ def reset_config_value(
   if _is_pref_key(canonical):
     # ⚑ §0 FIRST, the question ``get`` asks and in ``get``'s words: "Cleared" / "No
     # override" for a name that is not a key would be a silent accept.
-    reason = scope_key_reason(canonical)
+    reason = scope_key_reason(canonical, valid_agents=valid_agents)
     if reason is not None:
       return scope_key_refusal(key, reason, command_scope, verb="reset")
     dest = _reset_dest(canonical, command_scope, config_path, system_settings_path)
@@ -2741,9 +2956,9 @@ def reset_config_value(
 
   # ``agent.<node>.<key>`` — remove the stored override from the node's OWN settings file
   # (``remove_nested_key`` prunes now-empty tables, keeping the file sparse).
-  if _is_persona_agent_key(canonical):
+  if _is_persona_agent_key(canonical, valid_agents=valid_agents):
     target = _system_verb_slot(
-      _persona_agent_target(canonical, agents_root, verb="reset"),
+      _persona_agent_target(canonical, agents_root, verb="reset", valid_agents=valid_agents),
       system_settings_path,
       node_store,
     )
@@ -2754,7 +2969,7 @@ def reset_config_value(
         f"Error: '{key}' is a per-persona agent setting and is only "
         f"resettable at the system scope."
       )
-    display = _persona_display_key(canonical)
+    display = _persona_display_key(canonical, valid_agents=valid_agents)
     if remove_leaf(target):
       return _honest_reset_message(display, command_scope)
     return f"No override for {display}"
@@ -2800,7 +3015,7 @@ def reset_config_value(
   if route is None:
     # A name §0 declares no key gets ``get``'s refusal, as the ``pref`` branch above does:
     # one verb, one refusal. The generic line is left for a DECLARED key with no route.
-    reason = scope_key_reason(canonical)
+    reason = scope_key_reason(canonical, valid_agents=valid_agents)
     if reason is not None:
       return scope_key_refusal(key, reason, command_scope, verb="reset")
     return f"Error: unknown config key: {key}"
@@ -2819,7 +3034,7 @@ def reset_config_value(
     effective = None
     # ⚑ The token test stays HERE, not at the rule site: it asks whether the key READS
     # through the cascade, not where it is STORED — two questions that share a test.
-    if canonical.split(".", 1)[0] in _SETTINGS_SCOPE_TOKENS:
+    if target_error is None and canonical.split(".", 1)[0] in _SETTINGS_SCOPE_TOKENS:
       from kanibako.settings.settings_resolve import SettingsError
 
       # ⚑ The reset has already succeeded, so a cascade that does not read degrades the
@@ -2834,6 +3049,9 @@ def reset_config_value(
           agent_path=cascade_agent_path,
           workset_path=cascade_workset_path,
           box_path=cascade_box_path,
+          persona_values=cascade_persona_values,
+          persona_credential=cascade_persona_credential,
+          valid_agents=valid_agents,
         )
       except SettingsError:
         effective = None
@@ -2895,6 +3113,9 @@ def effective_value(
   box_path: Path | None,
   floor: "Mapping[str, object] | None" = None,
   inputs: "LaunchInputs | None" = None,
+  valid_agents: AgentNames | None = None,
+  persona_values: Mapping[str, str | None] | None = None,
+  persona_credential: PersonaCredential | None = None,
 ) -> "tuple[str, str] | None":
   """The cascade-effective ``(value, source_tier)`` for *canonical*, or ``None``.
 
@@ -2906,10 +3127,11 @@ def effective_value(
   unresolved reference, or an EMPTY render.
 
   *floor* (dotted keys) folds over the declared floor, so an explicit entry wins.
-  Raises :class:`~kanibako.settings.settings_resolve.SettingsError` when the files do
-  not read; the caller decides what that costs.
+  File-read errors propagate; the caller decides what that costs.
   """
-  if all(p is None for p in (system_path, agent_path, workset_path, box_path)):
+  if not persona_values and all(
+    p is None for p in (system_path, agent_path, workset_path, box_path)
+  ):
     return None
   from kanibako.settings.kb_store import Bind
   from kanibako.settings.keystore import KeyStore
@@ -2955,6 +3177,8 @@ def effective_value(
     }
   if floor:
     folded.update(floor)
+  if valid_agents is None:
+    valid_agents = _set_time_valid_agents(inputs)
   cascade = assemble_cascade(
     agent_name=agent_name,
     floor=folded,
@@ -2966,6 +3190,9 @@ def effective_value(
       box_path=box_path,
     ),
     prefs=inputs.prefs if inputs is not None else None,
+    persona_values=persona_values,
+    persona_credential=persona_credential,
+    valid_agents=valid_agents,
   )
   key_path = (*sections, leaf)
 
@@ -2983,7 +3210,15 @@ def effective_value(
   # floor's is the floor's (``settings_launch._none_setter``'s rule). A resolved path-tier
   # value is not a declared default, so it keeps the ``base`` tier.
   source_tier: str | None = None
+  persona_key = ".".join(key_path[2:]) if key_path[:2] == ("agent", agent_name) else None
   for (level, _path, floor_store), tier in zip(cascade.written, cascade.tiers):
+    if (
+      tier not in ("box", "workset", "agent")
+      and persona_values is not None
+      and persona_key in persona_values
+    ):
+      source_tier = "persona store"
+      break
     found, val = _reads(level, key_path)
     if not found:
       continue
@@ -3003,7 +3238,7 @@ def effective_value(
   found, raw = _reads(snapshot, key_path)
   if not found or isinstance(raw, (Bind, KeyStore, list)) or raw is None:
     return None  # a bind/subtree/list/present-None has no single scalar to print
-  resolved_snap, errors = _lenient_expand(snapshot, ctx, agent_name)
+  resolved_snap, errors = _lenient_expand(snapshot, ctx, agent_name, valid_agents=valid_agents)
   if canonical in errors:
     return None  # unresolved (dangling ref / cycle) — no guess.
   found, eff = _reads(resolved_snap, key_path)
@@ -3273,7 +3508,11 @@ def _quiet_drop_announcements(
       announce_drop_once(path, token)
 
 
-def _undeclared_stored_entries(data: dict) -> dict[tuple[str, ...], tuple[str, str]]:
+def _undeclared_stored_entries(
+  data: dict,
+  *,
+  valid_agents: AgentNames | None = None,
+) -> dict[tuple[str, ...], tuple[str, str]]:
   """Entries STORED in a settings doc that the keyspace does not declare —
   ``segments → (shown, value)``.
 
@@ -3311,8 +3550,20 @@ def _undeclared_stored_entries(data: dict) -> dict[tuple[str, ...], tuple[str, s
   ``box.auth.bogus`` rather than ``box.auth``.  The user has to find the line in a
   YAML file, and the deep form is the only one that says which line.
   """
-  from kanibako.settings.settings_keyspace_probe import keyspace_verdict
+  from functools import partial
 
+  from kanibako.settings.settings_keyspace import key_class
+  from kanibako.settings.settings_keyspace_probe import keyspace_verdict
+  from kanibako.settings.settings_prefs import key_reason
+
+  oracle = (
+    keyspace_verdict
+    if valid_agents is None
+    else partial(key_class, valid_agents=valid_agents, agent_leaf_map=valid_agents.leaf_map)
+  )
+  reason = (
+    scope_key_reason if valid_agents is None else partial(key_reason, valid_agents=valid_agents)
+  )
   out: dict[tuple[str, ...], tuple[str, str]] = {}
 
   def _walk(node: dict, parent: tuple[str, ...]) -> None:
@@ -3323,7 +3574,7 @@ def _undeclared_stored_entries(data: dict) -> dict[tuple[str, ...], tuple[str, s
         # would say two things about one line.
         continue
       segments = (*parent, str(k))
-      if "." in str(k) and not is_var_table(parent, oracle=keyspace_verdict):
+      if "." in str(k) and not is_var_table(parent, oracle=oracle):
         # ⚑ A DOTTED NAME IS NEVER JOINED: ``box: {"env.X": 1}`` (or a top-level
         # ``box.env.X: 1``) is ONE entry, and asking ``scope_key_reason`` would
         # forge the declared key it spells. The launch's §0 audit refuses it by
@@ -3334,7 +3585,7 @@ def _undeclared_stored_entries(data: dict) -> dict[tuple[str, ...], tuple[str, s
         # docstring.
         out[segments] = (display_store_path(segments), render_stored_scalar(v))
         continue
-      if scope_key_reason(".".join(segments)) is None:
+      if reason(".".join(segments)) is None:
         continue  # declared — whatever is under it is DATA, not keys
       if isinstance(v, dict) and v:
         _walk(v, segments)
@@ -3570,19 +3821,16 @@ def show_config(
   agent_name: str = GENERAL_SLOT,
   agent_path: Path | None = None,
 ) -> int:
-  """Display config values — overrides only, or the full resolved view.  Returns an exit code.
+  """Display stored or effective values; return an exit code.
 
-  *command_scope* is the NOUN showing, and it fixes the level its settings file is judged at.
-  *inputs* are the noun's own resolve inputs, when it is not a box.
-  *agent_name*/*agent_path* are the agent the scalars resolve under.
+  *command_scope* fixes file judgment. Non-box nouns use *inputs*; scalar resolves
+  use *agent_name*/*agent_path*. Box scalars reuse a successful *category_snapshot*.
   """
   out = file or sys.stdout
   # The file agent SETTINGS are displayed from: the system settings file at SYSTEM, else the
   # level's own ``config_path``.
   settings_src = noun_settings_file(config_path, system_settings_path)
-  # ⚑ AS THE CASCADE READS IT (:func:`_noun_stored_view`): every block below that shows a
-  # table the cascade could drop takes *stored*; the box scalars read *config_path*, whose
-  # ``box:`` table the cascade never drops at the box.
+  # Tables dropped by the noun's cascade view are not displayed.
   stored = _noun_stored_view(settings_src, command_scope)
 
   if effective:
@@ -3590,16 +3838,20 @@ def show_config(
     # ⚑ *config_path* is a BOX tier only for the box noun: the system and workset nouns
     # pass the Layer-1 ``.cfg`` there (keyspec §1), which is not a settings tier at all.
     box_tier = config_path if command_scope is ConfigLevel.box else None
-    cfg = load_merged_config(
-      box_tier,
-      workset_path=workset_path,
-      inputs=inputs,
-      agent_name=agent_name,
-      agent_path=agent_path,
-      # ⚑ A DISPLAY answers with the stored ``null``; the LAUNCH refuses the same
-      # value and names the key.  Rows are read here and nothing acts on them.
-      refuse_null_scalars=False,
-    )
+    if (
+      command_scope is ConfigLevel.box and category_snapshot is not None and category_error is None
+    ):
+      cfg = box_scalar_config(category_snapshot)
+    else:
+      cfg = load_merged_config(
+        box_tier,
+        workset_path=workset_path,
+        inputs=inputs,
+        agent_name=agent_name,
+        agent_path=agent_path,
+        # Displays retain nulls; launches refuse unsupported ones.
+        refuse_null_scalars=False,
+      )
     overrides = load_project_overrides(config_path) if config_path else {}
     for fld in fields(cfg):
       val = getattr(cfg, fld.name)

@@ -16,17 +16,29 @@ delete one for lack of a covering test.
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
+import secrets
+import selectors
 import shutil
 import stat
 import subprocess
 import sys
+import time
 from collections.abc import Iterator, Mapping
 from pathlib import Path
 
 from kanibako.errors import ContainerError, LabelQueryError
 from kanibako.log import get_logger
+from kanibako.secret_delivery import (
+  SECRET_ACK_FD,
+  SECRET_DATA_FD,
+  SECRET_READY_ACK,
+  SecretDeliveryError,
+  SecretPayload,
+  iter_payload,
+)
 from kanibako.utils import CONTAINER_NAME_PREFIX
 from kanibako.settings.core_defaults import CANON_SEED_DENY_PREFIXES
 from kanibako.settings.settings_resolve import (
@@ -47,6 +59,45 @@ logger = get_logger("container")
 # ⚑ NOT plain ``keep-id``: the ``uid=``/``gid=`` pin is what stops ``:U`` recursively
 # chowning the box home and project tree to a stray subuid.  Needs podman >= 4.3.
 KEEP_ID_USERNS = f"--userns=keep-id:uid={GUEST_UID},gid={GUEST_GID}"
+
+_SECRET_LAUNCH_LABEL = "org.kanibako.credential-launch"
+_SECRET_EXEC = """import os, signal, sys
+sources = [int(value) for value in sys.argv[1:3]]
+targets = [int(value) for value in sys.argv[3:5]]
+if sys.argv[5] == '1':
+  for fd in {1, 2} - set(sources) - set(targets):
+    os.closerange(fd, fd + 1)
+pending = dict(zip(targets, sources))
+while pending:
+  for target, source in pending.items():
+    if source == target or target not in pending.values():
+      if source == target:
+        os.set_inheritable(target, True)
+      else:
+        os.dup2(source, target)
+      del pending[target]
+      if source not in targets and source not in pending.values():
+        os.close(source)
+      break
+  else:
+    source = next(iter(pending.values()))
+    copy = os.dup(source)
+    pending = {target: copy if value == source else value for target, value in pending.items()}
+if sys.argv[5] == '1':
+  os.closerange(1, 3)
+  fd = os.open(os.devnull, os.O_WRONLY)
+  for target in (1, 2):
+    if fd == target:
+      os.set_inheritable(target, True)
+    else:
+      os.dup2(fd, target)
+  if fd not in (1, 2):
+    os.close(fd)
+for name in ('SIGPIPE', 'SIGXFZ', 'SIGXFSZ'):
+  if hasattr(signal, name):
+    signal.signal(getattr(signal, name), signal.SIG_DFL)
+os.execvp(sys.argv[6], sys.argv[6:])
+"""
 
 
 # The smallest rule a string must satisfy to be an image reference AT ALL: a registry
@@ -99,11 +150,9 @@ def running_from_inspect(result: subprocess.CompletedProcess[str]) -> bool:
 
 
 def env_from_inspect(result: subprocess.CompletedProcess[str], key: str) -> str | None:
-  """The value of env var *key* in an ``inspect --format {{json .Config.Env}}`` *result*.
+  """Read *key* from ``inspect --format {{json .Config.Env}}`` for both engine legs.
 
-  Shared by the local leg (:meth:`ContainerRuntime.inspect_env`) and the remote one
-  (``vscode.vscode_remote.RemoteEngine.inspect_env``).  ``None`` when the ``inspect``
-  failed, its output is not a JSON list, or *key* is not set.
+  Local/remote ``inspect_env`` return ``None`` on failure, a non-list, or an unset key.
   """
   if result.returncode != 0:
     return None
@@ -118,6 +167,30 @@ def env_from_inspect(result: subprocess.CompletedProcess[str], key: str) -> str 
     if isinstance(item, str) and item.startswith(prefix):
       return item[len(prefix) :]
   return None
+
+
+def creation_metadata_from_inspect(
+  result: subprocess.CompletedProcess[str],
+) -> tuple[str, dict[str, str]] | None:
+  """Read the container ID and string labels; null labels mean an empty map."""
+  if result.returncode != 0:
+    return None
+  try:
+    metadata = json.loads(result.stdout)
+  except (ValueError, TypeError):
+    return None
+  if not isinstance(metadata, list) or len(metadata) != 2:
+    return None
+  container_id, labels = metadata
+  if not isinstance(container_id, str) or not container_id.strip():
+    return None
+  if labels is None:
+    labels = {}
+  if not isinstance(labels, dict) or not all(
+    isinstance(key, str) and isinstance(value, str) for key, value in labels.items()
+  ):
+    return None
+  return container_id, labels
 
 
 class ContainerRuntime:
@@ -362,8 +435,14 @@ class ContainerRuntime:
     entrypoint: str | None = None,
     cli_args: list[str] | None = None,
     detach: bool = False,
+    secret_payload: SecretPayload | None = None,
+    publication_timeout: float = 5.0,
   ) -> int:
-    """Run a container and return the exit code; *detach* backgrounds it (``-dt``, no ``--rm``)."""
+    """Run a container; nonempty secrets require readiness, while *detach* uses ``-dt``."""
+    nonce = None
+    if secret_payload is not None and secret_payload.values:
+      nonce = secrets.token_hex(16)
+      labels = {**(labels or {}), _SECRET_LAUNCH_LABEL: nonce}
     masks = tmpfs_masks or []
     # Stubs first: crun cannot mkdir a bind dest inside a bind-mounted overlay (LXC).
     _precreate_mount_stubs(
@@ -381,6 +460,8 @@ class ContainerRuntime:
     else:
       tty_flag = "-it" if sys.stdin.isatty() else "-i"
       run_flags = [tty_flag, "--rm", KEEP_ID_USERNS]
+    if nonce is not None:
+      run_flags += [f"--preserve-fds={max(SECRET_DATA_FD, SECRET_ACK_FD) - 2}"]
     cmd: list[str] = [
       self.cmd,
       "run",
@@ -416,6 +497,9 @@ class ContainerRuntime:
 
     logger.debug("Container command: %s", cmd)
 
+    if nonce is not None and secret_payload is not None:
+      return self._run_with_secrets(cmd, secret_payload, nonce, detach, publication_timeout)
+
     if detach:
       # Capture the container id podman prints; the caller reattaches by NAME.
       result = subprocess.run(cmd, capture_output=True, text=True)
@@ -429,6 +513,197 @@ class ContainerRuntime:
 
     # Foreground: inherit the terminal and block for the whole session.
     return subprocess.run(cmd).returncode
+
+  def _run_with_secrets(
+    self,
+    cmd: list[str],
+    payload: SecretPayload,
+    nonce: str,
+    detach: bool,
+    timeout: float,
+  ) -> int:
+    """Publish through child-only descriptors; failures never quote engine or frame output."""
+    valid_timeout = False
+    try:
+      valid_timeout = math.isfinite(timeout) and timeout > 0
+    except (TypeError, ValueError, OverflowError):
+      pass
+    if not valid_timeout:
+      raise ContainerError("Credential publication timeout must be finite and positive")
+    deadline = time.monotonic() + timeout
+    descriptors: set[int] = set()
+    process: subprocess.Popen[bytes] | None = None
+    cancelled: BaseException | None = None
+    failed = False
+    result = 0
+
+    def close(fd: int) -> None:
+      descriptors.remove(fd)
+      os.close(fd)
+
+    try:
+      data_read, data_write = os.pipe2(os.O_CLOEXEC)
+      descriptors.update((data_read, data_write))
+      ack_read, ack_write = os.pipe2(os.O_CLOEXEC)
+      descriptors.update((ack_read, ack_write))
+      os.set_blocking(data_write, False)
+      os.set_blocking(ack_read, False)
+      process = subprocess.Popen(
+        [
+          sys.executable,
+          "-I",
+          "-c",
+          _SECRET_EXEC,
+          str(data_read),
+          str(ack_write),
+          str(SECRET_DATA_FD),
+          str(SECRET_ACK_FD),
+          str(int(detach)),
+          *cmd,
+        ],
+        pass_fds=(data_read, ack_write),
+      )
+      close(data_read)
+      close(ack_write)
+      pieces = iter_payload(payload)
+      view = memoryview(b"")
+      writing = True
+      ready = False
+      with selectors.DefaultSelector() as selector:
+        selector.register(data_write, selectors.EVENT_WRITE)
+        while not ready or (detach and process.poll() is None):
+          remaining = deadline - time.monotonic()
+          if remaining <= 0:
+            raise SecretDeliveryError("credential publication timed out")
+          if writing and not view:
+            try:
+              view = memoryview(next(pieces))
+            except StopIteration:
+              selector.unregister(data_write)
+              close(data_write)
+              writing = False
+              selector.register(ack_read, selectors.EVENT_READ)
+            else:
+              if not view:
+                continue
+          for event, _ in selector.select(min(remaining, 0.1)):
+            if event.fd == data_write and writing:
+              try:
+                sent = os.write(data_write, view[:65536])
+              except BlockingIOError:
+                continue
+              if not sent:
+                raise SecretDeliveryError("credential publication pipe closed")
+              view = view[sent:]
+            elif event.fd == ack_read:
+              try:
+                acknowledgement = os.read(ack_read, len(SECRET_READY_ACK) + 1)
+              except BlockingIOError:
+                continue
+              if acknowledgement != SECRET_READY_ACK:
+                raise SecretDeliveryError("credential publication readiness invalid")
+              selector.unregister(ack_read)
+              close(ack_read)
+              ready = True
+      if time.monotonic() >= deadline:
+        raise SecretDeliveryError("credential publication timed out")
+      result = process.wait()
+      if detach and result != 0:
+        raise SecretDeliveryError("credential launcher failed after readiness")
+    except (KeyboardInterrupt, SystemExit) as error:
+      cancelled = error
+    except Exception:
+      failed = True
+    finally:
+      for fd in descriptors:
+        try:
+          os.close(fd)
+        except OSError:
+          pass
+    if failed or cancelled is not None:
+      complete = self._cancel_secret_launch(process, nonce)
+      if not complete:
+        logger.warning(
+          "Credential launch cleanup incomplete; a late-created container may remain. "
+          "Inspect the credential-launch label before removing anything."
+        )
+      if cancelled is not None:
+        raise cancelled from None
+      raise ContainerError("Credential publication failed; the box did not become ready")
+    return result
+
+  def _cancel_secret_launch(self, process: subprocess.Popen[bytes] | None, nonce: str) -> bool:
+    """Bound cancellation and remove only an inspected ID carrying this launch's nonce."""
+    deadline = time.monotonic() + 5.0
+    complete = True
+    if process is not None:
+      try:
+        if process.poll() is None:
+          process.terminate()
+          try:
+            process.wait(timeout=0.2)
+          except subprocess.TimeoutExpired:
+            process.kill()
+        process.wait(timeout=max(0.001, deadline - time.monotonic()))
+      except (OSError, subprocess.TimeoutExpired):
+        complete = False
+
+    def ask(arguments: list[str]) -> subprocess.CompletedProcess[str] | None:
+      remaining = deadline - time.monotonic()
+      if remaining <= 0:
+        return None
+      try:
+        return subprocess.run(
+          [self.cmd, *arguments],
+          capture_output=True,
+          text=True,
+          timeout=remaining,
+        )
+      except (OSError, subprocess.TimeoutExpired, UnicodeError):
+        return None
+
+    found = ask(
+      [
+        "ps",
+        "-a",
+        "--no-trunc",
+        "--format",
+        "{{.ID}}",
+        "--filter",
+        f"label={_SECRET_LAUNCH_LABEL}={nonce}",
+      ]
+    )
+    if found is None or found.returncode != 0:
+      return False
+    candidates = set(found.stdout.splitlines())
+    if not candidates:
+      return False
+    for candidate in candidates:
+      if time.monotonic() >= deadline:
+        return False
+      if re.fullmatch(r"[0-9a-fA-F]{64}", candidate) is None:
+        complete = False
+        continue
+      inspected = ask(
+        [
+          "inspect",
+          "--format",
+          "[{{json .Id}},{{json .Config.Labels}}]",
+          candidate,
+        ]
+      )
+      metadata = creation_metadata_from_inspect(inspected) if inspected is not None else None
+      if (
+        metadata is None
+        or metadata[0] != candidate
+        or metadata[1].get(_SECRET_LAUNCH_LABEL) != nonce
+      ):
+        complete = False
+        continue
+      removed = ask(["rm", "-f", candidate])
+      if removed is None or removed.returncode != 0:
+        complete = False
+    return complete
 
   def exec(
     self,

@@ -2520,3 +2520,126 @@ def test_a_bare_relative_agent_file_canon_is_refused_once(tmp_path: Path) -> Non
   with pytest.raises(SettingsError) as exc:
     _k4_snapshot(tmp_path, {"self": {"canon": "relcanon"}})
   assert str(exc.value).count("agent.claude.canon is set to 'relcanon'") == 1
+
+
+@pytest.mark.parametrize("spelling", ("self", "agent"))
+def test_agent_record_forwards_local_vocabulary_and_copies_out(tmp_path, monkeypatch, spelling):
+  from unittest.mock import Mock
+
+  from kanibako.settings import settings_assemble as assembly
+  from kanibako.settings.settings_keyspace import KeyClass
+  from kanibako.settings.settings_keyspace_probe import ANY_AGENT
+  from kanibako.settings.settings_prefs import AgentNames
+
+  names = AgentNames(
+    {"claude", "goose"}, leaf_map={"claude": {"claude_only"}, "goose": {"provider"}}
+  ).with_harnesses({"claude": "goose"})
+  own = {"provider": "ollama", "model": "{meta.agent.claude.name}"}
+  data = {"self": own} if spelling == "self" else {"agent": {"claude": own}}
+  data.setdefault("agent", {})["nav℘claude"] = {"claude_only": "sibling"}
+  data.update({"workset": {"template": "{system.template}"}, "box": {"env": {"TEST": "raw"}}})
+  path = _write(tmp_path / "agent.yaml", data)
+  before = path.read_bytes()
+  record_spy = Mock(wraps=assembly.record)
+  audit_spy = Mock(wraps=assembly.refuse_undeclared_entries)
+  monkeypatch.setattr(assembly, "record", record_spy)
+  monkeypatch.setattr(assembly, "refuse_undeclared_entries", audit_spy)
+  monkeypatch.setattr(
+    "kanibako.settings.settings_keyspace_probe.plugin_agent_leaf_map",
+    Mock(side_effect=AssertionError("unexpected discovery")),
+  )
+  cfg = assembly.agent_record(
+    path, node="claude", purpose=assembly.ReadPurpose.RESOLVE, valid_agents=names
+  )
+  assert cfg.state == own
+  assert record_spy.call_args.kwargs["valid_agents"] is names
+  oracle = audit_spy.call_args.kwargs["oracle"]
+  assert oracle.keywords["valid_agents"] is ANY_AGENT
+  assert oracle.keywords["agent_leaf_map"] is names.leaf_map
+  assert oracle("agent.claude.provider").cls is KeyClass.KEY
+  assert oracle("agent.claude.claude_only").cls is KeyClass.UNDECLARED
+  cfg.state["provider"] = "changed"
+  assert path.read_bytes() == before
+  assert names.leaf_map.agent_harnesses == {"claude": "goose"}
+
+
+@pytest.mark.parametrize(
+  "data, offending",
+  [
+    ({"self": {"claude_only": "foreign"}}, "claude_only"),
+    ({"agent": {"nav℘claude": {"provider": "foreign"}}}, "provider"),
+    ({"box": {"unknown_leaf": "foreign"}}, "box.unknown_leaf"),
+    ({"workset": {"env": {"1BAD": "foreign"}}}, "1BAD"),
+  ],
+)
+def test_agent_record_refuses_foreign_and_contained_entries(tmp_path, data, offending):
+  from kanibako.settings.settings_assemble import ReadPurpose, agent_record
+  from kanibako.settings.settings_prefs import AgentNames
+
+  names = AgentNames(
+    {"claude", "goose"}, leaf_map={"claude": {"claude_only"}, "goose": {"provider"}}
+  ).with_harnesses({"claude": "goose"})
+  path = _write(tmp_path / "agent.yaml", data)
+  before = path.read_bytes()
+  with pytest.raises(SettingsError, match=offending):
+    agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE, valid_agents=names)
+  assert path.read_bytes() == before
+
+
+@pytest.mark.parametrize("supplied", (False, True))
+def test_agent_record_none_keeps_legacy_oracle_and_empty_is_supplied(
+  tmp_path, monkeypatch, supplied
+):
+  from unittest.mock import Mock
+
+  from kanibako.settings import settings_assemble as assembly
+  from kanibako.settings.settings_prefs import AgentNames
+
+  names = AgentNames(()) if supplied else None
+  path = _write(tmp_path / "agent.yaml", {"self": {"model": "raw"}, "box": {"image": "raw"}})
+  audit = Mock(wraps=assembly.refuse_undeclared_entries)
+  monkeypatch.setattr(assembly, "refuse_undeclared_entries", audit)
+  cfg = assembly.agent_record(
+    path, node="claude", purpose=assembly.ReadPurpose.RESOLVE, valid_agents=names
+  )
+  assert cfg.state == {"model": "raw"}
+  oracle = audit.call_args.kwargs["oracle"]
+  if supplied:
+    assert oracle.keywords["agent_leaf_map"] is names.leaf_map
+    path = _write(path, {"self": {"provider": "foreign"}})
+    with pytest.raises(SettingsError, match="provider"):
+      assembly.agent_record(
+        path, node="claude", purpose=assembly.ReadPurpose.RESOLVE, valid_agents=names
+      )
+  else:
+    assert oracle is assembly.keyspace_verdict
+
+
+@pytest.mark.parametrize("node", ("claude", "nav℘missing"))
+def test_agent_record_missing_plugin_concession_still_checks_shape(tmp_path, node):
+  from kanibako.settings.settings_assemble import ReadPurpose, agent_record
+  from kanibako.settings.settings_prefs import AgentNames
+
+  names = AgentNames((), unreadable={"missing"}, agent_harnesses={"claude": "missing"})
+  path = _write(tmp_path / "agent.yaml", {"self": {"unknown_leaf": "raw"}})
+  assert agent_record(path, node=node, purpose=ReadPurpose.RESOLVE, valid_agents=names).state == {
+    "unknown_leaf": "raw"
+  }
+  _write(path, {"self": {"env": {"1BAD": "foreign"}}})
+  with pytest.raises(SettingsError, match="1BAD"):
+    agent_record(path, node=node, purpose=ReadPurpose.RESOLVE, valid_agents=names)
+
+
+def test_agent_record_missing_file_remains_lazy(tmp_path, monkeypatch):
+  from unittest.mock import Mock
+
+  from kanibako.settings import settings_assemble as assembly
+  from kanibako.settings.agent_config import AgentConfig
+
+  monkeypatch.setattr(assembly, "record", Mock(side_effect=AssertionError("absent file read")))
+  assert (
+    assembly.agent_record(
+      tmp_path / "absent.yaml", node="claude", purpose=assembly.ReadPurpose.RESOLVE
+    )
+    == AgentConfig()
+  )

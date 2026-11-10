@@ -1,7 +1,6 @@
 """Agent SELECTION — the P7 seam (spec §1A / §2b / §2g / §2h).
 
-The phase that changes WHICH AGENT RUNS, so every test here is written as a
-discriminator: each names the mutation it reddens under.
+Each discriminator pins selection behavior against its named mutation.
 
 Covers:
 
@@ -402,7 +401,7 @@ class TestRetiredKeyRefusal:
 # ⚑ The tests above call ``refuse_retired_keys`` / ``resolve_selected_agent``
 # DIRECTLY, so deleting the refusal LOOP from ``select_agent`` would redden none of
 # them — and ``tests/conftest.py``'s ``start_mocks`` patches ``select_agent``
-# wholesale, so the launch tests cannot catch it either. These drive the real seam.
+# wholesale; launch tests cannot catch it. These drive the real seam.
 
 
 class _FakeGroup:
@@ -1079,7 +1078,7 @@ def test_selection_retains_identity_without_reparsing_name(tmp_path, monkeypatch
   assert selected.node == "scout"
   assert selected.identity.target_name == "codex"
   assert selected.selection_level == {SELECTION_KEY: "scout"}
-  assert calls == [{"explicit_agent": "Scout", "requested": None}]
+  assert calls == [{"explicit_agent": "Scout", "requested": None, "registered_persona_out": []}]
 
 
 def test_selection_node_has_no_independent_mutable_carrier():
@@ -1091,3 +1090,277 @@ def test_selection_node_has_no_independent_mutable_carrier():
   assert selected.identity.target_name == "shell"
   with pytest.raises(FrozenInstanceError):
     selected.node = "claude"
+
+
+def test_selection_requires_captured_input_to_own_its_identity():
+  from dataclasses import replace
+
+  from kanibako.agent_ref import AgentIdentity
+  from kanibako.persona_store import RegisteredPersona
+
+  identity = AgentIdentity("scout", "Scout", "Guide", "claude", "claude", Path("/PG/Scout"))
+  registered = RegisteredPersona(identity, Path("/PG/Root"), {}, None, True)
+  selected = AgentSelection(identity, "cli", registered)
+  assert selected.registered_persona is registered
+  with pytest.raises(ValueError, match="does not own"):
+    AgentSelection(replace(identity, node="other"), "cli", registered)
+
+
+class TestSelectedRegisteredPrefs:
+  @pytest.fixture
+  def public_input(self, tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+
+    from kanibako import persona_store
+    from kanibako.settings import config, config_io, settings_prefs
+
+    std, proj = _std(tmp_path), _proj(tmp_path)
+    box, workset = _box_workset(proj)
+    document = {
+      "agent": {
+        "persona": {"name": "Guide"},
+        "harness": {
+          "name": "claude",
+          "config_store": {"env": {"ANTHROPIC_BASE_URL": "https://first.invalid"}},
+          "auth_var": "ANTHROPIC_AUTH_TOKEN",
+        },
+        "secret": {"backend": "synthetic"},
+      }
+    }
+    monkeypatch.setattr(config_io, "persona_store_location", lambda: tmp_path / "pg")
+    monkeypatch.setattr(
+      config_io, "persona_store_agents", lambda **kw: {"Scout": tmp_path / "entry"}
+    )
+    read = Mock(return_value=(tmp_path / "entry", document))
+    monkeypatch.setattr(config_io, "load_persona_agent", read)
+    for owner, name in (
+      (config_io, "fetch_persona_secret"),
+      (persona_store, "project_registered_persona"),
+      (persona_store, "read_persona_bundle"),
+    ):
+      monkeypatch.setattr(owner, name, Mock(side_effect=AssertionError("unexpected PG operation")))
+    classify = Mock(wraps=config.resolve_agent_identity)
+    collect = Mock(wraps=settings_prefs.collect_prefs)
+    judge = Mock(wraps=settings_prefs.apply_prefs)
+    monkeypatch.setattr(config, "resolve_agent_identity", classify)
+    monkeypatch.setattr(settings_prefs, "collect_prefs", collect)
+    monkeypatch.setattr(settings_prefs, "apply_prefs", judge)
+    config_io.dump_doc(std.settings, {"system": {"agent": "Scout"}})
+    config_io.dump_doc(box, {"pref": {"agent": {"scout": {"model": "box-model"}}}})
+    return SimpleNamespace(
+      std=std,
+      proj=proj,
+      box=box,
+      workset=workset,
+      read=read,
+      classify=classify,
+      collect=collect,
+      judge=judge,
+      document=document,
+    )
+
+  def test_selected_pref_validates_after_one_public_classification(self, public_input):
+    from kanibako.settings.agent_select import select_agent
+
+    env = public_input
+    before = {path: path.read_bytes() for path in (env.std.settings, env.box)}
+    selected = select_agent(std=env.std, proj=env.proj)
+    assert selected.node == "scout"
+    assert selected.identity.target_name == "claude"
+    assert selected.registered_persona.identity is selected.identity
+    assert selected.registered_persona.store_root == env.std.settings.parents[2] / "pg"
+    assert selected.registered_persona.config == env.document["agent"]["harness"]["config_store"]
+    env.read.assert_called_once_with("Scout", root=selected.registered_persona.store_root)
+    assert env.classify.call_count == env.collect.call_count == env.judge.call_count == 1
+    names = env.judge.call_args.kwargs["valid_agents"]
+    assert names.leaf_map.agent_harnesses == {"scout": "claude"}
+    assert {path: path.read_bytes() for path in before} == before
+
+  def test_separate_operations_capture_fresh_input(self, public_input):
+    from copy import deepcopy
+
+    from kanibako.settings.agent_select import select_agent
+
+    env = public_input
+    later = deepcopy(env.document)
+    later["agent"]["harness"]["config_store"]["env"]["ANTHROPIC_BASE_URL"] = (
+      "https://later.invalid"
+    )
+    env.read.side_effect = [
+      (env.std.settings.parent / "first", env.document),
+      (env.std.settings.parent / "second", later),
+    ]
+    first = select_agent(std=env.std, proj=env.proj)
+    second = select_agent(std=env.std, proj=env.proj)
+    assert first.node == second.node == "scout"
+    assert first.registered_persona.config["env"]["ANTHROPIC_BASE_URL"] == "https://first.invalid"
+    assert second.registered_persona.config["env"]["ANTHROPIC_BASE_URL"] == "https://later.invalid"
+    assert first.registered_persona.identity is first.identity
+    assert second.registered_persona.identity is second.identity
+    assert env.read.call_count == env.classify.call_count == env.collect.call_count == 2
+
+  @pytest.mark.parametrize("value", [None, "", "another-model"])
+  def test_pref_value_states_do_not_change_captured_selection(self, public_input, value):
+    from kanibako.settings import config_io
+    from kanibako.settings.agent_select import select_agent
+
+    env = public_input
+    config_io.dump_doc(env.box, {"pref": {"agent": {"scout": {"model": value}}}})
+    selected = select_agent(std=env.std, proj=env.proj)
+    assert selected.node == "scout"
+    assert env.judge.call_args.args[0][0].value == value
+    assert env.read.call_count == env.classify.call_count == env.collect.call_count == 1
+
+  @pytest.mark.writes_undeclared(
+    "pref.agent.claude.provider", reason="Intentional foreign-leaf refusal"
+  )
+  @pytest.mark.parametrize("selection", [None, "", "missing-plugin", "{meta.nope.dangling}"])
+  def test_known_pref_refusal_precedes_classification(self, public_input, selection):
+    from kanibako.settings import config_io
+    from kanibako.settings.agent_select import select_agent
+
+    env = public_input
+    config_io.dump_doc(env.std.settings, {"system": {"agent": selection}})
+    config_io.dump_doc(env.box, {"pref": {"agent": {"claude": {"provider": "bad"}}}})
+    with pytest.raises(SettingsError, match="claude.provider"):
+      select_agent(std=env.std, proj=env.proj)
+    env.classify.assert_not_called()
+    env.read.assert_not_called()
+
+  @pytest.mark.writes_undeclared(
+    "pref.agent.claude.provider",
+    "agent.claude.provider",
+    reason="Intentional ordering counterexample",
+  )
+  def test_later_known_request_does_not_preempt_unknown_prefix(self, public_input):
+    from kanibako.settings.agent_select import select_agent
+
+    env = public_input
+    env.box.write_text(
+      "pref:\n  agent:\n    scout:\n      provider: first\n    claude:\n      provider: second\n"
+    )
+    with pytest.raises(SettingsError, match="scout.provider"):
+      select_agent(std=env.std, proj=env.proj)
+    env.classify.assert_called_once()
+    env.read.assert_called_once()
+
+  @pytest.mark.parametrize("node,leaf", [("scout", "provider"), ("inactive", "model")])
+  def test_invalid_pref_never_escapes_selection(self, public_input, node, leaf):
+    from kanibako.settings import config_io
+    from kanibako.settings.agent_select import select_agent
+
+    env = public_input
+    config_io.dump_doc(env.box, {"pref": {"agent": {node: {leaf: "invalid"}}}})
+    before = env.box.read_bytes()
+    with pytest.raises(SettingsError, match=leaf):
+      select_agent(std=env.std, proj=env.proj)
+    assert env.read.call_count == env.classify.call_count == 1
+    assert env.box.read_bytes() == before
+
+  @pytest.mark.parametrize("explicit", [None, "claude"])
+  def test_installed_plugin_ignores_colliding_broken_pg(self, public_input, explicit, monkeypatch):
+    from unittest.mock import Mock
+
+    from kanibako.settings import config_io
+    from kanibako.settings.agent_select import select_agent
+
+    env = public_input
+    env.read.side_effect = AssertionError("broken store reached")
+    pg = Mock(side_effect=AssertionError("PG classifier reached"))
+    monkeypatch.setattr("kanibako.persona_store.read_registered_persona", pg)
+    config_io.dump_doc(env.std.settings, {"system": {"agent": "claude"}})
+    config_io.dump_doc(env.box, {"pref": {"agent": {"claude": {"model": "own"}}}})
+    selected = select_agent(std=env.std, proj=env.proj, explicit_agent=explicit)
+    assert selected.node == "claude"
+    assert selected.registered_persona is None
+    env.read.assert_not_called()
+    env.classify.assert_called_once()
+    assert env.collect.call_count == (0 if explicit else 1)
+    pg.assert_not_called()
+
+  def test_broken_registered_input_keeps_its_typed_error(self, public_input):
+    from kanibako.errors import ConfigError
+    from kanibako.settings.agent_select import select_agent
+
+    env = public_input
+    error = ConfigError("broken captured public input")
+    env.read.side_effect = error
+    with pytest.raises(ConfigError) as raised:
+      select_agent(std=env.std, proj=env.proj)
+    assert raised.value is error
+    env.read.assert_called_once()
+    env.classify.assert_called_once()
+    env.judge.assert_not_called()
+
+
+@pytest.mark.parametrize("transitive", [False, True])
+@pytest.mark.parametrize("value", ["goose", None, ""])
+def test_selection_keeps_nonselection_pref_dependencies(tmp_path, monkeypatch, transitive, value):
+  from kanibako.errors import AgentNoDefaultError, ConfigError
+  from kanibako.settings import config_io
+  from kanibako.settings.agent_select import select_agent
+
+  std, proj = _std(tmp_path), _proj(tmp_path)
+  box, _workset = _box_workset(proj)
+  defaults = {"model": "claude"}
+  if transitive:
+    defaults["env"] = {"CHOICE": "{agent.default.model}"}
+  config_io.dump_doc(
+    std.settings,
+    {
+      "system": {"agent": "{agent.default.env.CHOICE}" if transitive else "{agent.default.model}"},
+      "agent": {"default": defaults},
+    },
+  )
+  config_io.dump_doc(box, {"pref": {"agent": {"default": {"model": value}}}})
+  monkeypatch.setattr(
+    "kanibako.persona_store.read_registered_persona", lambda *a, **k: pytest.fail("PG read")
+  )
+  before = {path: path.read_bytes() for path in (std.settings, box)}
+  if value is None:
+    with pytest.raises(AgentNoDefaultError):
+      select_agent(std=std, proj=proj)
+  elif value == "":
+    with pytest.raises(ConfigError):
+      select_agent(std=std, proj=proj)
+  else:
+    assert select_agent(std=std, proj=proj).node == "goose"
+  assert {path: path.read_bytes() for path in before} == before
+
+
+@pytest.mark.usefixtures("config_file")
+def test_invalid_selected_pref_refuses_before_create_journal(std, tmp_home, monkeypatch):
+  from unittest.mock import Mock
+
+  from kanibako.commands import start
+  from kanibako.commands.box import _parser as box
+  from kanibako.settings import config_io
+  from kanibako.settings.config import WORKSET_META_FILE
+  from tests.test_commands.test_create_identity import _create_args, _public_persona
+
+  config_io.dump_doc(std.settings, {"system": {"agent": "Scout"}})
+  config_io.dump_doc(
+    std.primary_workset / WORKSET_META_FILE, {"pref": {"agent": {"scout": {"provider": "bad"}}}}
+  )
+  monkeypatch.setattr(config_io, "persona_store_location", lambda: tmp_home / "pg")
+  monkeypatch.setattr(
+    config_io, "persona_store_agents", lambda **kw: {"Scout": tmp_home / "entry"}
+  )
+  read = Mock(return_value=(tmp_home / "entry", _public_persona()))
+  monkeypatch.setattr(config_io, "load_persona_agent", read)
+  claim = Mock(side_effect=AssertionError("journal reached"))
+  materialize = Mock(side_effect=AssertionError("materialization reached"))
+  seed = Mock(side_effect=AssertionError("seed reached"))
+  monkeypatch.setattr(box, "_claim_create_entry", claim)
+  monkeypatch.setattr(box, "_new_box_undo", materialize)
+  monkeypatch.setattr(start, "seed_new_box", seed)
+  path = tmp_home / "new-parent" / "box"
+  with pytest.raises(SettingsError, match="provider"):
+    box.run_create(_create_args(path, agent=None))
+  assert read.call_count == 1
+  claim.assert_not_called()
+  materialize.assert_not_called()
+  seed.assert_not_called()
+  assert not path.parent.exists()
+  assert not std.journal.exists()

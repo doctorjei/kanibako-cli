@@ -83,10 +83,9 @@ any of them reopens a bug that has already been paid for.
    nothing for `--recover` to find.
 8. **The nesting refusal** (`_create_nesting_refusal`): a workspace inside another box's, or holding
    one (keyspace § 0 "Per-owner resources").
-9. **The persona pre-flight and the persona-grata STORE check**, on the probe, so an unloadable
-   persona refuses with NOTHING on disk; the store check runs before the create verdict, so a store
-   that cannot yield a usable persona is reported as ITSELF rather than as the verdict's downstream
-   "no endpoint configured".
+9. **Prepare the selection/live projection, then check the persona**, on the probe, before any
+   journal or box write. The legacy warn-only store check and verdict reuse that prepared input;
+   broken PG configuration propagates instead of becoming template-only seeding.
 10. **The already-initialized refusal**, HOISTED above the materializing resolve.
 11. **The create entry**, CLAIMED before any box write (`_claim_create_entry`), recording the
     create's `state`.
@@ -190,16 +189,13 @@ record is authoritative and must not be overwritten with possibly-different args
   root. Its messages (`project already initialized in …`, `Created …`) and `box info`'s `Project`
   row print `<None>` for a standalone box whose root nulls `workset.workspaces` (Q106 review).
 
-⚑ **`--agent` has a SECOND consumer outside the guard, and that is why it is normalized once.**
-`seed_new_box` takes an `explicit_agent`, and the seed runs after the journal write — outside
-`if proj.is_new:` — so on a recovery re-run a raw `args.agent` steered the seed while the persist
-above could not move: the home was seeded for the new agent and the settings still named attempt
-one's, with no way back (the home bind owns the content from create onward and nothing re-seeds).
-`_agent_arg` is therefore computed ONCE, right after `is_recovery` is known, as
-`None if is_recovery else args.agent`, and the persona store check, the create verdict, the persist
-and the seed all read that one name. `None` sends each of them through the ordinary cascade, which
-reads the very `pref.system.agent` the persist wrote — so the seeded agent and the configured agent
-cannot disagree. Spelling `args.agent` at any of those four sites again reopens the defect.
+⚑ **Normalize `--agent` once; prepare its selection and live projection before the journal.**
+`_agent_arg` comes from recorded recovery state or the fresh arguments. `prepare_create_agent`
+returns the operation-local input passed to the store check, create verdict, and `seed_new_box`;
+the persist alone consumes the raw name. No later selection or PG projection can disagree with
+the verdict. Recovery prepares once for its own operation, using its recorded selector; neither
+live values nor the prepared payload enter journal state. Broken configuration propagates before
+the journal or materializing resolve. Only an absent default permits template-only seeding.
 
 And "given" has ONE spelling: `_agent_arg is not None`. The store check once asked truthiness while
 the persist asked `.strip()` truthiness, which are different questions — `--agent "  "` cleared the
@@ -372,16 +368,17 @@ different cures. For a genuinely unused default-mode directory it says a launch 
 box — ⚑ NOT "start a session with `kanibako start`": since the v1.7.0 explicit-create gate a launch
 NEVER materializes a box, so naming `start` described behavior we do not have.
 
-Agent resolution here is INFORMATIONAL, not an agent-requiring launch, so a failure (`system.agent`
-unset, `system.agent` null / no default set, adapter missing) DEGRADES to `n/a` rather than
-erroring. It still goes through the ONE selection seam, `agent_select.select_agent` (`system.agent`
-< workset pref < box pref). ⚑ The Agent row shows WHERE THE SELECTION CAME FROM (P7): "which agent
-does this box run, and WHY?" is the question a retired-key or wrong-default box makes urgent, and
-the answer is in no single file — it may be the stored `system.agent`, a workset/box
-`pref.system.agent`, or `--agent`. `AgentSelection.source` already carries it, and this is the one
-place a user can read it. A refused RETIRED key (migration M-4) likewise
-surfaces here rather than being swallowed as "unresolved", because `box info` is where a user looks
-when a box will not start.
+Selection/target lookup is INFORMATIONAL: unset `system.agent`, null / no default, or a missing adapter
+degrades instead of failing. The ONE `agent_select.select_agent` call settles `system.agent`
+< workset pref < box pref; the Agent row exposes `AgentSelection.source`, explaining the choice
+without rereading its possible sources (`system.agent` or `pref.system.agent`).
+RETIRED-key errors (migration M-4) remain visible rather than becoming "unresolved".
+
+`has_agent` guards `identity.target_name` lookup, never node syntax.
+`_box_scalars` keeps node/identity unchanged and name/path floors/plugin defaults, adding one captured
+registered projection for Image's live dependencies without lookup. Absent payloads
+stay file-only; projection failures precede output. No target keeps
+`GENERAL_SLOT` without identity.
 
 ## The config verbs
 
@@ -403,18 +400,15 @@ disagree. The box's docker `env` FILE tier is GONE (R-39/RQ-1); the env family i
 `box.env.<VAR>`, which lives in that same pair's file. The `reset` arm takes both halves from that
 one pair so it clears exactly the file `set`/`get` address.
 
-`set` names the BOX as its target (`std=std, proj=proj`, spec §2a): `set_config_value` builds the
-box's own `resolve_inputs`, so its settings files, its real `{meta.box.path}` and its workset anchors
-come from the resolve the launch runs, never from the file positions. The caller still threads its
-tier files (`cascade_workset_path`, `cascade_box_path`), so the target-less fallback reads the same
-files as the target and differs only by the floors. `reset` threads the same pair so its
-cleared-message can honestly name the now-effective value and its source tier. The create-time
-`--private` and `--agent` writes name the box being created the same way, tier pair included, with no
-agent selected yet. The active agent name is resolved best-effort: it selects the `agent.<active>.*` sub-table
-the OTHER cascade files may carry, and a resolution failure just leaves it empty, degrading the
-message to the cleared-only form. Neither call passes `cascade_agent_path`, so it defaults to
-`None`; the per-agent file stores behavior FLAT, so `assemble_levels` reads no category subtree
-from it.
+Keyed `get`/`set`/`reset` retain one selection and project its captured input after target choice.
+Their gates and engines share identity/vocabulary,live values,and credential metadata;no secrets
+are fetched. Unavailable input retains diagnosis and any selected identity for targetless repair.
+`set` names the box (`std=std, proj=proj`, spec §2a);`resolve_inputs` supplies its anchors.
+Explicit tier files survive fallback;raw writes and noun-only reads remain.
+
+`reset` keeps its no-vault/no-agent-file contract and reports only clearing when input fails.
+Show/reset-all do not use this keyed path. Create-time `--private`/`--agent` writes name their
+box/tier pair without selecting. Ordinary set passes the selected node's file.
 
 ### `--effective`
 
@@ -427,10 +421,10 @@ mounts. Three properties are deliberate:
   would be backwards.
 * **`guarantee_create=False`.** A DISPLAY verb must not write to disk: the core table's vault
   create-if-missing is a LAUNCH guarantee, not a read one. The binds are emitted either way.
-* **The persona-store tier is the SAME one the launch resolves against.** The store supplies
-  `secret_path.<VAR>`, a PATH-DELIVERY category; without the tier this view would list a persona
-  box's mounts MINUS the token the launch actually mounts, and minus its `env` passthrough. It is
-  tolerant and `None` for a bare agent, so a store-less box renders exactly as before.
+* **One captured persona input feeds behavior, categories, and scalar display.** Registered
+  projection errors propagate; legacy reads remain tolerant. Captured plaintext-free credential
+  metadata preserves the store root without fetching secrets. File values win; native agents
+  never read PG.
 
 ⚑ **The resolve's `LaunchDeliveries` is KEPT, for its `declared_by`.** Because this display folds in
 process, per command, the collapse's record of which declaration took each destination is live right
@@ -440,9 +434,9 @@ addition). It is passed to `show_config` as `category_declared_by` and reaches
 `'box.masks./opt/x'` at /opt/x covers this destination"* rather than a path with no key to go and
 edit. Discard the carrier and the block silently degrades to the bare phrase.
 
-The NODE-name keys the `agent.<node>.*` keyspace slot and the `agents/<node>/` dir; `with_harness`
-reflects the RESOLVED target (fallback-safe) with the persona preserved, and for a bare,
-as-requested agent it equals `target.name`.
+The selected node keys `agent.<node>.*` and `agents/<node>/` unchanged; `identity.target_name`
+chooses the installed harness and local vocabulary. Selection/target failures discard identity
+before shell fallback.
 
 `env_resolved` is composed by the SAME helper the launch uses (`_build_config_env`, a straight
 projection of the collapse's arbitrated `<scope>.env.<VAR>` slots), so the display cannot claim an
@@ -522,13 +516,12 @@ Raises `ProjectError` on a conflict; returns `None` when the home is free — th
 leaves a normal create byte-identical. See "Names, homes, and the I4 data-loss guard" above for
 the two detected states and why the internal ordering is load-bearing.
 
-```_check_persona_store_for_create(agent_ref: str) -> str | None```
-⚑ READ-ONLY create-side persona-grata store CHECK; an `"Error: …"` or `None`.
+```_check_persona_store_for_create(agent_ref: str, *, prepared=None) -> str | None```
+⚑ READ-ONLY legacy store check; an `"Error: …"` or `None`.
 
-The create-side trigger (DESIGN §4): when the explicit agent ref names a persona whose
-persona-grata store entry EXISTS, read the store and refuse the create NOW if it cannot yield a
-usable persona — BEFORE the persona create verdict, so a broken store is reported as itself rather
-than as the verdict's downstream "no endpoint configured".
+Public create supplies its prepared target/bundle, avoiding another configuration read.
+Registered input skips this legacy pointer/probe route. Direct callers without prepared input
+retain the legacy store read and refusal before the create verdict.
 
 ⚑ NOTHING IS WRITTEN. The store is a LIVE resolution input (`read_persona_bundle` → the
 launch's persona cascade level), and the agent settings file holds user-intent values only, so
@@ -727,7 +720,7 @@ Show per-box status, paths, container state, image, agent and credentials. *(No 
 source.)*
 
 See "`box info`" above for the name-precedence resolution, the deferred unbuilt-box refusal and the
-informational (degrading) agent resolution.
+degrading selection/target lookup.
 
 ```run_set(args: argparse.Namespace) -> int```
 `box set [project] <key>=<value>` — set a project setting.

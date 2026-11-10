@@ -56,10 +56,10 @@ value is actually read or written.
 
 ### ONE HOME for the recipe
 
-Every per-node key resolution repeats the same four steps: the reserved any-agent tier refusal, the
-validate-only ref check, the store path, and the file-shape lookup. The resolvers differ only in
-the parse that produces *node* and *tail*; copies of the rest would drift, and a copy that dropped
-the guards would let `set` write node refs that `get` and `reset` then refuse to touch.
+Per-node routes share the reserved-tier refusal, ref check, store path, and file-shape lookup.
+Only the parse differs. `_persona_agent_target(..., valid_agents=None)` forwards vocabulary to
+that parser: supplied maps, even empty, replace lazy discovery. Guards and destinations stay
+shared, so `set` cannot write a node that `get` or `reset` refuses to touch.
 
 ### The guard pair
 

@@ -25,6 +25,7 @@ def select_agent(*, std, proj, explicit_agent: 'str | None'=None) -> AgentSelect
 class AgentSelection:
     identity: AgentIdentity
     source: str
+    registered_persona: RegisteredPersona | None = field(default=None, repr=False, compare=False)
 
     @property
     def node(self) -> str
@@ -32,6 +33,8 @@ class AgentSelection:
     def has_agent(self) -> bool
     @property
     def selection_level(self) -> 'dict[str, object] | None'
+
+    def __post_init__(self) -> None
 
 class _WorksetGroup(Protocol):
     @property

@@ -591,9 +591,9 @@ class ProbeEvidence:
 
   Filled in TWO halves: a plugin builds the request half before the call, and
   `probe_outcome` fills *status* / *provider_text* from the answer.
-  ⚑ *token_path* is a PATH, never a value, so it carries no secret by construction;
-  *token_by_value* says the token was handed over by VALUE from `-e` instead, and is
-  a flag for the same reason.  *provider_text* is what `http_probe` returned: 🛑 SCRUBBED IS NOT PROVEN CLEAN — this
+  ⚑ *token_path* is a PATH, never a value; *token_by_value* marks a credential
+  supplied by value. Neither field contains it. *provider_text* is what `http_probe`
+  returned: 🛑 SCRUBBED IS NOT PROVEN CLEAN — this
   record inherits `ProbeResponse.body`'s residue verbatim.  Read the block as an error
   message for a human, not as a record proven free of secrets.
 
@@ -605,28 +605,26 @@ class ProbeEvidence:
   endpoint: str
   model: str | None = None  # None = the `model` key was deliberately OMITTED
   model_origin: str = ""  # "" = sent exactly as configured
-  token_path: Path | None = None  # None = a KEYLESS probe (no credential header at all)
+  token_path: Path | None = None  # None = no credential path; see token_by_value
   status: int | None = None  # None = the endpoint was never reached
   provider_text: str = ""
   request: str = ""  # method and path, e.g. "GET /v1/models"; "" = not recorded
-  token_by_value: bool = False  # True = the token came from `-e`, not *token_path*
+  token_by_value: bool = False  # True = supplied by value, not *token_path*
 
-  def lines(self, indent: str = "  ", *, resolved_from: str = "") -> tuple[str, ...]:
+  def lines(
+    self, indent: str = "  ", *, resolved_from: str = "", credential_source: str = ""
+  ) -> tuple[str, ...]:
     """The evidence block: one labeled line per input, then the provider's own words.
 
     ⚑ The endpoint line is userinfo-scrubbed (`_scrub_endpoint_userinfo`) — it
     may over-redact it.
     ⚑ The closing sentence is emitted for a REFUSAL status ONLY (llm-doc).
 
-    ⚑ *resolved_from* names WHERE the caller got *endpoint* and *model* — a
-    RENDER-TIME fact, not evidence state, because the plugin that builds this record
-    was HANDED both values and cannot know.  `""` prints no provenance at all: a
-    caller that cannot answer must stay silent rather than guess, so the sentence is
-    unavailable to anyone who did not actually resolve it (P3).
-    🛑 It says a SOURCE, never a cascade RUNG: the launch path reads endpoint and
-    model off a collapsed snapshot and `settings_merge.merge` drops the level, so
-    naming a level here would be an invention.  Coarse and true beats precise and
-    made up.
+    ⚑ *resolved_from* names the caller's source of *endpoint* and *model*, not
+    a cascade rung: merge drops the level. The plugin was handed these values
+    and cannot know their source; `""` prints no provenance rather than guessing.
+    *credential_source* similarly labels the token input with nonsecret text, never
+    its value. `""` retains CLI/path/keyless rendering; labels do not decide authentication.
     🛑 AND IT SPEAKS ONLY FOR WHAT THE LINES ABOVE ACTUALLY SHOW — THREE arms,
     each matching the model line's own state, because attributing provenance to
     something that is not there is the one way this sentence can lie:
@@ -647,7 +645,9 @@ class ProbeEvidence:
     model = "(omitted)" if not self.model else self.model
     if self.model and self.model_origin:
       model = f"{self.model}  ({self.model_origin})"
-    if self.token_by_value:
+    if credential_source:
+      token = credential_source
+    elif self.token_by_value:
       token = "(the value of -e on the command line)"
     elif self.token_path is None:
       token = "(none — this persona declares the endpoint keyless)"
@@ -684,9 +684,13 @@ class ProbeEvidence:
       )
     return tuple(out)
 
-  def block(self, indent: str = "  ", *, resolved_from: str = "") -> str:
+  def block(
+    self, indent: str = "  ", *, resolved_from: str = "", credential_source: str = ""
+  ) -> str:
     """`lines`, joined — the form a printed message interpolates."""
-    return "\n".join(self.lines(indent, resolved_from=resolved_from))
+    return "\n".join(
+      self.lines(indent, resolved_from=resolved_from, credential_source=credential_source)
+    )
 
 
 class GeneralAccess(Enum):
@@ -773,13 +777,14 @@ class PersonaProbeOutcome(NamedTuple):
     """No probe was attempted; *reason* says why none is possible."""
     return cls(PersonaProbeVerdict.NOT_APPLICABLE, reason)
 
-  def evidence_block(self, indent: str = "  ", *, resolved_from: str = "") -> str:
+  def evidence_block(
+    self, indent: str = "  ", *, resolved_from: str = "", credential_source: str = ""
+  ) -> str:
     """The evidence lines to append to a printed message, newline-led; `""` when none.
 
     ⚑ Empty unless the endpoint ANSWERED.  THE single renderer for both consumers —
-    the launch error and the create warning (llm-doc).  *resolved_from* is the
-    caller's own answer to "where did these inputs come from"; see
-    `ProbeEvidence.lines`.
+    the launch error and the create warning (llm-doc). Both source labels are
+    caller-supplied render-time facts; see `ProbeEvidence.lines`.
 
     ⚑ With *access* set (a two-axis probe) it renders BOTH requests: first, on a
     REJECTED, the one sentence saying what each request showed (the Q29 table's
@@ -790,7 +795,9 @@ class PersonaProbeOutcome(NamedTuple):
     if access is None:
       if self.evidence is None or self.evidence.status is None:
         return ""
-      return "\n" + self.evidence.block(indent, resolved_from=resolved_from)
+      return "\n" + self.evidence.block(
+        indent, resolved_from=resolved_from, credential_source=credential_source
+      )
     model = access.model.evidence
     general = access.general.evidence
     if model.status is None and general.status is None:
@@ -838,7 +845,9 @@ class PersonaProbeOutcome(NamedTuple):
         )
       if summary:
         out.append(f"{indent}{summary}")
-    out.extend(model.lines(indent, resolved_from=resolved_from))
+    out.extend(
+      model.lines(indent, resolved_from=resolved_from, credential_source=credential_source)
+    )
     answer = "no answer" if general.status is None else f"HTTP {general.status}"
     line = f"{indent}{'request':<10}{general.request} — {answer}"
     if access.control_status is not None:
@@ -1154,7 +1163,7 @@ class PluginDescriptor:
   # `agent_defaults.load_descriptor` refuses `container_env:` BY NAME.
   cred_files: tuple[CredFileSpec, ...] = ()
   login_vars: tuple[str, ...] = ()  # env VAR names any one of which, delivered, is a login
-  host_prep: bool = False  # True -> core calls Target.prepare_host before mounts
+  host_prep: bool = False  # Retained field; launch calls phase methods directly.
   init_dirs: tuple[str, ...] = ()  # extra dirs to mkdir in the project home (home-relative)
   auth_share_support: bool = False  # RO CAPABILITY (spec §2d): supports shared credentials?
   vscode_extension: str | None = None  # extension id auto-installed on attach; None = none
@@ -1248,11 +1257,10 @@ class Target(ABC):
     box_home: Path | None = None,
     delivered: frozenset[str] = frozenset(),
   ) -> bool:
-    """Whether the agent has a login to launch with.  Returns True if ok.
+    """Whether login permits launch; default True. ``box_home=None`` checks the host.
 
-    The launch gate passes the box's *box_home* and the *delivered* VAR names
-    (``None`` is the host check).  This default ignores both and passes; an
-    override calls :meth:`box_login_present` to check the box.
+    The gate passes *box_home* and *delivered* VAR names; overrides can use
+    :meth:`box_login_present` for the box check.
     """
     return True
 
@@ -1286,10 +1294,17 @@ class Target(ABC):
     return stat.S_ISREG(st.st_mode) and st.st_size > 0
 
   def prepare_host(self, install: "AgentInstall", *, auto_auth: bool, data_path: Path) -> None:
-    """Plugin-owned pre-launch host preparation, BEFORE mounts are built. Default: no-op.
+    """Prepare binary, then optionally refresh auth; phases must log/swallow failures."""
+    self.prepare_host_binary(install, data_path=data_path)
+    if auto_auth:
+      self.refresh_host_auth(install, data_path=data_path)
 
-    ⚑ Implementations MUST NOT crash the launch — log and swallow.
-    """
+  def prepare_host_binary(self, install: "AgentInstall", *, data_path: Path) -> None:
+    """Stabilize host binaries before mounts; default no-op, never raises."""
+    return None
+
+  def refresh_host_auth(self, install: "AgentInstall", *, data_path: Path) -> None:
+    """Refresh host auth only when authorized; default no-op, never raises."""
     return None
 
   def default_common(self) -> dict[str, BindArm]:
