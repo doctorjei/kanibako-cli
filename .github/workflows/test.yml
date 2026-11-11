@@ -312,10 +312,15 @@ jobs:
         # `--durations` surfaces the slowest tests so a cold first-start vs a
         # pull regression is visible at a glance; the conftest also writes
         # storage diagnostics to the run summary (ensure_image_in_pinned_store).
-        run: pytest -m e2e tests/e2e/ -v --durations=15
+        run: pytest -m e2e tests/e2e/ -v --durations=15 --junitxml=e2e-results.xml
+      - name: Require PG engine receipts
+        if: always()
+        run: python -I tests/e2e/pg_fixture.py e2e-results.xml
       - name: Upload e2e timings
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: e2e-timing-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ env.KANI_TIMING_LOG }}
+          path: |
+            ${{ env.KANI_TIMING_LOG }}
+            e2e-results.xml
