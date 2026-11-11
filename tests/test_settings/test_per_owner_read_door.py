@@ -14,10 +14,10 @@ import sys
 from pathlib import Path
 
 import pytest
-import yaml
 
 from kanibako.errors import ConfigError
 from kanibako.settings.config import WORKSET_META_FILE, load_config
+from kanibako.settings.config_io import dump_doc
 from kanibako.settings.paths import load_std_paths
 from kanibako.settings.settings_resolve import SettingsError
 from kanibako.settings.workset_dirkeys import (
@@ -41,7 +41,7 @@ def _write_system(std, workset: dict, system: dict | None = None) -> None:
   if system is not None:
     doc["system"] = system
   std.settings.parent.mkdir(parents=True, exist_ok=True)
-  std.settings.write_text(yaml.safe_dump(doc))
+  dump_doc(std.settings, doc)
 
 
 def _scope(tier: dict[str, str | None], file: Path) -> EarlyScope:
@@ -142,14 +142,14 @@ class TestRefuseInheritedPerOwner:
     )
 
   def test_the_workset_own_file_shields_its_keys(self, tmp_path):
-    (tmp_path / WORKSET_META_FILE).write_text(yaml.safe_dump({"workset": {"boxes": "/srv/kb"}}))
+    dump_doc(tmp_path / WORKSET_META_FILE, {"workset": {"boxes": "/srv/kb"}})
     refuse_inherited_per_owner(
       tmp_path,
       _scope({"workset.boxes": "/srv/kb"}, tmp_path / "settings.yaml"),
     )
 
   def test_every_inherited_per_owner_key_is_judged(self, tmp_path):
-    (tmp_path / WORKSET_META_FILE).write_text(yaml.safe_dump({"workset": {"boxes": "/srv/kb"}}))
+    dump_doc(tmp_path / WORKSET_META_FILE, {"workset": {"boxes": "/srv/kb"}})
     scope = _scope(
       {"workset.boxes": "/srv/kb", "workset.vault_rw": "/srv/vault"},
       tmp_path / "s.yaml",
@@ -266,7 +266,7 @@ def test_workset_create_refuses_an_inherited_value_the_grammar_refuses(cli, stor
   """``workset create`` never expands these keys; the read door is their only judge."""
   settings = cli.home / ".local/share/kanibako/global/settings.yaml"
   settings.parent.mkdir(parents=True, exist_ok=True)
-  settings.write_text(yaml.safe_dump({"workset": stored}))
+  dump_doc(settings, {"workset": stored})
   proc = cli("workset", "create", "ws1")
   assert proc.returncode == 1, proc.stdout + proc.stderr
   assert "which cannot be resolved" in proc.stderr, proc.stderr

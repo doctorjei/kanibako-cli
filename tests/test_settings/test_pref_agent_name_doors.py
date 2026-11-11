@@ -30,9 +30,9 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
-import yaml
 
 from kanibako.settings.config import load_config
+from kanibako.settings.config_io import dump_doc
 from kanibako.project.workset import resolve_workset_name
 from kanibako.settings.paths import (
   box_workset_settings_paths,
@@ -73,7 +73,7 @@ def _tier_file(std, config, project_dir: str, door: str, body: dict):
   else:
     path, _ = box_workset_settings_paths(proj)
   path.parent.mkdir(parents=True, exist_ok=True)
-  path.write_text(yaml.safe_dump(body, sort_keys=False), encoding="utf-8")
+  dump_doc(path, body)
   return path
 
 

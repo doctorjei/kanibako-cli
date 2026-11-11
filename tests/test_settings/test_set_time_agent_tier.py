@@ -5,7 +5,8 @@ as it does at launch; a mirror ref to a key no tier holds is still refused as da
 from __future__ import annotations
 
 import pytest
-import yaml
+
+from kanibako.settings.config_io import dump_doc
 
 _AGENT = "claude"
 
@@ -26,7 +27,7 @@ def _main(argv, capsys):
 
 def _write(path, doc):
   path.parent.mkdir(parents=True, exist_ok=True)
-  path.write_text(yaml.safe_dump(doc))
+  dump_doc(path, doc)
 
 
 @pytest.fixture

@@ -11,9 +11,8 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
-import yaml
-
 from kanibako.launch.templates import agent_template_defaults, template_seed_defaults
+from kanibako.settings.config_io import dump_doc
 from kanibako.settings.core_defaults import canon_default_categories
 from kanibako.settings.kb_store import __MISSING__
 from kanibako.settings.paths import BoxMode
@@ -27,7 +26,7 @@ _AGENTS = AgentNames({"claude"}, leaf_map={"claude": frozenset()})
 
 def _snap(tmp_path: Path, system: dict, floor: dict):
   sys_p = tmp_path / "system.yaml"
-  sys_p.write_text(yaml.safe_dump(system))
+  dump_doc(sys_p, system)
   return build_launch_snapshot(
     agent_name="claude",
     ctx=ResolveCtx(
