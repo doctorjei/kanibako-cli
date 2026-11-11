@@ -6,6 +6,7 @@ import signal
 import subprocess
 import sys
 import time
+from unittest.mock import Mock
 
 import pytest
 
@@ -16,6 +17,27 @@ from tests.e2e.pg_fixture import (
   register_agent,
   required_cases_passed,
 )
+
+
+def _proc_terminated(status):
+  try:
+    return status.read_text().split()[2] == "Z"
+  except (FileNotFoundError, ProcessLookupError):
+    return True
+
+
+@pytest.mark.parametrize(
+  "error", [FileNotFoundError, ProcessLookupError, PermissionError, OSError]
+)
+def test_proc_termination_read_errors(monkeypatch, error):
+  read = Mock(side_effect=error)
+  monkeypatch.setattr(Path, "read_text", read)
+  if error in (FileNotFoundError, ProcessLookupError):
+    assert _proc_terminated(Path("/proc/unused/stat"))
+  else:
+    with pytest.raises(error):
+      _proc_terminated(Path("/proc/unused/stat"))
+  read.assert_called_once_with()
 
 
 @pytest.mark.parametrize("expired", [False, True])
@@ -48,7 +70,7 @@ def test_finish_bounds_exited_worker_with_descendant_held_pipes(tmp_path, expire
     deadline = time.monotonic() + 1
     while time.monotonic() < deadline:
       status = Path(f"/proc/{child_pid}/stat")
-      if not status.exists() or status.read_text().split()[2] == "Z":
+      if _proc_terminated(status):
         break
       time.sleep(0.01)
     else:
