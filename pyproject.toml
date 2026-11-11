@@ -7,7 +7,7 @@ name = "kanibako-cli"
 version = "1.8.0"
 description = "Run AI coding agents in rootless containers with per-project isolation"
 requires-python = ">=3.11"
-dependencies = ["argcomplete>=3.0", "PyYAML>=6.0", "packaging>=20.0", "persona-grata>=0.0.7"]
+dependencies = ["argcomplete>=3.0", "PyYAML>=6.0", "packaging>=20.0", "persona-grata>=0.0.8"]
 
 [project.scripts]
 kanibako = "kanibako.cli:main"

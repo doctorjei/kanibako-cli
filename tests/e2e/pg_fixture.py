@@ -98,8 +98,8 @@ def register_agent(root: Path, provider: Path, endpoint: str) -> None:
   store = AgentStore(root)
   command = shlex.join([sys.executable, "-I", str(provider), "--manager"])
   write_document(
-    yapyon.parse(f"secret<base.secret>:\n  name: 'fixture'\n  fetch: {command!r}\n"),
-    store.component_path(("fixture", "secret")),
+    yapyon.parse(f"secret<secret._DEFAULT_>:\n  name: 'fixture'\n  fetch: {command!r}\n"),
+    store.component_path(("secret", "fixture")),
   )
   store.configure(defaults={"secret": {"backend": "fixture"}})
   definition = make_agent("minimax", "claude")

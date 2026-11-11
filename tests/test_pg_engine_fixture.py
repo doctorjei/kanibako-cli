@@ -103,6 +103,7 @@ def test_public_pg_setup_loads_a_real_registered_agent(tmp_path):
     "http://127.0.0.1:12345"
   )
   assert "ANTHROPIC_AUTH_TOKEN" not in loaded["harness"]["config_store"]["env"]
+  assert loaded["secret"]["name"] == "fixture"
   assert "--manager" in loaded["secret"]["fetch"]
 
 
