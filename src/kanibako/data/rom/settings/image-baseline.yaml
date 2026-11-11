@@ -21,17 +21,16 @@
 # explicit in the image's Containerfile, not here.  Site/host overlays may add
 # packages or override an existing package's executable list via
 # /etc/kanibako/image-baseline.yaml and <config.data>/global/image-baseline.yaml.
-
-tmux: [tmux]
-inotify-tools: [inotifywait, inotifywatch]
-ripgrep: [rg]
-fd-find: [fdfind]
-openssh-client: [ssh]
+"tmux": ["tmux"]
+"inotify-tools": ["inotifywait", "inotifywatch"]
+"ripgrep": ["rg"]
+"fd-find": ["fdfind"]
+"openssh-client": ["ssh"]
 # codex's app-server resolves bubblewrap on PATH for its own sandbox; without a
 # system bwrap it falls back to a bundled copy and logs an error. First-class
 # for every box so codex (and any future bwrap user) has it universally.
-bubblewrap: [bwrap]
+"bubblewrap": ["bwrap"]
 # The shipped claude statusline parses its hook JSON with jq and has no
 # fallback path, so a box without it renders a silently wrong cost/context
 # reading. First-class for every box.
-jq: [jq]
+"jq": ["jq"]

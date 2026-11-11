@@ -225,6 +225,47 @@ def test_native_yaml_does_not_inherit_kanibako_document_guards():
   assert data == 1
 
 
+@pytest.mark.parametrize(
+  "value", [None, True, False, 0, 1, -1, 1.0, -0.0, 1.0e20, "None", "on", "雪", "${HOME}"]
+)
+def test_yamlplus_scalars_keep_owned_reader_types(value):
+  from yapyon import yamlplus
+
+  text = yamlplus.dumps(value)
+  yamlplus.check(text)
+  for read in (yamlplus.loads, config_io.parse_packaged, config_io.parse_doc_text):
+    actual = read(text)
+    assert type(actual) is type(value)
+    assert actual == value
+    if isinstance(value, float):
+      assert actual.hex() == value.hex()
+
+
+def test_yamlplus_mapping_preserves_exact_keys_order_and_literal_values():
+  from yapyon import yamlplus
+
+  old = """"null": [null, true, 1, 1.0, 'None', '{meta.box.home}']
+"on": '${HOME}'
+"None": '雪'
+"1": false
+"""
+  text = """"null": [None, True, 1, 1.0, "None", "{meta.box.home}"]
+"on": "${HOME}"
+"None": "雪"
+"1": False
+"""
+  expected = config_io.parse_packaged(old)
+  yamlplus.check(text)
+  for read in (yamlplus.loads, config_io.parse_packaged, config_io.parse_doc_text):
+    actual = read(text)
+    assert list(actual) == list(expected)
+    assert all(type(key) is str for key in actual)
+    assert actual == expected
+    assert type(actual["null"]) is list
+    assert [type(value) for value in actual["null"]] == [type(value) for value in expected["null"]]
+    assert actual["1"] is False
+
+
 def test_packaged_byte_reader_preserves_a_traversable_resource(tmp_path):
   import zipfile
 

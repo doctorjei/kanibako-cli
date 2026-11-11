@@ -34,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Convert the image baseline and plugin defaults to YamlPlus; runtime codecs are unchanged.
 - **A blank `-e VAR=` now suppresses the credential instead of being ignored.** On
   `kanibako start`, a blank or whitespace-only value for a persona's token
   variable means "run without it": nothing is read, stat'd, fetched, staged,

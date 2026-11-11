@@ -16,20 +16,18 @@
 #     must never choose a binary we bind into the box).  The file only names,
 #     declaratively, that the binary bind's host source is the detected `binary`
 #     field (`origin: binary`).
-
-descriptor:
-  command: ["goose"]
-
+"descriptor":
+  "command": ["goose"]
   # binary bind — single AS-IS host bind (no separate launcher), AGENT_CRITICAL.
   # origin: binary -> install.binary (the resolved real ELF).
-  bindings:
-    - key: binary
-      origin: binary
-      box_dest: "{$GUEST_HOME}/.local/bin/goose"
-      owner: shared
-      kind: file
-      scope: agent_critical
-      ro: true
+  "bindings":
+    - "key": "binary"
+      "origin": "binary"
+      "box_dest": "{$GUEST_HOME}/.local/bin/goose"
+      "owner": "shared"
+      "kind": "file"
+      "scope": "agent_critical"
+      "ro": True
     # The KICKOFF-LOADER (the flattener SEED).  A tiny plugin-shipped static file
     # delivered RO to ~/.config/kanibako/kickoff.md.  Its content is the canon entry
     # import `@~/canon/COLLECTION.md`, and since M-12 that is the ONLY import it
@@ -42,25 +40,22 @@ descriptor:
     # package-relative resource (resolved to its shipped host path via
     # importlib.resources).  scope `agent` = BEST-EFFORT: a missing/unresolvable
     # source is SKIPPED, never raised, so a missing SEED can NOT crash a launch.
-    - key: managed_pointer
-      origin: literal
-      literal_src_pkg: "data/KICKOFF.md"
-      box_dest: "{$GUEST_HOME}/.config/kanibako/kickoff.md"
-      owner: shared
-      kind: file
-      scope: agent
-      ro: true
-
+    - "key": "managed_pointer"
+      "origin": "literal"
+      "literal_src_pkg": "data/KICKOFF.md"
+      "box_dest": "{$GUEST_HOME}/.config/kanibako/kickoff.md"
+      "owner": "shared"
+      "kind": "file"
+      "scope": "agent"
+      "ro": True
   # goose 1.37.0: bare `session` (new) / `session --resume` (continue-last).
   # The removed `session start`/`session resume` subcommands are NOT used.
-  mode:
-    start: ["session"]
-    continue: ["session", "--resume"]
-
-  operations:
-    exec:
-      fragment: ["run", "--no-session", "-t"]
-
+  "mode":
+    "start": ["session"]
+    "continue": ["session", "--resume"]
+  "operations":
+    "exec":
+      "fragment": ["run", "--no-session", "-t"]
   # The `access` permission TIER (spec §2d, R-41) — goose realizes it on the ENV
   # channel GOOSE_MODE (goose exposes no permission CLI flag; verified against
   # 1.38.0 `--help`).  BOTH rows are MANDATORY, not optional: goose's own unset
@@ -80,25 +75,26 @@ descriptor:
   # it onto `auto` would silently deliver the full bypass.  Ruled
   # [Jei:2026-08-02]: REFUSE.  A future goose that gains an edits-auto mode adds
   # the row here and nothing else changes.
-  access_realization:
-    channel: env
-    env_var: GOOSE_MODE
-    setting_key: access
-    tiers:
-      restricted: {env_value: approve}
-      full: {env_value: auto}
-
+  "access_realization":
+    "channel": "env"
+    "env_var": "GOOSE_MODE"
+    "setting_key": "access"
+    "tiers":
+      "restricted":
+        "env_value": "approve"
+      "full":
+        "env_value": "auto"
   # provider/model route via the ENV channel (GOOSE_MODEL/GOOSE_PROVIDER); the
   # SettingArg only wires the env-var NAME — there is deliberately NO default
   # value (the `behavior:` rows below set none, so goose falls back to its own
   # config.yaml from `goose configure`).
-  settings:
-    - setting_key: model
-      channel: env
-      env_var: GOOSE_MODEL
-    - setting_key: provider
-      channel: env
-      env_var: GOOSE_PROVIDER
+  "settings":
+    - "setting_key": "model"
+      "channel": "env"
+      "env_var": "GOOSE_MODEL"
+    - "setting_key": "provider"
+      "channel": "env"
+      "env_var": "GOOSE_PROVIDER"
     # endpoint (persona): the alternate OpenAI-compatible base-URL.  ENV channel ->
     # goose's built-in `openai` provider reads OPENAI_HOST as the endpoint origin
     # (paired with GOOSE_PROVIDER=openai + OPENAI_API_KEY + GOOSE_MODEL).  Unset
@@ -106,10 +102,9 @@ descriptor:
     # third-party endpoint (paired with the OAuth-suppress cred fork).  MIRRORS
     # claude's endpoint->ANTHROPIC_BASE_URL declaration (env-var name is
     # HARNESS-specific, so it lives in the descriptor).
-    - setting_key: endpoint
-      channel: env
-      env_var: OPENAI_HOST
-
+    - "setting_key": "endpoint"
+      "channel": "env"
+      "env_var": "OPENAI_HOST"
   # PERSONA endpoint/token delivery (goose; INC G1 harness-aware persona resolution).
   # env = the endpoint rides the descriptor's endpoint->OPENAI_HOST ENV SettingArg
   # (NOT config_file); token_var=OPENAI_API_KEY is the FIXED secret_path key / in-box
@@ -117,61 +112,37 @@ descriptor:
   # (there is no second ingestion route to fall back to).
   # provider_pin forces GOOSE_PROVIDER=openai (via the `provider` setting) whenever a
   # goose persona endpoint is active, so the openai provider can't be forgotten.
-  persona:
-    endpoint_delivery: env
-    token_var: OPENAI_API_KEY
-    provider_pin:
-      provider: openai
-
+  "persona":
+    "endpoint_delivery": "env"
+    "token_var": "OPENAI_API_KEY"
+    "provider_pin":
+      "provider": "openai"
   # secrets.yaml is the one synced credential file (key-by-NAME, unfiltered).  goose's
   # config.yaml is the box's own: seeded from the template and never synced, so a
   # provider picked by `goose configure` stays in that box (set `agent.goose.provider`
   # to give every box one).  custom_providers/ is not synced; bind it yourself.
-  cred_files:
-    - home_rel: ".config/goose/secrets.yaml"
-      host_rel: ".config/goose/secrets.yaml"
-      owner: shared
-      cadence: sync
-      mtime_gate: true
-      filtered: false
-
+  "cred_files":
+    - "home_rel": ".config/goose/secrets.yaml"
+      "host_rel": ".config/goose/secrets.yaml"
+      "owner": "shared"
+      "cadence": "sync"
+      "mtime_gate": True
+      "filtered": False
   # The env VARs any one of which, delivered to the box, is a goose login: the
   # provider key variables goose's providers page documents (goose-docs.ai,
   # getting-started/providers) that the goose 1.38.0 binary names.
-  login_vars:
-    - ANTHROPIC_API_KEY
-    - AWS_BEARER_TOKEN_BEDROCK
-    - AVIAN_API_KEY
-    - AZURE_OPENAI_API_KEY
-    - CEREBRAS_API_KEY
-    - DATABRICKS_TOKEN
-    - FUTURMIX_API_KEY
-    - GOOGLE_API_KEY
-    - GROQ_API_KEY
-    - LITELLM_API_KEY
-    - MISTRAL_API_KEY
-    - NEARAI_API_KEY
-    - NOVITA_API_KEY
-    - OLLAMA_CLOUD_API_KEY
-    - OPENAI_API_KEY
-    - OPENROUTER_API_KEY
-    - OVHCLOUD_API_KEY
-    - PERPLEXITY_API_KEY
-    - ROUTSTR_API_KEY
-    - SALAD_CLOUD_API_KEY
-    - SCW_SECRET_KEY
-    - SNOWFLAKE_TOKEN
-    - TANZU_AI_API_KEY
-    - TETRATE_API_KEY
-    - VENICE_API_KEY
-    - XAI_API_KEY
-
-  host_prep: false
-  init_dirs: [".config/goose", ".local/share/goose/sessions"]
+  "login_vars": ["ANTHROPIC_API_KEY", "AWS_BEARER_TOKEN_BEDROCK", "AVIAN_API_KEY",
+                 "AZURE_OPENAI_API_KEY", "CEREBRAS_API_KEY", "DATABRICKS_TOKEN", "FUTURMIX_API_KEY",
+                 "GOOGLE_API_KEY", "GROQ_API_KEY", "LITELLM_API_KEY", "MISTRAL_API_KEY",
+                 "NEARAI_API_KEY", "NOVITA_API_KEY", "OLLAMA_CLOUD_API_KEY", "OPENAI_API_KEY",
+                 "OPENROUTER_API_KEY", "OVHCLOUD_API_KEY", "PERPLEXITY_API_KEY", "ROUTSTR_API_KEY",
+                 "SALAD_CLOUD_API_KEY", "SCW_SECRET_KEY", "SNOWFLAKE_TOKEN", "TANZU_AI_API_KEY",
+                 "TETRATE_API_KEY", "VENICE_API_KEY", "XAI_API_KEY"]
+  "host_prep": False
+  "init_dirs": [".config/goose", ".local/share/goose/sessions"]
   # Credential-SHARING CAPABILITY (spec §2d): goose supports shared creds.
   # RO / plugin-set → meta.agent.goose.auth.share_support.
-  auth_share_support: true
-
+  "auth_share_support": True
   # VS Code Marketplace extension id auto-installed into the box on `kanibako
   # code` attach (FF-4).  `block.vscode-goose` is Block's official ACP-based
   # extension (supersedes the older `michaelneale.goose-vscode`); it is a thin
@@ -187,14 +158,12 @@ descriptor:
   #   - The panel-spawned goose reads `GOOSE_MODE` from the box's own config.yaml;
   #     kanibako does not write the `access` tier there (the launched goose gets it
   #     as the GOOSE_MODE env var, see access_realization).
-  vscode_extension: block.vscode-goose
-
+  "vscode_extension": "block.vscode-goose"
 # The former Route-A `category_binds:` `instructions` entry ({system.instructions} →
 # ~/.config/goose/KANIBAKO.md) is RETIRED: the box guide now reaches the box INSIDE
 # the RO `general` chapter bind at `~/canon/charter/general` + the flattened per-agent FINAL
 # file (seeded by the `managed_pointer` kickoff-loader above), arriving at ~/.config/goose/AGENTS.md
 # (still listed in CONTEXT_FILE_NAMES), not a per-agent KANIBAKO.md native-slot bind.
-
 # AGENT-scope BEHAVIOR defaults -> the `agent.goose.<key>` FLOOR (spec §2d), read by
 # the launch off `setting_descriptors()` and laid UNDER the whole cascade, so a user
 # overrides one by writing the SAME key in any settings file.  A `default:` is a
@@ -210,24 +179,22 @@ descriptor:
 # §2d, the goose section).  `model` and `endpoint` inherit `agent.default` (<None>
 # unless the user sets it); `provider` is goose's own key, so its <None> is written
 # `null` — an ABSENT `default:` there is a load refusal, so it stays a statement.
-behavior:
+"behavior":
   # The agent's human-readable DESCRIPTION (spec §2d `agent.goose.label | "Goose
   # Harness"`), and the ONLY thing `agent info` / `agent show` print as this agent's
   # name.  ⚑ NOT `meta.agent.goose.name`, which is the store DIRECTORY and is RO.
   # Without this row the core all-agents backstop wins and every goose install
   # reads its own name, "goose".
-  - key: label
-    description: "Human-readable description of this agent"
-    default: "Goose Harness"
-  - key: provider
-    description: "LLM provider (unset = use goose configure / config.yaml)"
-    default: null
-  - key: model
-    description: "Model to use (unset = use goose configure / config.yaml)"
-  - key: endpoint
-    description: "Alternate OpenAI-compatible base-URL endpoint (persona); unset
-      uses the harness default and syncs the goose login"
-
+  - "key": "label"
+    "description": "Human-readable description of this agent"
+    "default": "Goose Harness"
+  - "key": "provider"
+    "description": "LLM provider (unset = use goose configure / config.yaml)"
+    "default": None
+  - "key": "model"
+    "description": "Model to use (unset = use goose configure / config.yaml)"
+  - "key": "endpoint"
+    "description": "Alternate OpenAI-compatible base-URL endpoint (persona); unset uses the harness default and syncs the goose login"
 # AGENT-scope declared env DEFAULTS -> `agent.goose.env.<VAR>` (spec §2d).  These are
 # ordinary settings keys, not a private channel: a user overrides one by writing the
 # SAME key in a nearer file, and naming the same VAR at a second scope (say
@@ -238,18 +205,18 @@ behavior:
 # which is exactly the set spec §2d says stays plugin-declared.  USER-PREFERENCE
 # variables (GOOSE_PROVIDER / GOOSE_MODEL) are deliberately NOT declared here: goose
 # owns those in its own persistent config, and a default would override it every launch.
-env:
+"env":
   # ALWAYS set for goose boxes: the in-box OS keyring/D-Bus secret-service is
   # unavailable, so goose stores secrets in the file ~/.config/goose/secrets.yaml
   # instead (the file kanibako syncs).
-  GOOSE_DISABLE_KEYRING: "true"
+  "GOOSE_DISABLE_KEYRING": "true"
   # Makes goose load the flattened per-agent FINAL guidance file the box-start
   # flattener writes to ~/.config/goose/.additionalContext.md
   # (KANIBAKO_DIRECTIVE_FINAL below) — goose only reads the filenames in this list,
   # so `.additionalContext.md` must be listed.  The value is a JSON array STRING
   # (goose's expected format); AGENTS.md / .goosehints stay so a user's own context
   # files still load alongside ours.
-  CONTEXT_FILE_NAMES: '[".additionalContext.md","AGENTS.md",".goosehints"]'
+  "CONTEXT_FILE_NAMES": "[\".additionalContext.md\",\"AGENTS.md\",\".goosehints\"]"
   # The native instruction slot the box-start flattener writes the flattened
   # per-agent FINAL file to.  goose reads it via CONTEXT_FILE_NAMES.
   # ⚑ STOPGAP + breadcrumb: goose CANNOT inject additionalContext from a hook today
@@ -258,4 +225,4 @@ env:
   # as a context FILE and name it `.additionalContext.md` DELIBERATELY so it sticks
   # out: once goose gains hook additionalContext injection, migrate goose to the
   # claude/codex SessionStart-hook path and drop this file + its CONTEXT_FILE_NAMES entry.
-  KANIBAKO_DIRECTIVE_FINAL: "{$GUEST_HOME}/.config/goose/.additionalContext.md"
+  "KANIBAKO_DIRECTIVE_FINAL": "{$GUEST_HOME}/.config/goose/.additionalContext.md"

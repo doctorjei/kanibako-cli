@@ -23,29 +23,27 @@
 #     The file only names, declaratively, WHICH detected field each binding's host
 #     source comes from (`origin`); the probed path is filled in by
 #     `descriptor_mounts` from the AgentInstall.
-
-descriptor:
-  command: ["claude"]
-
+"descriptor":
+  "command": ["claude"]
   # Binary delivery — TWO AS-IS host binds (identity dest), AGENT_CRITICAL (claude
   # is the only 2-bind agent).  `origin` selects the detected install field:
   #   share    -> install_dir  (~/.local/share/claude)
   #   launcher -> launcher      (~/.local/bin/claude, resolved real file)
-  bindings:
-    - key: share
-      origin: install_dir
-      box_dest: "{$GUEST_HOME}/.local/share/claude"
-      owner: shared
-      kind: dir
-      scope: agent_critical
-      ro: true
-    - key: launcher
-      origin: launcher
-      box_dest: "{$GUEST_HOME}/.local/bin/claude"
-      owner: shared
-      kind: file
-      scope: agent_critical
-      ro: true
+  "bindings":
+    - "key": "share"
+      "origin": "install_dir"
+      "box_dest": "{$GUEST_HOME}/.local/share/claude"
+      "owner": "shared"
+      "kind": "dir"
+      "scope": "agent_critical"
+      "ro": True
+    - "key": "launcher"
+      "origin": "launcher"
+      "box_dest": "{$GUEST_HOME}/.local/bin/claude"
+      "owner": "shared"
+      "kind": "file"
+      "scope": "agent_critical"
+      "ro": True
     # The KICKOFF-LOADER (the flattener SEED).  A tiny plugin-shipped static file
     # (constant, claude-specific — NOT an {system.instructions} keyspace source)
     # delivered RO to ~/.config/kanibako/kickoff.md.  Its content is the canon entry
@@ -61,25 +59,22 @@ descriptor:
     # source is SKIPPED, never raised (unlike agent_critical), so a missing SEED can
     # NOT crash a launch.  (Key name kept `managed_pointer` to avoid a keystore-key
     # rename.)
-    - key: managed_pointer
-      origin: literal
-      literal_src_pkg: "data/KICKOFF.md"
-      box_dest: "{$GUEST_HOME}/.config/kanibako/kickoff.md"
-      owner: shared
-      kind: file
-      scope: agent
-      ro: true
-
+    - "key": "managed_pointer"
+      "origin": "literal"
+      "literal_src_pkg": "data/KICKOFF.md"
+      "box_dest": "{$GUEST_HOME}/.config/kanibako/kickoff.md"
+      "owner": "shared"
+      "kind": "file"
+      "scope": "agent"
+      "ro": True
   # mode is {start, continue} only — resume intentionally NOT offered (user
   # decision 2026-06-17: -R/--resume falls through to --continue).
-  mode:
-    start: []
-    continue: ["--continue"]
-
-  operations:
-    exec:
-      fragment: ["-p"]
-
+  "mode":
+    "start": []
+    "continue": ["--continue"]
+  "operations":
+    "exec":
+      "fragment": ["-p"]
   # The `access` permission TIER (spec §2d, R-41) — claude realizes all three on
   # the FLAG channel.  VERIFIED against the installed binary (claude 2.1.220,
   # 2026-08-02): `--help` lists `--dangerously-skip-permissions` ("Bypass all
@@ -94,57 +89,54 @@ descriptor:
   #                 seed template ships bypassPermissions), and the flag
   #                 "Overrides `defaultMode` from settings files" (claude CLI
   #                 reference).  kanibako writes no tier into that file.
-  access_realization:
-    channel: flag
-    setting_key: access
-    tiers:
-      restricted: {flag: ["--permission-mode", "default"]}
-      editing: {flag: ["--permission-mode", "acceptEdits"]}
-      full: {flag: ["--dangerously-skip-permissions"]}
-
-  settings:
-    - setting_key: model
-      channel: flag
-      flag: ["--model"]
+  "access_realization":
+    "channel": "flag"
+    "setting_key": "access"
+    "tiers":
+      "restricted":
+        "flag": ["--permission-mode", "default"]
+      "editing":
+        "flag": ["--permission-mode", "acceptEdits"]
+      "full":
+        "flag": ["--dangerously-skip-permissions"]
+  "settings":
+    - "setting_key": "model"
+      "channel": "flag"
+      "flag": ["--model"]
     # endpoint (persona): the alternate harness base-URL.  ENV channel -> the
     # harness-specific ANTHROPIC_BASE_URL (env-var name is HARNESS-specific, so it
     # lives in the descriptor).  Unset (<None>) emits nothing (bare/harness-default);
     # set = point claude at a third-party endpoint (paired with the OAuth-suppress
     # cred fork so the Anthropic token is never sent there).
-    - setting_key: endpoint
-      channel: env
-      env_var: "ANTHROPIC_BASE_URL"
-
+    - "setting_key": "endpoint"
+      "channel": "env"
+      "env_var": "ANTHROPIC_BASE_URL"
   # PERSONA endpoint/token delivery (claude).  env = the endpoint rides the
   # `endpoint` -> ANTHROPIC_BASE_URL SettingArg above; the bearer token rides the
   # FIXED ANTHROPIC_AUTH_TOKEN secret_path key.  This declaration is the ONLY place
   # the var is named: core has no fallback, and a harness that declares no token var
   # gets no token check.  The plugin reads it from here too.
-  persona:
-    endpoint_delivery: env
-    token_var: ANTHROPIC_AUTH_TOKEN
-
+  "persona":
+    "endpoint_delivery": "env"
+    "token_var": "ANTHROPIC_AUTH_TOKEN"
   # Only auth remains host-sourced (.claude.json import removed in 1.6.0): the
   # synced .credentials.json (filtered -> transform_cred merges claudeAiOauth).
-  cred_files:
-    - home_rel: ".claude/.credentials.json"
-      host_rel: ".claude/.credentials.json"
-      owner: shared
-      cadence: sync
-      mtime_gate: true
-      filtered: true
-
-  host_prep: true
-  init_dirs: [".claude"]
+  "cred_files":
+    - "home_rel": ".claude/.credentials.json"
+      "host_rel": ".claude/.credentials.json"
+      "owner": "shared"
+      "cadence": "sync"
+      "mtime_gate": True
+      "filtered": True
+  "host_prep": True
+  "init_dirs": [".claude"]
   # Credential-SHARING CAPABILITY (spec §2d): claude supports shared creds
   # (per-agent host login). RO / plugin-set → meta.agent.claude.auth.share_support.
-  auth_share_support: true
-
+  "auth_share_support": True
   # VS Code Marketplace extension id auto-installed into the box on `kanibako
   # code` attach, so claude's in-box `/ide` integration works out of the box.
   # goose/codex leave this UNSET (→ None) until their Phase-5 support lands.
-  vscode_extension: anthropic.claude-code
-
+  "vscode_extension": "anthropic.claude-code"
 # AGENT-scope BEHAVIOR defaults -> the `agent.claude.<key>` FLOOR (spec §2d), read
 # by the launch off `setting_descriptors()` and laid UNDER the whole cascade, so a
 # user overrides one by writing the SAME key in any settings file.  A `default:` is
@@ -156,46 +148,42 @@ descriptor:
 # sets are not the same one: `settings:` says HOW a value is realized (which flag /
 # which env var), and `transform` below is realized on NO channel at all — kanibako's
 # own patch pipeline consumes it, so it has a floor here and no row there.
-behavior:
+"behavior":
   # The agent's human-readable DESCRIPTION (spec §2d `agent.claude.label | "Claude
   # Code"`), and the ONLY thing `agent info` / `agent show` print as this agent's
   # name.  ⚑ NOT `meta.agent.claude.name`, which is the store DIRECTORY and is RO.
   # Without this row the core all-agents backstop wins and every claude install
   # reads its own name, "claude".
-  - key: label
-    description: "Human-readable description of this agent"
-    default: "Claude Code"
+  - "key": "label"
+    "description": "Human-readable description of this agent"
+    "default": "Claude Code"
   # ⚑ NO DEFAULT, and do not add one.  Spec §2d: `agent.claude.model` has no
   # plugin default and inherits `agent.default.model`, whose <None> means claude's
   # built-in default: a box with no model set anywhere launches with no `--model`.
   # A user's `agent.default.model` reaches claude; `agent.claude.model` at any
   # cascade scope (or `-M`) beats it.  The same holds for `endpoint`.
-  - key: model
-    description: "Claude model to use (unset = claude's own built-in default)"
-  - key: endpoint
-    description: "Alternate base-URL endpoint (persona); unset uses the harness
-      default and syncs the OAuth login"
-  - key: transform
-    description: "Binary transform applied to the agent binary (tweakcc); empty
-      = none"
+  - "key": "model"
+    "description": "Claude model to use (unset = claude's own built-in default)"
+  - "key": "endpoint"
+    "description": "Alternate base-URL endpoint (persona); unset uses the harness default and syncs the OAuth login"
+  - "key": "transform"
+    "description": "Binary transform applied to the agent binary (tweakcc); empty = none"
     # WHICH transform claude runs (spec §2d `agent.claude.transform | tweakcc`).
     # ⚑ Not "" — an empty floor here means NOTHING is patched.
-    default: tweakcc
-
+    "default": "tweakcc"
 # AGENT-scope declared env DEFAULTS -> `agent.claude.env.<VAR>` (spec §2d).  These
 # are ordinary settings keys, not a private channel: a user overrides one by writing
 # the SAME key in a nearer file, and naming the same VAR at a second scope (say
 # `box.env.DISABLE_AUTOUPDATER`) REFUSES the launch naming both keys.  Values are
 # STRINGS (quote them); `{$GUEST_HOME}` is expanded by the loader.
-env:
+"env":
   # Disable the in-box self-updater: a mid-session update would repoint the writable
   # ~/.local/bin/claude to a version the read-only host bind cannot have.
-  DISABLE_AUTOUPDATER: "1"
-  CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1"
+  "DISABLE_AUTOUPDATER": "1"
+  "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"
   # The native instruction slot the box-start flattener writes the flattened
   # per-agent FINAL file to (claude's user-memory slot, loaded every session).
-  KANIBAKO_DIRECTIVE_FINAL: "{$GUEST_HOME}/.claude/CLAUDE.md"
-
+  "KANIBAKO_DIRECTIVE_FINAL": "{$GUEST_HOME}/.claude/CLAUDE.md"
 # AGENT-scope common dirs (plugins + cache), stored under the per-agent store dir
 # {meta.agent.claude.path} = {config.agents}/claude — spec §2a's agent DECLARATION
 # ROOT.  ROOTED AT DECLARATION: the bare `host_src` leaf written here is turned by
@@ -213,14 +201,13 @@ env:
 # `host_src` and `box_dest` remain INDEPENDENT: `host_src` is the store leaf that
 # gets rooted (and, being rooted, is what tells the persona symlink shim which
 # store dir to share), `box_dest` is where it lands in the box.
-common:
-  - host_src: plugins
-    box_dest: "{$GUEST_HOME}/.claude/plugins"
-    owner: agent
-  - host_src: cache
-    box_dest: "{$GUEST_HOME}/.claude/cache"
-    owner: agent
-
+"common":
+  - "host_src": "plugins"
+    "box_dest": "{$GUEST_HOME}/.claude/plugins"
+    "owner": "agent"
+  - "host_src": "cache"
+    "box_dest": "{$GUEST_HOME}/.claude/cache"
+    "owner": "agent"
 # AGENT-scope reference-sourced category binds (spec §2d): the tweakcc
 # patched-binary cache (the spec's `agent.claude.caches[~/.kanibako/cache/tweakcc]`
 # instantiation).  The SOURCE is the agent DECLARATION ROOT
@@ -235,12 +222,11 @@ common:
 # floor beside `common` and emitted by the ONE category emitter — the hand-built
 # identity `_HMount` in `commands/start.py::_start_helper_hub` is gone, and the
 # helper reuses this same emitted mount.
-category_binds:
-  - category: caches
-    box_dest: "~/.kanibako/cache/tweakcc"
-    owner: agent
-    meta_ref: "{meta.agent.claude.path}/caches/tweakcc"
-
+"category_binds":
+  - "category": "caches"
+    "box_dest": "~/.kanibako/cache/tweakcc"
+    "owner": "agent"
+    "meta_ref": "{meta.agent.claude.path}/caches/tweakcc"
 # The former Route-A `category_binds:` `instructions` entry ({system.instructions} →
 # ~/.claude/KANIBAKO.md) is RETIRED: the box guide now reaches the box INSIDE the RO
 # `general` chapter bind at `~/canon/charter/general` + the flattened per-agent FINAL file

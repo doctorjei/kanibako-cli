@@ -17,21 +17,19 @@
 #     binary (FALLBACK) per the host-binary preference order.  The file only names,
 #     declaratively, that the binary bind's host source is the detected `binary`
 #     field (`origin: binary`); the box destination is fixed below.
-
-descriptor:
-  command: ["codex"]
-
+"descriptor":
+  "command": ["codex"]
   # binary bind — single AS-IS host bind (no separate launcher/share),
   # AGENT_CRITICAL.  origin: binary -> install.binary (the resolved real native
   # musl static-pie ELF; binds standalone, no node in-box).
-  bindings:
-    - key: binary
-      origin: binary
-      box_dest: "{$GUEST_HOME}/.local/bin/codex"
-      owner: shared
-      kind: file
-      scope: agent_critical
-      ro: true
+  "bindings":
+    - "key": "binary"
+      "origin": "binary"
+      "box_dest": "{$GUEST_HOME}/.local/bin/codex"
+      "owner": "shared"
+      "kind": "file"
+      "scope": "agent_critical"
+      "ro": True
     # The KICKOFF-LOADER (the flattener SEED).  A tiny plugin-shipped static file
     # delivered RO to ~/.config/kanibako/kickoff.md.  Its content is the canon entry
     # import `@~/canon/COLLECTION.md`, and since M-12 that is the ONLY import it
@@ -43,26 +41,23 @@ descriptor:
     # package-relative resource (resolved to its shipped host path via
     # importlib.resources).  scope `agent` = BEST-EFFORT: a missing/unresolvable
     # source is SKIPPED, never raised, so a missing SEED can NOT crash a launch.
-    - key: managed_pointer
-      origin: literal
-      literal_src_pkg: "data/KICKOFF.md"
-      box_dest: "{$GUEST_HOME}/.config/kanibako/kickoff.md"
-      owner: shared
-      kind: file
-      scope: agent
-      ro: true
-
+    - "key": "managed_pointer"
+      "origin": "literal"
+      "literal_src_pkg": "data/KICKOFF.md"
+      "box_dest": "{$GUEST_HOME}/.config/kanibako/kickoff.md"
+      "owner": "shared"
+      "kind": "file"
+      "scope": "agent"
+      "ro": True
   # codex 0.140.0: new session = bare `codex` (start -> []); continue-last =
   # `codex resume --last`.  No dedicated resume picker (-R falls through to
   # continue).
-  mode:
-    start: []
-    continue: ["resume", "--last"]
-
-  operations:
-    exec:
-      fragment: ["exec"]
-
+  "mode":
+    "start": []
+    "continue": ["resume", "--last"]
+  "operations":
+    "exec":
+      "fragment": ["exec"]
   # The `access` permission TIER (spec §2d, R-41) — codex realizes all three on
   # the FLAG channel, verified against codex-cli 0.158.0:
   #   full       -> --dangerously-bypass-approvals-and-sandbox  ("Skip all
@@ -97,18 +92,20 @@ descriptor:
   # are name-only in local help (no per-value description); "writable workspace,
   # rest read-only" is plausible but UNVERIFIED — the bifrost matrix must confirm
   # the editing row.
-  access_realization:
-    channel: flag
-    setting_key: access
-    tiers:
-      restricted: {flag: ["-c", 'approval_policy="on-request"', "-s", "read-only"]}
-      editing: {flag: ["-c", 'approval_policy="on-request"', "-s", "workspace-write"]}
-      full: {flag: ["--dangerously-bypass-approvals-and-sandbox"]}
-
-  settings:
-    - setting_key: model
-      channel: flag
-      flag: ["--model"]
+  "access_realization":
+    "channel": "flag"
+    "setting_key": "access"
+    "tiers":
+      "restricted":
+        "flag": ["-c", "approval_policy=\"on-request\"", "-s", "read-only"]
+      "editing":
+        "flag": ["-c", "approval_policy=\"on-request\"", "-s", "workspace-write"]
+      "full":
+        "flag": ["--dangerously-bypass-approvals-and-sandbox"]
+  "settings":
+    - "setting_key": "model"
+      "channel": "flag"
+      "flag": ["--model"]
     # NOTE: endpoint is DELIBERATELY not a SettingArg here.  A codex persona's
     # alternate endpoint is delivered via the ~/.codex/config.toml
     # [model_providers.<id>] block (see `persona:` below + vscode_config's
@@ -116,35 +113,31 @@ descriptor:
     # flag/env by the launch arg assembler.  It is a first-class SETTABLE key via
     # setting_descriptors() (target.py) so `config set agent.<node>℘codex.endpoint`
     # validates + resolves through the behavior cascade.
-
   # PERSONA endpoint/token delivery (codex; INC 2 harness-aware persona resolution).
   # config_file = the endpoint is written into ~/.codex/config.toml's model-provider
   # block (not ANTHROPIC_BASE_URL); token_var EMPTY = DYNAMIC (the single configured
   # secret_path key IS the provider env_key + the in-box bearer var).
-  persona:
-    endpoint_delivery: config_file
+  "persona":
+    "endpoint_delivery": "config_file"
     # Codex removed the "chat" wire (openai/codex#7782); "responses" is the only
     # value current Codex accepts.  NaviGator serves both wires.
-    wire_api: responses
-
+    "wire_api": "responses"
   # filtered=False (wholesale copy) is an E2E gate (Phase 10): flip to
   # filtered=True + add a transform_cred allowlist ONLY if E2E proves auth.json
   # carries non-portable machine-id/installation fields.  The host config.toml
   # IMPORT was removed in 1.6.0 (config comes from the curated agent template).
-  cred_files:
-    - home_rel: ".codex/auth.json"
-      host_rel: ".codex/auth.json"
-      owner: shared
-      cadence: sync
-      mtime_gate: true
-      filtered: false
-
-  host_prep: false
-  init_dirs: [".codex"]
+  "cred_files":
+    - "home_rel": ".codex/auth.json"
+      "host_rel": ".codex/auth.json"
+      "owner": "shared"
+      "cadence": "sync"
+      "mtime_gate": True
+      "filtered": False
+  "host_prep": False
+  "init_dirs": [".codex"]
   # Credential-SHARING CAPABILITY (spec §2d): codex supports shared creds.
   # RO / plugin-set → meta.agent.codex.auth.share_support.
-  auth_share_support: true
-
+  "auth_share_support": True
   # VS Code Marketplace extension id auto-installed into the box on `kanibako
   # code` attach (FF-4).  The official OpenAI extension is branded "Codex" but
   # its id is `openai.chatgpt` (NOT `openai.codex`; the numerous `*.codex`
@@ -156,13 +149,11 @@ descriptor:
   # is the user's own, and kanibako forces sandbox_mode = "danger-full-access" as
   # a box invariant — the container IS the sandbox, so the panel app-server must
   # not attempt a nested one.
-  vscode_extension: openai.chatgpt
-
+  "vscode_extension": "openai.chatgpt"
 # The former Route-A `category_binds:` `instructions` entry ({system.instructions} →
 # ~/.codex/AGENTS.md) is RETIRED: the box guide now reaches the box INSIDE the RO
 # `general` chapter bind at `~/canon/charter/general` + the flattened per-agent FINAL file
 # (seeded by the `managed_pointer` kickoff-loader above), not a per-agent native-slot bind.
-
 # AGENT-scope BEHAVIOR defaults -> the `agent.codex.<key>` FLOOR (spec §2d), read by
 # the launch off `setting_descriptors()` and laid UNDER the whole cascade, so a user
 # overrides one by writing the SAME key in any settings file.  A `default:` is a
@@ -176,15 +167,15 @@ descriptor:
 # ~/.codex/config.toml, not emitted as a flag/env), so it has a floor here and no row
 # there.  Declaring it keeps `config set agent.<node>℘codex.endpoint` a first-class
 # settable, cascade-resolved key.
-behavior:
+"behavior":
   # The agent's human-readable DESCRIPTION (spec §2d `agent.codex.label | "Codex
   # CLI"`), and the ONLY thing `agent info` / `agent show` print as this agent's
   # name.  ⚑ NOT `meta.agent.codex.name`, which is the store DIRECTORY and is RO.
   # Without this row the core all-agents backstop wins and every codex install
   # reads its own name, "codex".
-  - key: label
-    description: "Human-readable description of this agent"
-    default: "Codex CLI"
+  - "key": "label"
+    "description": "Human-readable description of this agent"
+    "default": "Codex CLI"
   # ⚑ NO DEFAULT, and do not add one.  Spec §2d: `agent.codex.model` has no
   # plugin default and inherits `agent.default.model`, whose <None> means codex's
   # built-in default: a box with no model set anywhere launches with no `--model`.
@@ -193,18 +184,16 @@ behavior:
   # ⚑ A codex PERSONA follows the same rule: an unset model or an explicit `null`
   # launches with no model (no root `model` in config.toml), and codex uses its
   # own default.
-  - key: model
-    description: "Model to use (unset = codex's own built-in default)"
-  - key: endpoint
-    description: "Alternate model-provider base-URL (persona); unset uses the
-      harness default and syncs the codex login"
-
+  - "key": "model"
+    "description": "Model to use (unset = codex's own built-in default)"
+  - "key": "endpoint"
+    "description": "Alternate model-provider base-URL (persona); unset uses the harness default and syncs the codex login"
 # AGENT-scope declared env DEFAULTS -> `agent.codex.env.<VAR>` (spec §2d).  These are
 # ordinary settings keys, not a private channel: a user overrides one by writing the
 # SAME key in a nearer file, and naming the same VAR at a second scope (say
 # `box.env.KANIBAKO_DIRECTIVE_FINAL`) REFUSES the launch naming both keys.  Values
 # are STRINGS (quote them); `{$GUEST_HOME}` is expanded by the loader.
-env:
+"env":
   # The native instruction slot the box-start flattener writes the flattened
   # per-agent FINAL file to (codex reads ~/.codex/AGENTS.md natively).
-  KANIBAKO_DIRECTIVE_FINAL: "{$GUEST_HOME}/.codex/AGENTS.md"
+  "KANIBAKO_DIRECTIVE_FINAL": "{$GUEST_HOME}/.codex/AGENTS.md"
