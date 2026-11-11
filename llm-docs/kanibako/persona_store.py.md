@@ -15,7 +15,6 @@ kanibako spelling/reservation rules; target is harness node. Nothing persists.
 existing `PersonaReadOutcome`; no `Target` ABC required. `project_registered_persona` has
 no I/O, mutation, re-read, or credential fetch. Keyless preserves Codex's empty `env_key`
 and Claude's placeholder env. Names match case-insensitively; ambiguity refuses.
-Procedure: `persona-resolution-model.md`.
 
 ## Legacy launch layout (DESIGN §1)
 
