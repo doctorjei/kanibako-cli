@@ -20,7 +20,7 @@ _SET_VALUE_DOORS: 'tuple[_SetValueDoor, ...]' = (_SetValueDoor(lambda key, value
 def parse_config_arg(arg: str | None, *, set_null: bool=False) -> 'tuple[ConfigAction, str, str | None]'
 def addressed_agent_input(raw_key: str) -> AgentResolution | None
 def addressed_agent_identity(raw_key: str) -> AgentIdentity | None
-def project_agent_input(resolved: AgentResolution, target: Target | None) -> tuple[Mapping[str, str | None] | None, PersonaCredential | None]
+def project_agent_input(resolved: AgentResolution, target: PersonaInputTarget | None) -> tuple[Mapping[str, str | None] | None, PersonaCredential | None]
 def identity_valid_agents(identity: AgentIdentity | None) -> AgentNames | None
 def effective_behavior_default(node: str, key: str, *, identity: AgentIdentity | None=None) -> 'str | None'
 def refuses_null_behavior_key(canonical: str, *, identity: AgentIdentity | None=None) -> bool

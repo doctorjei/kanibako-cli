@@ -985,63 +985,13 @@ def _legacy_agent_identity(name: str) -> AgentIdentity:
 
 def resolve_named_agent_input(name: str) -> AgentResolution:
   """Classify once; unavailable input remains addressable."""
-  from dataclasses import replace
-
-  from kanibako.agent_ref import (
-    ADDRESSABLE_PSEUDO_AGENTS,
-    CANONICAL_SEP,
-    persona_of,
-    with_harness,
-  )
-  from kanibako.errors import AgentNotInstalledError
-  from kanibako.identifiers import find_identifier
-  from kanibako.install_method import install_command
-  from kanibako.targets import discover_targets
+  from kanibako.agent_ref import ADDRESSABLE_PSEUDO_AGENTS
+  from kanibako.persona_store import read_agent_input
 
   identity = _legacy_agent_identity(name)
   if identity.node in ADDRESSABLE_PSEUDO_AGENTS:
     return AgentResolution(identity)
-  try:
-    installed = set(discover_targets())
-  except Exception as exc:
-    return AgentResolution(identity, unavailable=exc)
-
-  registered = None
-  if CANONICAL_SEP not in identity.node and find_identifier(name.strip(), installed) is None:
-    try:
-      from kanibako.persona_store import read_registered_persona
-
-      registered = read_registered_persona(name.strip())
-    except Exception as exc:
-      return AgentResolution(identity, unavailable=exc)
-    if registered is not None:
-      identity = registered.identity
-
-  found = find_identifier(identity.target_name, installed)
-  if found is not None:
-    if registered is not None:
-      identity = replace(identity, harness=found, target_name=found)
-      registered = replace(registered, identity=identity)
-    else:
-      node = with_harness(identity.node, found)
-      identity = replace(
-        identity, node=node, persona=persona_of(node), harness=found, target_name=found
-      )
-    return AgentResolution(identity, registered)
-
-  if registered is not None:
-    error = AgentNotInstalledError(
-      f"PG agent '{identity.registered_name}' requires harness "
-      f"'{identity.target_name}'. Install it with:\n"
-      f"  {install_command(f'kanibako-agent-{identity.target_name}')}"
-    )
-  else:
-    error = AgentNotInstalledError(
-      f"Agent '{identity.target_name}' is not installed. Install it with:\n"
-      f"  {install_command(f'kanibako-agent-{identity.target_name}')}\n"
-      f"Or run 'kanibako agent list' to see installed agents."
-    )
-  return AgentResolution(identity, registered, error)
+  return read_agent_input(identity)
 
 
 def resolve_named_agent_identity(name: str) -> AgentIdentity:

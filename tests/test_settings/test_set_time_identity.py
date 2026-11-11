@@ -6,6 +6,7 @@ from unittest.mock import Mock
 import pytest
 
 from kanibako.agent_ref import AgentIdentity
+from kanibako.persona_store import read_persona_bundle as _public_legacy_reader
 from kanibako.persona_store import read_registered_persona as _public_registered_reader
 from kanibako.project.workset import create_workset
 from kanibako.settings import config_interface as ci
@@ -1072,6 +1073,67 @@ def test_projection_keeps_native_and_legacy_contracts(kind, monkeypatch):
     assert values == ({"model": "legacy-model"} if kind == "legacy" else None)
     assert credential is None
   assert reader.call_count == (0 if kind == "native" else 1)
+
+
+def test_minimal_persona_input_target_projects_both_sources(tmp_path, monkeypatch):
+  from collections.abc import Mapping
+  from pathlib import Path
+
+  from kanibako.persona_store import (
+    PersonaEntry,
+    PersonaInputTarget,
+    RegisteredPersona,
+    SecretPathResult,
+  )
+  from kanibako.settings.config import AgentResolution
+  from kanibako.targets.base import PersonaReadOutcome, PersonaSettings
+
+  class MinimalTarget:
+    @property
+    def name(self) -> str:
+      return "claude"
+
+    def read_persona_settings(self, config_dir: Path) -> PersonaReadOutcome:
+      assert config_dir == tmp_path / "Guide" / "claude"
+      return PersonaReadOutcome(
+        PersonaSettings(endpoint=None, model="legacy", auth_env="TOKEN"), None
+      )
+
+    def project_persona_settings(
+      self, config: Mapping[str, object], *, source: str, keyless: bool = False
+    ) -> PersonaReadOutcome:
+      assert config == {"model": "registered"}
+      assert source == f"{tmp_path}/Scout/agent.cfg"
+      assert keyless
+      return PersonaReadOutcome(
+        PersonaSettings(endpoint=None, model="registered", auth_env="TOKEN"), None
+      )
+
+  port: PersonaInputTarget = MinimalTarget()
+  registered_identity = AgentIdentity(
+    "scout", "Scout", "Guide", "claude", "claude", tmp_path / "Scout"
+  )
+  registered = RegisteredPersona(
+    registered_identity, tmp_path, {"model": "registered"}, None, True
+  )
+  values, credential = ci.project_agent_input(
+    AgentResolution(registered_identity, registered), port
+  )
+  assert values == {"model": "registered"}
+  assert credential is not None and credential.keyless and credential.var is None
+  assert credential.store_root == tmp_path
+  legacy = AgentIdentity("Guide℘claude", None, "Guide", "claude", "claude", None)
+  entry = PersonaEntry(
+    legacy.node, "Guide", "claude", tmp_path / "Guide", tmp_path / "Guide" / "claude"
+  )
+  monkeypatch.setattr("kanibako.persona_store.locate_entry", lambda ref: entry)
+  monkeypatch.setattr("kanibako.persona_store.read_persona_bundle", _public_legacy_reader)
+  monkeypatch.setattr(
+    "kanibako.persona_store.resolve_secret_path", lambda entry: SecretPathResult(None, "absent")
+  )
+  values, credential = ci.project_agent_input(AgentResolution(legacy), port)
+  assert values == {"model": "legacy"}
+  assert credential is None
 
 
 def test_projection_keeps_keyless_metadata_without_fetch(public_input):

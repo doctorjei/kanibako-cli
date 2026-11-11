@@ -1,19 +1,21 @@
 # The Persona-Grata Store — discovery, pointer resolve, and the LIVE launch bundle
 
-`read_registered_persona` reads PG's public `AgentStore` through `config_io` before
-target selection. `RegisteredPersona` carries independent `AgentIdentity`, native config,
-keyless state, and exact selected `store_root`, never rediscovered or reconstructed from
-`entry_path`. PG owns credential lookup by registered name. Persona/harness names follow
-kanibako spelling/reservation rules; the target is the harness node. Nothing persists.
+`read_agent_input(address)` owns fresh discovery, native precedence, registry case,
+and installation diagnoses. Config's `AgentResolution` carries discovery/read exceptions;
+imports remain outside handlers. Bare lookup uses `address.target_name` (trimmed query),
+never folded node. No vocabulary cache, constructors, or descriptors.
 
-`project_registered_persona` projects without I/O, mutation, re-read, or credential fetch.
-Keyless preserves native auth names, including Codex's empty `env_key`, and Claude's
-placeholder env. Names match case-insensitively; ambiguity refuses. PG paths preserve
-renamed entries and symlinks, never derive from names.
+`read_registered_persona` reads PG's public `AgentStore` through `config_io`.
+`RegisteredPersona` captures independent `AgentIdentity`, native config, keyless state,
+and exact `store_root`, never reconstructed from `entry_path`. PG owns credential lookup
+by registered name and preserves renamed entries/symlinks. Persona/harness names follow
+kanibako spelling/reservation rules; target is harness node. Nothing persists.
 
-Selection and delivery still use the legacy reader below. Registered-name activation
-waits for identity consumers and manager pipe delivery. `persona-resolution-model.md`
-governs live inputs.
+`PersonaInputTarget`: read-only `name`, `read_persona_settings`, `project_persona_settings`,
+existing `PersonaReadOutcome`; no `Target` ABC required. `project_registered_persona` has
+no I/O, mutation, re-read, or credential fetch. Keyless preserves Codex's empty `env_key`
+and Claude's placeholder env. Names match case-insensitively; ambiguity refuses.
+Procedure: `persona-resolution-model.md`.
 
 ## Legacy launch layout (DESIGN §1)
 
@@ -39,17 +41,14 @@ rather than having to distinguish a miss from a failure.
 
 The legacy path owns:
 
-* **discovery and resolve** — pure reads: locate an entry (`locate_entry`), and resolve its
-  `.secret_path` token pointer (`resolve_secret_path`). Extracting the harness-native config itself
-  is NOT here; it lives on the Target plugins, as
-  `kanibako.targets.base.Target.read_persona_settings`.
-* **the LIVE bundle** — `PersonaBundle` and `read_persona_bundle`: one read of the store, rendered
-  into the harness-neutral values a single launch resolves against, threaded into
-  `build_launch_snapshot` as an in-memory level.
+* **Discovery and resolve** — pure reads: `locate_entry` locates entries;
+  `resolve_secret_path` resolves `.secret_path` token pointers. Harness-native extraction
+  belongs to plugins through `PersonaInputTarget.read_persona_settings`.
+* **Live bundle** — `PersonaBundle` and `read_persona_bundle`: one store read supplies
+  harness-neutral values to `build_launch_snapshot` as an in-memory level for one launch.
 
-The start-flow and create wiring is not here either. And nothing in this module ever reads the
-TOKEN file: the pointer is handled arm's-length, exactly like the `secret_path` keyspace category
-it feeds.
+Start/create wiring lives elsewhere. This module never reads tokens; pointers feed
+`secret_path` arm's-length.
 
 ## `locate_entry` — the two clean misses, and the one raise
 

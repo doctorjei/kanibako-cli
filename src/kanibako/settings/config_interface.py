@@ -185,7 +185,7 @@ if TYPE_CHECKING:
   from kanibako.settings.settings_categories import PersonaCredential
   from kanibako.settings.settings_launch import LaunchInputs
   from kanibako.settings.settings_prefs import AgentNames
-  from kanibako.targets.base import Target
+  from kanibako.persona_store import PersonaInputTarget
 
 #: The SET doors whose files ``workset_dirkeys.early_repoint`` reads, so the doors that run
 #: that reader's refusal on a workset early key.
@@ -508,7 +508,7 @@ def addressed_agent_identity(raw_key: str) -> AgentIdentity | None:
 
 def project_agent_input(
   resolved: AgentResolution,
-  target: Target | None,
+  target: PersonaInputTarget | None,
 ) -> tuple[Mapping[str, str | None] | None, PersonaCredential | None]:
   """Project captured input after target choice; never fetch credentials."""
   if resolved.unavailable is not None or target is None:

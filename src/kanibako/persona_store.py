@@ -1,8 +1,8 @@
 """Live persona inputs, never persisted.
 
-Registered-agent reads return identity, native config, and keyless state
-through the configuration facade. Legacy readers resolve native files
-and token pointers without opening credentials. Projections perform no I/O.
+Classification serves configuration. Registered reads capture native config
+and keyless state; legacy reads resolve token pointers. No credential reads or
+projection I/O.
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING, NamedTuple, Protocol
 
 from urllib.parse import urlsplit
 
@@ -30,17 +30,29 @@ from kanibako.settings.config_io import read_doc_text_capped
 from kanibako.utils.xdg import user_config_home
 from kanibako.targets.base import (
   PERSONA_DEFAULT_MODEL,
+  PersonaReadOutcome,
   _PersonaDefaultModel,
   _REDACTED,
   _scrub_endpoint_userinfo,
 )
 
 if TYPE_CHECKING:
-  from kanibako.targets.base import Target
+  from kanibako.settings.config import AgentResolution
 
 #: Read cap for ``.secret_path`` (bytes).  Anything larger is a malformed store,
 #: rejected WITHOUT slurping it into memory: fail warnable, never OOM.
 _POINTER_CAP = 16 * 1024
+
+
+class PersonaInputTarget(Protocol):
+  @property
+  def name(self) -> str: ...
+
+  def read_persona_settings(self, config_dir: Path) -> PersonaReadOutcome: ...
+
+  def project_persona_settings(
+    self, config: Mapping[str, object], *, source: str, keyless: bool = False
+  ) -> PersonaReadOutcome: ...
 
 
 @dataclass(frozen=True)
@@ -284,6 +296,60 @@ class RegisteredPersona:
   keyless: bool
 
 
+def read_agent_input(address: AgentIdentity) -> AgentResolution:
+  """Classify sources; carry unavailable diagnoses."""
+  from dataclasses import replace
+
+  from kanibako.agent_ref import CANONICAL_SEP, with_harness
+  from kanibako.errors import AgentNotInstalledError
+  from kanibako.install_method import install_command
+  from kanibako.settings.config import AgentResolution
+  from kanibako.targets import discover_targets
+
+  identity = address
+  try:
+    installed = set(discover_targets())
+  except Exception as exc:
+    return AgentResolution(identity, unavailable=exc)
+
+  registered = None
+  if (
+    CANONICAL_SEP not in identity.node and find_identifier(address.target_name, installed) is None
+  ):
+    try:
+      registered = read_registered_persona(address.target_name)
+    except Exception as exc:
+      return AgentResolution(identity, unavailable=exc)
+    if registered is not None:
+      identity = registered.identity
+
+  found = find_identifier(identity.target_name, installed)
+  if found is not None:
+    if registered is not None:
+      identity = replace(identity, harness=found, target_name=found)
+      registered = replace(registered, identity=identity)
+    else:
+      node = with_harness(identity.node, found)
+      identity = replace(
+        identity, node=node, persona=persona_of(node), harness=found, target_name=found
+      )
+    return AgentResolution(identity, registered)
+
+  if registered is not None:
+    error = AgentNotInstalledError(
+      f"PG agent '{identity.registered_name}' requires harness "
+      f"'{identity.target_name}'. Install it with:\n"
+      f"  {install_command(f'kanibako-agent-{identity.target_name}')}"
+    )
+  else:
+    error = AgentNotInstalledError(
+      f"Agent '{identity.target_name}' is not installed. Install it with:\n"
+      f"  {install_command(f'kanibako-agent-{identity.target_name}')}\n"
+      f"Or run 'kanibako agent list' to see installed agents."
+    )
+  return AgentResolution(identity, registered, error)
+
+
 def read_registered_persona(name: str) -> RegisteredPersona | None:
   """Read identity before choosing a target, without fetching credentials or writing files."""
   from kanibako.settings.config_io import (
@@ -345,7 +411,9 @@ def read_registered_persona(name: str) -> RegisteredPersona | None:
     raise ConfigError(f"persona store at {root}: cannot read agent '{name}': {exc}") from exc
 
 
-def project_registered_persona(persona: RegisteredPersona, target: Target) -> PersonaBundle:
+def project_registered_persona(
+  persona: RegisteredPersona, target: PersonaInputTarget
+) -> PersonaBundle:
   """Project native values and keyless names without I/O or mutation."""
   identity = persona.identity
   if find_identifier(target.name, (identity.target_name,)) is None:
@@ -425,7 +493,7 @@ def validate_endpoint(endpoint: str) -> None:
     )
 
 
-def read_persona_bundle(ref: str, target: Target) -> PersonaBundle | None:
+def read_persona_bundle(ref: str, target: PersonaInputTarget) -> PersonaBundle | None:
   """Read the persona store ONCE and return the LIVE values for a launch.
 
   ``None`` means *ref* is NOT a store persona — a bare agent, or a

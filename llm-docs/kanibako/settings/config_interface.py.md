@@ -95,12 +95,12 @@ settings file and IS swept, as part of the nested scope tables.
 
 ## Functions
 
-`addressed_agent_input(raw_key)` unwraps a pref and classifies its node once, retaining captured
-PG input and unavailable diagnosis; other addresses return `None`. `addressed_agent_identity`
-projects it. `project_agent_input(resolved, target)` projects existing registered/legacy values
-after target choice, returning values and plaintext-free credential metadata without fetching.
-Unavailable input yields neither; projection failures propagate. Wrappers retain diagnosis as
-`target_error`. Full-key gates still use `identity_valid_agents`, never permissive vocabulary.
+`addressed_agent_input(raw_key)` unwraps prefs and classifies once, retaining PG input and
+unavailable diagnosis; other addresses return `None`. `addressed_agent_identity` projects it.
+`project_agent_input(resolved, target)` consumes `persona_store.PersonaInputTarget`, projecting
+registered/legacy values after target choice into values and plaintext-free credential
+metadata without fetching. Unavailable input yields neither; projection failures propagate.
+Wrappers retain `target_error`. Full-key gates use `identity_valid_agents`, never permissive vocabulary.
 
 ```parse_config_arg(arg: str | None, *, set_null: bool = False) -> tuple[ConfigAction, str, str | None]```
 Parse a single positional config argument into `(action, key, value)`.

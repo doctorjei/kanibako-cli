@@ -235,6 +235,36 @@ def test_installed_plugin_collision_never_opens_broken_pg(monkeypatch):
   assert addressed.registered_persona is addressed.unavailable is None
 
 
+def test_named_input_discovers_fresh_after_vocabulary_cache(monkeypatch):
+  from unittest.mock import Mock
+
+  from kanibako.settings import settings_prefs
+
+  monkeypatch.setattr(settings_prefs, "_DISCOVERY", {})
+  old_target = Mock()
+  old_target.return_value.setting_descriptors.return_value = ()
+  discover = Mock(return_value={"old": old_target})
+  monkeypatch.setattr("kanibako.targets.discover_targets", discover)
+  cached = settings_prefs.default_valid_agents()
+  assert set(cached) == {"old"}
+  old_target.assert_called_once_with()
+  old_target.return_value.setting_descriptors.assert_called_once_with()
+  new_target = Mock(side_effect=AssertionError("classification must not construct targets"))
+  discover.return_value = {"Scout": new_target}
+  pg = Mock(side_effect=AssertionError("native precedence must not read PG"))
+  monkeypatch.setattr("kanibako.persona_store.read_registered_persona", pg)
+  addressed = resolve_named_agent_input("  sCoUt  ")
+  assert addressed.identity == AgentIdentity("Scout", None, "Scout", "Scout", "Scout", None)
+  assert addressed.registered_persona is addressed.unavailable is None
+  assert discover.call_count == 2
+  assert settings_prefs.default_valid_agents() is cached
+  assert set(cached) == {"old"}
+  old_target.assert_called_once_with()
+  old_target.return_value.setting_descriptors.assert_called_once_with()
+  new_target.assert_not_called()
+  pg.assert_not_called()
+
+
 def test_broken_pg_remains_addressable_with_its_diagnosis(monkeypatch):
   monkeypatch.setattr("kanibako.targets.discover_targets", lambda: {"claude": object})
   _root, _entry, listing, reader = _public_registration(monkeypatch)

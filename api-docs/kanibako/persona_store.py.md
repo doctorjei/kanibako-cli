@@ -17,15 +17,22 @@ _ENDPOINT_SCHEMES = frozenset({'http', 'https'})
 def persona_store_root() -> Path
 def locate_entry(ref: str) -> PersonaEntry | None
 def resolve_secret_path(entry: PersonaEntry) -> SecretPathResult
+def read_agent_input(address: AgentIdentity) -> AgentResolution
 def read_registered_persona(name: str) -> RegisteredPersona | None
-def project_registered_persona(persona: RegisteredPersona, target: Target) -> PersonaBundle
+def project_registered_persona(persona: RegisteredPersona, target: PersonaInputTarget) -> PersonaBundle
 def validate_endpoint(endpoint: str) -> None
-def read_persona_bundle(ref: str, target: Target) -> PersonaBundle | None
+def read_persona_bundle(ref: str, target: PersonaInputTarget) -> PersonaBundle | None
 ```
 
 ## Classes
 
 ```
+class PersonaInputTarget(Protocol):
+    @property
+    def name(self) -> str
+    def read_persona_settings(self, config_dir: Path) -> PersonaReadOutcome
+    def project_persona_settings(self, config: Mapping[str, object], *, source: str, keyless: bool=False) -> PersonaReadOutcome
+
 @dataclass(frozen=True)
 class PersonaEntry:
     node: str

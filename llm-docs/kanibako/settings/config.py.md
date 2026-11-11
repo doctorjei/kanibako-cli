@@ -708,10 +708,10 @@ string is a NON-BLOCKING advisory the caller prints to stderr before continuing.
 Return `resolve_agent_identity`'s node without another lookup.
 
 ```resolve_named_agent_input(name: str) -> AgentResolution```
-Classify once after grammar validation. Shell returns before discovery; composites retain
-legacy addressing. A bare installed plugin wins without PG access; other bare names read
-public PG once. Registered node, persona, name, entry path, and captured root survive.
-Registry spelling canonicalizes the target and its captured payload together.
+Validate grammar, handle shell, then delegate all live-source selection to
+`persona_store.read_agent_input`. Composites retain legacy addressing; bare installed
+plugins win without PG access. Other bare names read public PG once. Registered node,
+persona, name, entry path, and root survive; registry case updates target and payload together.
 
 `AgentResolution` carries identity, optional `registered_persona`, and optional `unavailable`
 diagnosis. Mismatched payload/identity is refused. Missing plugins, broken PG, and discovery
