@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 import pytest
+import yaml
 
 from kanibako.settings import config_io
 
@@ -223,6 +224,51 @@ def test_native_yaml_does_not_inherit_kanibako_document_guards():
   for _ in range(70):
     data = data[0]
   assert data == 1
+
+
+@pytest.mark.parametrize("read", [config_io.parse_doc_text, config_io.parse_template_yaml])
+@pytest.mark.parametrize(
+  ("text", "expected"),
+  [
+    ("", None),
+    ("# empty\n", None),
+    ("None", None),
+    ("'None'", "None"),
+    ("none", "none"),
+    ("[null, ~, None, 'None', none]", [None, None, None, "None", "none"]),
+    ("on: yes\n2: value\n", {True: True, 2: "value"}),
+    ("base: &b {a: 1}\nvalue: {<<: *b, a: 2}\n", {"base": {"a": 1}, "value": {"a": 2}}),
+    ("base: &b [1]\nvalue: *b\n", {"base": [1], "value": [1]}),
+  ],
+)
+def test_guarded_yaml_facades_keep_native_values(read, text, expected):
+  assert read(text) == expected
+
+
+@pytest.mark.parametrize("read", [config_io.parse_doc_text, config_io.parse_template_yaml])
+@pytest.mark.parametrize(
+  ("text", "error"),
+  [
+    ("[broken", yaml.YAMLError),
+    ("---\na: 1\n---\nb: 2\n", yaml.YAMLError),
+    ("a: 1\na: 2\n", config_io.DuplicateKeyError),
+    ("value: &loop [*loop]\n", config_io.CyclicAnchorError),
+    ("value: " + "[" * 70 + "1" + "]" * 70, config_io.DocumentTooDeepError),
+    ("[" * 2000 + "1" + "]" * 2000, config_io.DocumentTooDeepError),
+  ],
+)
+def test_guarded_yaml_facades_keep_refusals(read, text, error):
+  with pytest.raises(error):
+    read(text)
+
+
+@pytest.mark.parametrize("read", [config_io.parse_doc_text, config_io.parse_template_yaml])
+def test_guarded_yaml_facades_keep_nonfinite_values(read):
+  import math
+
+  value = read("[.nan, .inf, -.inf]")
+  assert math.isnan(value[0])
+  assert value[1:] == [math.inf, -math.inf]
 
 
 @pytest.mark.parametrize(

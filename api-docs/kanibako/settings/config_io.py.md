@@ -30,6 +30,7 @@ def parse_packaged(text: str) -> object
 def load_packaged_mapping(ref: Traversable, filename: str) -> dict[str, Any]
 def yaml_problem(exc: yaml.YAMLError) -> str
 def parse_doc_text(text: str) -> object
+def parse_template_yaml(text: str) -> object
 def read_doc_text(path: Path, *, encoding: str | None=None) -> str
 def read_doc_text_capped(path: Path, *, cap: int, encoding: str | None=None) -> str
 def write_doc_text(path: Path, text: str) -> None
@@ -68,6 +69,7 @@ def read_stored_pref(noun_file: 'Path | None', sections: tuple[str, ...], leaf: 
 def _read_none_as_null(cls: type) -> None
 def _unquoted_brace_hint(mark: yaml.Mark | None) -> str
 def _guard_document(data: object) -> None
+def _parse_guarded_yaml(text: str) -> object
 def _strip_jsonc(text: str) -> str
 def _unnamed_key(data: dict) -> tuple[str, object] | None
 def _dump_text(data: dict) -> str

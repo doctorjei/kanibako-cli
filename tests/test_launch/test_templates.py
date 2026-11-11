@@ -3318,6 +3318,30 @@ class TestRefreshEquivalenceTiers:
     dst.write_text("b: 2\na: 1\n")
     assert _equivalent(src, dst)
 
+  @pytest.mark.parametrize(
+    ("left", "right"),
+    [
+      ("on: yes\nvalue: None\n", "value: null\ntrue: true\n"),
+      ("x: &s {q: 1}\ny: *s\n", "y: {q: 1}\nx: {q: 1}\n"),
+      ("value: [.nan, .inf, -.inf]\n", "value: [ .nan, .inf, -.inf ]\n"),
+    ],
+  )
+  def test_native_yaml_comparison_does_not_use_the_owned_reader(
+    self, tmp_path, monkeypatch, left, right
+  ):
+    from kanibako.launch.templates import _equivalent
+    from kanibako.settings import config_io
+
+    monkeypatch.setattr(
+      config_io, "parse_doc_text", lambda _text: pytest.fail("owned reader reached")
+    )
+    src = tmp_path / "a.yaml"
+    dst = tmp_path / "b.yaml"
+    src.write_text(left)
+    dst.write_text(right)
+    assert src.read_bytes() != dst.read_bytes()
+    assert _equivalent(src, dst)
+
   def test_unparseable_yaml_is_different(self, tmp_path):
     from kanibako.launch.templates import _equivalent
 
@@ -3330,7 +3354,7 @@ class TestRefreshEquivalenceTiers:
   def test_a_repeated_key_is_different_not_equivalent(self, tmp_path):
     """``"k: 1\\nk: 2\\n"`` and ``"k: 2\\n"`` read as the same document ONLY under
     last-wins, which is a silent accept of the second value over the first (spec §0).
-    Both sides now go through ``parse_doc_text``, so the repeat is a parse failure and
+    Both sides use ``parse_template_yaml``, so the repeat is a parse failure and
     the existing "a YAML parse failure ⇒ different" rule covers it with no new branch."""
     from kanibako.launch.templates import _equivalent
 
@@ -3498,7 +3522,7 @@ class TestEquivalenceOnSharedAliasDocuments:
     a row carrying a ``# host note`` on one side is there on purpose.
     """
     from kanibako.launch.templates import _equivalent
-    from kanibako.settings.config_io import parse_doc_text
+    from kanibako.settings.config_io import parse_template_yaml
 
     corpus = [
       ("key order", "a: 1\nb: 2\n", "b: 2\na: 1\n"),
@@ -3532,7 +3556,7 @@ class TestEquivalenceOnSharedAliasDocuments:
       dst = tmp_path / "b.yaml"
       src.write_text(left)
       dst.write_text(right)
-      expected = parse_doc_text(left) == parse_doc_text(right)
+      expected = parse_template_yaml(left) == parse_template_yaml(right)
       assert _equivalent(src, dst) is expected, f"{why}: {left!r} vs {right!r}"
 
   def test_a_shared_alias_document_that_differs_deeply_is_a_difference(self, tmp_path):

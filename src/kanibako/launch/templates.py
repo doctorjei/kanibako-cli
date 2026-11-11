@@ -1275,11 +1275,10 @@ def _equivalent(src_file: Path, target: Path) -> bool:
 
   ONE strategy table keyed by suffix (J-3 item 2).  ⚑ A YAML parse failure on
   EITHER side ⇒ "different", never equivalent: an unparseable file is exactly the
-  case a report should surface.  ⚑ BOTH SIDES GO THROUGH ``parse_doc_text``, so a
-  repeated key, a self-referential anchor, or unbounded nesting is a parse failure
-  here too — a file that reads as a DIFFERENT ANSWER under last-wins is a difference,
-  and needs no new branch below to say so.  ⚑ The YAML branch compares the two PARSED
-  documents with :func:`_same_doc`.
+  case a report should surface. Both sides use ``parse_template_yaml``: repeated
+  keys, self-referential anchors, and unbounded nesting remain parse failures;
+  last-wins would hide a difference. The YAML branch compares parsed documents
+  with :func:`_same_doc`.
   """
   try:
     src_bytes = src_file.read_bytes()
@@ -1292,12 +1291,12 @@ def _equivalent(src_file: Path, target: Path) -> bool:
   if suffix in (".yaml", ".yml"):
     import yaml
 
-    from kanibako.settings.config_io import parse_doc_text
+    from kanibako.settings.config_io import parse_template_yaml
 
     try:
       return _same_doc(
-        parse_doc_text(src_bytes.decode()),
-        parse_doc_text(target_bytes.decode()),
+        parse_template_yaml(src_bytes.decode()),
+        parse_template_yaml(target_bytes.decode()),
       )
     except (yaml.YAMLError, UnicodeDecodeError):
       return False

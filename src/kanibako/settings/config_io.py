@@ -358,14 +358,16 @@ def _guard_document(data: object) -> None:
 
 
 def parse_doc_text(text: str) -> object:
-  """Parse ONE document from *text* under kanibako's reading rules.
+  """Parse owned configuration text with the same guards as :func:`load_doc`."""
+  return _parse_guarded_yaml(text)
 
-  ⚑ THE TEXT DOOR :func:`load_doc` ALSO OPENS, so a caller holding YAML instead of a
-  file gets the SAME refusals in the SAME words; a second reader is a second, quieter
-  opinion on what a document means.  The three refusals — :class:`DuplicateKeyError`,
-  :class:`CyclicAnchorError`, :class:`DocumentTooDeepError` — are
-  :class:`yaml.YAMLError`\\ s, so one ``except yaml.YAMLError`` covers all of them.
-  """
+
+def parse_template_yaml(text: str) -> object:
+  """Parse native template YAML independently of the owned configuration codec."""
+  return _parse_guarded_yaml(text)
+
+
+def _parse_guarded_yaml(text: str) -> object:
   try:
     data = yaml.load(text, Loader=_UniqueKeyLoader)  # a SafeLoader: no arbitrary objects
   except RecursionError as exc:

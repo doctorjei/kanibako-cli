@@ -894,8 +894,8 @@ over-normalizes would HIDE a real change, which is why the bias is conservative.
 True when *target* is byte-equal to, or EQUIVALENT to, *src_file*. ONE strategy table keyed by
 suffix (J-3 item 2):
 
-* `.yaml` / `.yml` — `safe_load` both sides and deep-compare. A parse failure on EITHER side ⇒
-  "different" (never equivalent: an unparseable file is exactly the case a report should surface).
+* `.yaml` / `.yml` — `parse_template_yaml` both sides, then `_same_doc`: guarded native YAML,
+  independent of owned parsing. Either parse failure ⇒ "different".
 * `.md` — `_normalize_markdown` both sides and compare.
 * anything else — bytes only.
 
