@@ -272,16 +272,17 @@ class TestB2bHomeVaultByteIdentity:
     box_overrides = {
       "box": {"bindings": {"rw": {"~": ["/custom/home"]}}},
     }
-    import yaml
     import tempfile
     import os
 
+    from kanibako.settings.config_io import dump_doc
+
     fd, path = tempfile.mkstemp(suffix=".yaml")
-    os.write(fd, yaml.safe_dump(box_overrides).encode())
     os.close(fd)
     try:
       from pathlib import Path
 
+      dump_doc(Path(path), box_overrides)
       snap = build_launch_snapshot(
         agent_name="claude",
         ctx=ctx,
@@ -2650,22 +2651,20 @@ class TestAPrefRequestIsReadUnderTheArmKeyItWasFiledUnder:
     """The ``show --effective`` text for a box file holding *ro* as a ``pref`` arm."""
     import io
 
-    import yaml
-
     from kanibako.settings.config_interface import show_config
+    from kanibako.settings.config_io import dump_doc
     from kanibako.settings.settings_launch import (
       build_launch_snapshot,
       meta_agent_path_floor,
     )
 
     box = tmp_path / "box.yaml"
-    box.write_text(
-      yaml.safe_dump(
-        {
-          "pref": {"agent": {agent: {"bindings": {"ro": ro}}}},
-          "box": {"env": {"ODD": "/e@v$q"}},
-        }
-      )
+    dump_doc(
+      box,
+      {
+        "pref": {"agent": {agent: {"bindings": {"ro": ro}}}},
+        "box": {"env": {"ODD": "/e@v$q"}},
+      },
     )
     ctx = make_ctx(agent_name=agent)
     dest_keys: dict = {}
@@ -3047,9 +3046,8 @@ class TestTheEffectiveBlockOmitsBindsOfConvenience:
     """Render the block; *box_binds* is the user's ``box.bindings`` table, if any."""
     import io
 
-    import yaml
-
     from kanibako.commands.start import _install_assembly_collapse
+    from kanibako.settings.config_io import dump_doc
     from kanibako.settings import core_defaults
     from kanibako.settings.config_display import _print_category_block
     from kanibako.settings.settings_launch import (
@@ -3096,7 +3094,7 @@ class TestTheEffectiveBlockOmitsBindsOfConvenience:
     box_path = None
     if box_binds:
       box_path = tmp_path / "box.yaml"
-      box_path.write_text(yaml.safe_dump({"box": {"bindings": box_binds}}))
+      dump_doc(box_path, {"box": {"bindings": box_binds}})
     ctx = make_ctx(
       workset_name=None,
       config={"config.primary_workset": "/data/pw"},

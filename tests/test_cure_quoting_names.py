@@ -455,7 +455,7 @@ def _member_with_retired(std, config, tmp_home, leaf_yaml: str):
 
 def _run_fix_from_outside(refusal: str, box_path: Path, tmp_home: Path, monkeypatch):
   """Delete the stored entry, then run the printed ``Fix:`` line from outside the set."""
-  import yaml
+  from kanibako.settings.config_io import parse_doc_text
 
   found = _FIX.search(refusal)
   assert found, refusal
@@ -465,7 +465,7 @@ def _run_fix_from_outside(refusal: str, box_path: Path, tmp_home: Path, monkeypa
   outside.mkdir(exist_ok=True)
   monkeypatch.chdir(outside)
   assert _run(argv[1:]) == 0, found.group(1)
-  return argv, yaml.safe_load(box_path.read_text()) or {}
+  return argv, parse_doc_text(box_path.read_text()) or {}
 
 
 def test_the_selection_cure_runs_from_outside_the_workset(

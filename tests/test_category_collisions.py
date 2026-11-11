@@ -2019,9 +2019,8 @@ class TestThePrefOriginReachesTheLIVEPATH:
     project_dir,
     tmp_path,
   ):
-    import yaml
-
     from kanibako.commands.start import _resolve_launch_snapshot
+    from kanibako.settings.config_io import dump_doc
     from kanibako.errors import CategoryCollisionError
     from kanibako.settings.paths import resolve_project
     from kanibako.targets.shell import ShellTarget
@@ -2030,12 +2029,11 @@ class TestThePrefOriginReachesTheLIVEPATH:
     src.mkdir()
     proj = resolve_project(std, config, str(project_dir), initialize=True)
     proj.metadata_path.mkdir(parents=True, exist_ok=True)
-    (proj.metadata_path / "box.yaml").write_text(
-      yaml.safe_dump(
-        {
-          "pref": {"agent": {"claude": {"common": {self.DEST: [str(src)]}}}},
-        }
-      )
+    dump_doc(
+      proj.metadata_path / "box.yaml",
+      {
+        "pref": {"agent": {"claude": {"common": {self.DEST: [str(src)]}}}},
+      },
     )
 
     with pytest.raises(CategoryCollisionError) as exc:
