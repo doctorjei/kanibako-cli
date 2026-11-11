@@ -52,7 +52,7 @@ import pytest
 import yaml
 
 from kanibako.errors import PackagingError
-from kanibako.settings import agent_defaults, core_defaults
+from kanibako.settings import agent_defaults, config_io, core_defaults
 from kanibako.settings.settings_resolve import GUEST_HOME
 from kanibako.targets.base import (
   BindKind,
@@ -88,7 +88,7 @@ def _data_file_path(package: str, filename: str) -> Path:
 
 
 def _load_yaml(package: str, filename: str) -> dict:
-  return yaml.safe_load(_data_file_path(package, filename).read_text()) or {}
+  return config_io.parse_packaged(_data_file_path(package, filename).read_text()) or {}
 
 
 # --------------------------------------------------------------------------- #
