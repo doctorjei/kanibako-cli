@@ -18,6 +18,8 @@ _ABSENT = object()
 
 ## Functions
 ```
+def parse_standalone_marker(raw: bytes) -> str | None
+def render_standalone_marker(marker: str) -> str
 def read_packaged_bytes(ref: Traversable) -> bytes
 def persona_store_location() -> Path
 def persona_store_agents(*, root: Path | None=None) -> dict[str, Path]

@@ -3,6 +3,10 @@
 YAML: `load_doc`/`dump_doc`; routing: `config_keys`/`config_dest`. PG: `AkanError`→`ConfigError`
 (source/cause), private CLI fetches. Excludes `pyproject.toml`.
 
+Standalone markers: `parse_standalone_marker` uses public `yapyon.yamlplus.loads` on strict
+UTF-8 bytes; invalid/non-string → `None`. `render_standalone_marker` uses `yamlplus.dumps`.
+Token recognition and legacy acceptance stay in `config`; box transport stays unchanged.
+
 ## Host transport and native codecs
 
 `read_doc_text` keeps encodings; `write_doc_text` is atomic. `overwrite_doc_text` mkdirs before

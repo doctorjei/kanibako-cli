@@ -34,7 +34,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Convert core/plugin defaults and image baseline to YamlPlus; runtime codecs unchanged.
+- Convert core/plugin defaults and image baseline to YamlPlus.
+- New standalone markers use quoted YamlPlus; legacy markers stay unchanged. See
+  MIGRATION.md's standalone-registry section before downgrading to a raw-only 1.8.x reader.
 - **A blank `-e VAR=` now suppresses the credential instead of being ignored.** On
   `kanibako start`, a blank or whitespace-only value for a persona's token
   variable means "run without it": nothing is read, stat'd, fetched, staged,

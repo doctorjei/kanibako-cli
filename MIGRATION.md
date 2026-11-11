@@ -7996,6 +7996,11 @@ the file and the cure; a box settings file drops it with a warning. kanibako con
   Fix, by hand: that null marked a standalone box, which <root>/registry.yaml now marks by holding only __STANDALONE__: write that file, then remove the line. See MIGRATION.md § "The workset registry is a fixed file, and a standalone box is marked in it".
 ```
 
+**YamlPlus conversion (unreleased).** New markers contain `"__STANDALONE__"`, a quoted
+YamlPlus string. Existing raw markers remain accepted and are never automatically rewritten.
+Raw-only 1.8.x readers, including released 1.8.0, do not recognize quoted markers. Before
+downgrading, replace only the standalone marker with the raw token shown below, by hand.
+
 **What you must do.**
 
 - A standalone box: write the mark, then delete the `registry: null` line from `<root>/workset.yaml`:

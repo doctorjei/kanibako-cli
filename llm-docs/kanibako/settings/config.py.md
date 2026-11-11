@@ -25,6 +25,11 @@ Authority: spec `~/canon/workbook/specs/settings-keyspace-1.8.0.md` §0 (closed 
 foundation + the CLI level), §2b (`box.agent_name` retired), §2c (the box/workset settings-file
 derivation), §2g (the Layer-2 `system.*` path settings + `system.agent`), §2h (`pref.*` requests).
 
+Standalone recognition accepts a trimmed, case-insensitive YamlPlus string through
+`config_io`, plus the exact legacy raw-token corpus. Creation emits quoted YamlPlus only
+when absent; existing markers stay byte-exact. Rooted transport, refusals, and drop/undo
+are unchanged. Downgrade: see `MIGRATION.md`, *The workset registry is a fixed file, and a standalone box is marked in it*.
+
 ## The two file sets, and why they are not the same thing
 
 Two DIFFERENT file families are read here and confusing them is the standing hazard:

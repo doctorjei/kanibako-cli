@@ -58,6 +58,24 @@ _read_none_as_null(_PackagedLoader)
 MAX_DOC_DEPTH = 64
 
 
+def parse_standalone_marker(raw: bytes) -> str | None:
+  """Read a YamlPlus string marker; invalid documents and other shapes are not markers."""
+  from yapyon import AkanError, yamlplus  # type: ignore[import-untyped]
+
+  try:
+    value = yamlplus.loads(raw.decode("utf-8"))
+  except (UnicodeDecodeError, AkanError):
+    return None
+  return value if isinstance(value, str) else None
+
+
+def render_standalone_marker(marker: str) -> str:
+  """Emit the standalone marker as a YamlPlus string document."""
+  from yapyon import yamlplus  # type: ignore[import-untyped]
+
+  return yamlplus.dumps(marker)  # type: ignore[no-any-return]
+
+
 def read_packaged_bytes(ref: Traversable) -> bytes:
   """Read exact bytes from a packaged configuration resource."""
   return ref.read_bytes()

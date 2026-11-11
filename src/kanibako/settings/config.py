@@ -21,8 +21,10 @@ from kanibako.settings.bootstrap import (
 from kanibako.settings.config_io import (
   dump_doc,
   load_doc,
+  parse_standalone_marker,
   read_box_doc_bytes,
   refuse_scalar_sections,
+  render_standalone_marker,
   write_box_doc_text,
   write_doc_text,
 )
@@ -571,8 +573,8 @@ def read_workset_kuid(path: Path) -> str:
 def holds_standalone_mark(workset_root: Path) -> bool:
   """True iff *workset_root*'s own registry file holds only the standalone mark.
 
-  ⚑ The mark DEFINES standalone (system-design § Detection & import), compared on the
-  RAW text, trimmed and case-blind, never parsed: this root's file only, never the cascade.
+  The YamlPlus string (or legacy raw token), trimmed and case-blind, DEFINES
+  standalone: this root's file only, never the cascade (system-design § Detection & import).
   """
   return is_standalone_mark_file(workset_root / WORKSET_REGISTRY_FILE)
 
@@ -581,7 +583,10 @@ def is_standalone_mark(raw: bytes) -> bool:
   """True iff *raw*, a registry file's bytes, is only the standalone mark."""
   from kanibako.channels.channels import WS_TOKEN_STANDALONE
 
-  return raw.strip().decode("utf-8", "replace").casefold() == WS_TOKEN_STANDALONE.casefold()
+  if raw.strip().decode("utf-8", "replace").casefold() == WS_TOKEN_STANDALONE.casefold():
+    return True  # Preserve the legacy raw-token corpus without rewriting it.
+  value = parse_standalone_marker(raw)
+  return value is not None and value.strip().casefold() == WS_TOKEN_STANDALONE.casefold()
 
 
 def is_standalone_mark_file(path: Path) -> bool:
@@ -616,7 +621,7 @@ def write_standalone_mark(workset_root: Path) -> None:
   try:
     st = boxfs.stat(path, workset_root)
   except FileNotFoundError:
-    write_box_doc_text(path, workset_root, WS_TOKEN_STANDALONE + "\n")
+    write_box_doc_text(path, workset_root, render_standalone_marker(WS_TOKEN_STANDALONE))
     return
   except boxfs.SymlinkRefusedError:
     what = "a symlink"

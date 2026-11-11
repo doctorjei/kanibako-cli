@@ -24,6 +24,22 @@ from kanibako.settings import config
     (b"__STANDALONE__\xff", False),
     (" __STANDALONE__".encode(), False),
     (b"__STANDALONE__\nother", False),
+    (b'"__STANDALONE__"\n', True),
+    (b"' \t__Standalone__ '\n", True),
+    (b'"\\u005f_STANDALONE__"\n', True),
+    (b'# marker\n"__standalone__" # root\n', True),
+    (b'"__STANDALONE__"\n# invalid utf-8: \xff', False),
+    (b'["__STANDALONE__"]\n', False),
+    (b'{"marker": "__STANDALONE__"}\n', False),
+    (b'!!str "__STANDALONE__"\n', False),
+    (b'!!python/object/apply:os.system ["false"]', False),
+    (b'"__STANDALONE__"\n---\n"other"', False),
+    (b'"__STANDALONE__', False),
+    (b'"other"', False),
+    (b"None\n", False),
+    (b"True\n", False),
+    (b"42\n", False),
+    (b"", False),
   ],
 )
 def test_marker_keeps_byte_trim_casefold_and_replacement_decode(tmp_path, raw, expected):
@@ -33,7 +49,8 @@ def test_marker_keeps_byte_trim_casefold_and_replacement_decode(tmp_path, raw, e
   assert path.read_bytes() == raw
 
 
-def test_marker_read_and_write_keep_explicit_roots_and_newline(tmp_path, monkeypatch):
+@pytest.mark.parametrize("existing", [b" \t__Standalone__\r\n", b"' __Standalone__ '\n"])
+def test_marker_read_and_write_keep_explicit_roots_and_newline(tmp_path, monkeypatch, existing):
   path = tmp_path / config.WORKSET_REGISTRY_FILE
   calls = []
   read, write = config.read_box_doc_bytes, config.write_box_doc_text
@@ -49,14 +66,17 @@ def test_marker_read_and_write_keep_explicit_roots_and_newline(tmp_path, monkeyp
   monkeypatch.setattr(config, "read_box_doc_bytes", read_box)
   monkeypatch.setattr(config, "write_box_doc_text", write_box)
   config.write_standalone_mark(tmp_path)
-  assert calls == [("read", path, tmp_path), ("write", path, tmp_path, "__STANDALONE__\n")]
-  assert path.read_bytes() == b"__STANDALONE__\n"
-  path.write_bytes(b" \t__Standalone__\r\n")
+  assert calls == [("read", path, tmp_path), ("write", path, tmp_path, '"__STANDALONE__"\n')]
+  assert path.read_bytes() == b'"__STANDALONE__"\n'
+  from yapyon import yamlplus
+
+  assert yamlplus.loads(path.read_text()) == "__STANDALONE__"
+  path.write_bytes(existing)
   before = path.stat()
   calls.clear()
   config.write_standalone_mark(tmp_path)
   assert calls == [("read", path, tmp_path)]
-  assert path.read_bytes() == b" \t__Standalone__\r\n"
+  assert path.read_bytes() == existing
   assert path.stat().st_ino == before.st_ino
   assert path.stat().st_mtime_ns == before.st_mtime_ns
 
@@ -84,7 +104,7 @@ def test_explicit_marker_root_can_still_be_a_symlink(tmp_path):
   root.symlink_to(target, target_is_directory=True)
   config.write_standalone_mark(root)
   assert root.is_symlink()
-  assert (target / config.WORKSET_REGISTRY_FILE).read_bytes() == b"__STANDALONE__\n"
+  assert (target / config.WORKSET_REGISTRY_FILE).read_bytes() == b'"__STANDALONE__"\n'
   assert config.is_standalone_mark_file(root / config.WORKSET_REGISTRY_FILE)
 
 
@@ -128,11 +148,11 @@ def test_marker_write_does_not_create_a_missing_root(tmp_path):
   assert not root.exists()
 
 
-def test_drop_and_restore_use_rooted_byte_doors_before_unlink(tmp_path, monkeypatch):
+@pytest.mark.parametrize("raw", [b" \t__Standalone__\r\n", b"# mark\n' __Standalone__ '\n"])
+def test_drop_and_restore_use_rooted_byte_doors_before_unlink(tmp_path, monkeypatch, raw):
   from kanibako import boxfs
   from kanibako.settings import config_io, paths
 
-  raw = b" \t__Standalone__\r\n"
   path = tmp_path / config.WORKSET_REGISTRY_FILE
   path.write_bytes(raw)
   undo = []

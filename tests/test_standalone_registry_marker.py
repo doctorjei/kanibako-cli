@@ -3,7 +3,7 @@
 ``system-design-1.8.0.md`` § Detection & import and the keyspec's
 ``meta.workset.registry`` row: the registry is fixed at
 ``{meta.workset.path}/registry.yaml`` and no file sets it; create writes the mark
-there, and detection reads THAT root's own file (raw text, trimmed, case-blind).  A
+there; detection reads that root's YamlPlus string or legacy token, trimmed, case-blind. A
 stored ``workset.registry`` — the retired key, and the old ``registry: null`` marker —
 refuses, naming the cure.
 """
@@ -21,7 +21,7 @@ from kanibako.settings.config import WORKSET_META_FILE
 from kanibako.settings.paths import STANDALONE_META_DIR
 from kanibako.settings.settings_resolve import SettingsError
 
-MARK = "__STANDALONE__\n"
+MARK = '"__STANDALONE__"\n'
 MIGRATION_HEADING = "The workset registry is a fixed file, and a standalone box is marked in it"
 
 
@@ -111,7 +111,8 @@ class TestDetection:
     assert "Mode:         standalone" not in _info(root, capsys)[1]
 
   @pytest.mark.parametrize(
-    "text", [MARK, "__standalone__", "  __Standalone__ \n\n", "\t__STANDALONE__"]
+    "text",
+    [MARK, "' __Standalone__ '", "__standalone__", "  __Standalone__ \n\n", "\t__STANDALONE__"],
   )
   def test_the_mark_is_trimmed_and_case_blind(self, tmp_path, text):
     (tmp_path / "registry.yaml").write_text(text)
