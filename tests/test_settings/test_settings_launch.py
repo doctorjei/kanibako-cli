@@ -3827,11 +3827,11 @@ def test_routed_bind_equivalence_vs_literal_injection():
 # --------------------------------------------------------------------------- #
 # box.agent.* mirror (block B5 — spec §2b, §0 directional)               #
 # --------------------------------------------------------------------------- #
-import yaml  # noqa: E402
+from kanibako.settings.config_io import dump_doc, parse_doc_text  # noqa: E402
 
 
 def _yaml(path: Path, data: dict) -> Path:
-  path.write_text(yaml.safe_dump(data, sort_keys=False))
+  dump_doc(path, data)
   return path
 
 
@@ -3886,7 +3886,7 @@ def test_a_box_file_box_agent_table_is_REFUSED_BY_NAME(tmp_path: Path):
   box = _yaml(tmp_path / "box.yaml", {"box": {"agent": {"model": "sonnet"}}})
   with pytest.raises(SettingsError) as ei:
     refuse_retired_keys(
-      yaml.safe_load(box.read_text()),
+      parse_doc_text(box.read_text()),
       level="box",
       path=box,
       box_ref="mybox",
@@ -3917,7 +3917,7 @@ def test_a_box_file_box_agent_SCALAR_gets_the_selection_story(tmp_path: Path):
   box = _yaml(tmp_path / "box.yaml", {"box": {"agent": "claude"}})
   with pytest.raises(SettingsError) as ei:
     refuse_retired_keys(
-      yaml.safe_load(box.read_text()),
+      parse_doc_text(box.read_text()),
       level="box",
       path=box,
       box_ref="mybox",
@@ -5604,7 +5604,7 @@ class TestPrefLevelPrecedence:
     )
     with pytest.raises(SettingsError) as ei:
       refuse_retired_keys(
-        yaml.safe_load(box.read_text()),
+        parse_doc_text(box.read_text()),
         level="box",
         path=box,
         box_ref="mybox",
@@ -5653,7 +5653,7 @@ class TestPrefLevelPrecedence:
     )
     with pytest.raises(SettingsError) as ei:
       refuse_retired_keys(
-        yaml.safe_load(box.read_text()),
+        parse_doc_text(box.read_text()),
         level="box",
         path=box,
         box_ref="mybox",

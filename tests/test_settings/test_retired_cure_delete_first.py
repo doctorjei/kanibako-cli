@@ -364,9 +364,7 @@ def perform_printed_delete(path: Path, refusal: str) -> "tuple[list, list]":
 
   Returns ``(entry, parents)`` so a test can say what it just did.
   """
-  import yaml
-
-  from kanibako.settings.config_io import dump_doc
+  from kanibako.settings.config_io import dump_doc, parse_doc_text
 
   found = _DELETE_STEP.search(refusal)
   assert found, f"no delete step to perform in:\n{refusal}"
@@ -383,7 +381,7 @@ def perform_printed_delete(path: Path, refusal: str) -> "tuple[list, list]":
       segments[-1] = segments[-1][:-1]
     parents.append(segments)
 
-  doc = yaml.safe_load(path.read_text()) or {}
+  doc = parse_doc_text(path.read_text()) or {}
   holder = doc
   for part in entry[:-1]:
     holder = holder[part]
@@ -457,9 +455,7 @@ def test_the_nested_hand_edit_arm_cures_itself_end_to_end(tree) -> None:
   """No command to run: the printed steps ARE the file edit. Follow them in the
   printed order — move the content up, THEN delete the sub-table — and the door
   opens with the moved content readable."""
-  import yaml
-
-  from kanibako.settings.config_io import dump_doc
+  from kanibako.settings.config_io import dump_doc, parse_doc_text
 
   stale_file = tree.agent_file("shell")
   stale_file.write_text("self:\n  shell:\n    model: opus\n")
@@ -471,7 +467,7 @@ def test_the_nested_hand_edit_arm_cures_itself_end_to_end(tree) -> None:
   assert refusal.index("Fix: ") < refusal.index("then delete the `self.shell` table")
 
   # The MOVE the fix describes, then the delete it describes — in that order.
-  doc = yaml.safe_load(stale_file.read_text())
+  doc = parse_doc_text(stale_file.read_text())
   doc["self"].update(doc["self"].pop("shell"))
   dump_doc(stale_file, doc)
   again = tree.cli("agent", "show", "shell")
@@ -681,9 +677,9 @@ def test_the_set_cure_lands_hard_values_on_the_right_agent(tree) -> None:
     ran = tree.cli(*shlex.split(command)[1:])
     assert ran.returncode == 0, f"{command!r} failed:\n{ran.stdout}{ran.stderr}"
 
-  import yaml
+  from kanibako.settings.config_io import parse_doc_text
 
-  stored = yaml.safe_load(tree.agent_file("claude").read_text())["self"]
+  stored = parse_doc_text(tree.agent_file("claude").read_text())["self"]
   assert stored["env"] == _HARD_VALUES
   assert stored["model"] == "opus"
 
@@ -692,9 +688,7 @@ def test_the_hand_cure_lands_every_entry_on_the_right_agent(tree) -> None:
   """Probe C: shell's file holds ``self: {claude: {env: …, model: sonnet}}``. Followed
   literally — the printed table into the file it names, the rest into that same
   table, then the delete — every entry reads back on ``claude`` and none on ``shell``."""
-  import yaml
-
-  from kanibako.settings.config_io import dump_doc
+  from kanibako.settings.config_io import dump_doc, parse_doc_text
   from kanibako.utils import deep_merge
 
   stale_file = tree.agent_file("shell")
@@ -712,9 +706,9 @@ def test_the_hand_cure_lands_every_entry_on_the_right_agent(tree) -> None:
 
   home = Path(_HAND_HOME.search(refusal).group(1))
   assert home == claude_file
-  target = yaml.safe_load(home.read_text())
+  target = parse_doc_text(home.read_text())
   target = deep_merge(target, _yaml_of_block(_HAND_BLOCK.search(refusal).group(1)))
-  stale = yaml.safe_load(stale_file.read_text())
+  stale = parse_doc_text(stale_file.read_text())
   sub, where = _HAND_DELETE.search(refusal).groups()
   assert Path(where) == stale_file
   for key in _HAND_REST.search(refusal).group(1).split(", "):
@@ -730,7 +724,7 @@ def test_the_hand_cure_lands_every_entry_on_the_right_agent(tree) -> None:
     read = tree.cli("agent", "get", agent, key)
     assert read.returncode == 0, read.stderr
     assert read.stdout.strip() == want, f"{agent}.{key}: {read.stdout!r}"
-  stored = yaml.safe_load(claude_file.read_text())["self"]["env"]
+  stored = parse_doc_text(claude_file.read_text())["self"]["env"]
   assert stored == _HARD_VALUES
 
 
@@ -760,9 +754,7 @@ def test_a_bool_value_takes_the_hand_edit_not_a_set_word(tmp_path) -> None:
 def test_a_bool_value_cures_itself_end_to_end(tree) -> None:
   """Followed by hand — the printed table up one level, then the delete — the file
   holds the very bool it held, so the box gets the same text it always got."""
-  import yaml
-
-  from kanibako.settings.config_io import dump_doc
+  from kanibako.settings.config_io import dump_doc, parse_doc_text
 
   claude_file = tree.agent_file("claude")
   claude_file.write_text("self:\n  model: opus\n  claude:\n    env:\n      B: true\n")
@@ -771,13 +763,13 @@ def test_a_bool_value_cures_itself_end_to_end(tree) -> None:
   assert first.returncode != 0, refusal
   assert "kanibako agent set" not in refusal, refusal
 
-  doc = yaml.safe_load(claude_file.read_text())
+  doc = parse_doc_text(claude_file.read_text())
   doc["self"].update(_yaml_of_block(_HAND_BLOCK.search(refusal).group(1))["self"])
   del doc["self"]["claude"]
   dump_doc(claude_file, doc)
   again = tree.cli("agent", "show", "claude")
   assert again.returncode == 0, again.stdout + again.stderr
-  assert yaml.safe_load(claude_file.read_text())["self"]["env"] == {"B": True}
+  assert parse_doc_text(claude_file.read_text())["self"]["env"] == {"B": True}
 
 
 def test_a_mixed_case_sub_key_names_the_canonical_agent(tmp_path) -> None:
@@ -831,9 +823,7 @@ def test_a_target_with_no_file_is_created_by_hand_before_the_delete(tmp_path) ->
 
 
 def test_a_target_with_no_file_cures_itself_end_to_end(tree) -> None:
-  import yaml
-
-  from kanibako.settings.config_io import dump_doc
+  from kanibako.settings.config_io import dump_doc, parse_doc_text
 
   claude_file = tree.agent_file("claude")
   claude_file.write_text("self:\n  model: opus\n  shell:\n    env:\n      W: x\n")
@@ -847,7 +837,7 @@ def test_a_target_with_no_file_cures_itself_end_to_end(tree) -> None:
   assert home == shell_file
   home.parent.mkdir(parents=True)
   dump_doc(home, _yaml_of_block(_HAND_BLOCK.search(refusal).group(1)))
-  doc = yaml.safe_load(claude_file.read_text())
+  doc = parse_doc_text(claude_file.read_text())
   del doc["self"]["shell"]
   dump_doc(claude_file, doc)
 

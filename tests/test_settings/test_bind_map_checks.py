@@ -19,7 +19,7 @@ import yaml
 
 from kanibako.settings.agent_config import agent_settings_path
 from kanibako.settings.agent_file import _CONTRIBUTED, _contribution, level_table
-from kanibako.settings.config_io import load_doc
+from kanibako.settings.config_io import dump_doc, load_doc
 from kanibako.settings.settings_assemble import (
   file_partial,
   parse_marker_map,
@@ -334,7 +334,7 @@ def test_a_valid_map_reads_in_every_top_level_table(tmp_path: Path, table: str) 
 
 def _settings_file(tmp_path: Path, doc: dict, name: str = "settings.yaml") -> Path:
   path = tmp_path / name
-  path.write_text(yaml.safe_dump(doc, sort_keys=False))
+  dump_doc(path, doc)
   return path
 
 

@@ -18,7 +18,8 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-import yaml
+
+from kanibako.settings.config_io import dump_doc, parse_doc_text
 
 from kanibako.settings.agent_select import AgentSelection, SELECTION_KEY
 from tests.support.agent_selection import agent_selection
@@ -42,7 +43,7 @@ def _ctx(agent_name: str | None = None) -> ResolveCtx:
 
 
 def _yaml(path: Path, data: dict) -> Path:
-  path.write_text(yaml.safe_dump(data, sort_keys=False))
+  dump_doc(path, data)
   return path
 
 
@@ -318,7 +319,7 @@ class TestRetiredKeyRefusal:
     """
     f = _yaml(tmp_path / "box.yaml", {"box": {"agent_name": "goose"}})
     with pytest.raises(SettingsError) as ei:
-      refuse_retired_keys(yaml.safe_load(f.read_text()), level="box", path=f)
+      refuse_retired_keys(parse_doc_text(f.read_text()), level="box", path=f)
     msg = str(ei.value)
     assert "box.agent_name" in msg
     assert "RETIRED" in msg
@@ -332,7 +333,7 @@ class TestRetiredKeyRefusal:
     f = _yaml(tmp_path / "box.yaml", {"box": {"agent_name": "goose"}})
     with pytest.raises(SettingsError) as ei:
       refuse_retired_keys(
-        yaml.safe_load(f.read_text()),
+        parse_doc_text(f.read_text()),
         level="box",
         path=f,
         box_ref="myproj",
@@ -350,7 +351,7 @@ class TestRetiredKeyRefusal:
     f = _yaml(tmp_path / "workset.yaml", {"box": {"agent_name": "goose"}})
     with pytest.raises(SettingsError) as ei:
       refuse_retired_keys(
-        yaml.safe_load(f.read_text()),
+        parse_doc_text(f.read_text()),
         level="workset",
         path=f,
         box_ref="myproj",
@@ -367,7 +368,7 @@ class TestRetiredKeyRefusal:
     """
     f = _yaml(tmp_path / "box.yaml", {"box": {"agent_name": True}})
     with pytest.raises(SettingsError) as ei:
-      refuse_retired_keys(yaml.safe_load(f.read_text()), level="box", path=f)
+      refuse_retired_keys(parse_doc_text(f.read_text()), level="box", path=f)
     msg = str(ei.value)
     assert "pref.system.agent=true" in msg
     assert "True" not in msg
@@ -378,20 +379,20 @@ class TestRetiredKeyRefusal:
       {"agent": {"default": {"default_agent": "claude"}}},
     )
     with pytest.raises(SettingsError) as ei:
-      refuse_retired_keys(yaml.safe_load(f.read_text()), level="system", path=f)
+      refuse_retired_keys(parse_doc_text(f.read_text()), level="system", path=f)
     msg = str(ei.value)
     assert "system.default_agent" in msg
     assert "system set system.agent=claude" in msg
 
   def test_a_clean_file_passes(self, tmp_path):
     f = _yaml(tmp_path / "box.yaml", {"pref": {"system": {"agent": "goose"}}})
-    refuse_retired_keys(yaml.safe_load(f.read_text()), level="box", path=f)
+    refuse_retired_keys(parse_doc_text(f.read_text()), level="box", path=f)
 
   def test_an_unrelated_agent_default_table_is_not_refused(self, tmp_path):
     """SCOPE IS TIGHT: only the two retired spellings. A normal
     ``agent.default.model`` must be untouched."""
     f = _yaml(tmp_path / "system.yaml", {"agent": {"default": {"model": "opus"}}})
-    refuse_retired_keys(yaml.safe_load(f.read_text()), level="system", path=f)
+    refuse_retired_keys(parse_doc_text(f.read_text()), level="system", path=f)
 
 
 # --------------------------------------------------------------------------- #
@@ -485,10 +486,10 @@ class TestSelectAgentSeam:
       lambda *a, **k: {"claude": object, "goose": object},
     )
     std, proj = _std(tmp_path), _proj(tmp_path)
-    std.settings.write_text(yaml.safe_dump({"system": {"agent": "claude"}}))
+    dump_doc(std.settings, {"system": {"agent": "claude"}})
     # The RETIRED spelling, in the box tier.
     box_file, _ws = _box_workset(proj)
-    box_file.write_text(yaml.safe_dump({"box": {"agent_name": "goose"}}))
+    dump_doc(box_file, {"box": {"agent_name": "goose"}})
 
     with pytest.raises(SettingsError) as ei:
       select_agent(std=std, proj=proj, explicit_agent=None)
@@ -505,9 +506,7 @@ class TestSelectAgentSeam:
       lambda *a, **k: {"claude": object},
     )
     std, proj = _std(tmp_path), _proj(tmp_path)
-    std.settings.write_text(
-      yaml.safe_dump({"agent": {"default": {"default_agent": "claude"}}}),
-    )
+    dump_doc(std.settings, {"agent": {"default": {"default_agent": "claude"}}})
     with pytest.raises(SettingsError) as ei:
       select_agent(std=std, proj=proj, explicit_agent=None)
     assert "system.default_agent" in str(ei.value)
@@ -542,11 +541,9 @@ class TestSelectAgentSeam:
       lambda *a, **k: {"claude": object},
     )
     std, proj = _std(tmp_path), _proj(tmp_path)
-    std.settings.write_text(yaml.safe_dump({"system": {"agent": "claude"}}))
+    dump_doc(std.settings, {"system": {"agent": "claude"}})
     box_file, _ws = _box_workset(proj)
-    box_file.write_text(
-      yaml.safe_dump({"agent": {"default": {"default_agent": "goose"}}}),
-    )
+    dump_doc(box_file, {"agent": {"default": {"default_agent": "goose"}}})
     sel = select_agent(std=std, proj=proj, explicit_agent=None)
     assert (sel.node, sel.source) == ("claude", "settings")
 
@@ -578,9 +575,9 @@ class TestSelectAgentSeam:
       lambda *a, **k: {"claude": object, "goose": object},
     )
     std, proj = _std(tmp_path), _proj(tmp_path)
-    std.settings.write_text(yaml.safe_dump({"system": {"agent": "claude"}}))
+    dump_doc(std.settings, {"system": {"agent": "claude"}})
     box_file, _ws = _box_workset(proj)
-    box_file.write_text(yaml.safe_dump({"pref": {"system": {"agent": "goose"}}}))
+    dump_doc(box_file, {"pref": {"system": {"agent": "goose"}}})
 
     sel = select_agent(std=std, proj=proj, explicit_agent=None)
     assert (sel.node, sel.source) == ("goose", "settings")
@@ -595,7 +592,7 @@ class TestSelectAgentSeam:
     )
     std, proj = _std(tmp_path), _proj(tmp_path)
     box_file, _ws = _box_workset(proj)
-    box_file.write_text(yaml.safe_dump({"pref": {"system": {"agent": "goose"}}}))
+    dump_doc(box_file, {"pref": {"system": {"agent": "goose"}}})
     sel = select_agent(std=std, proj=proj, explicit_agent="claude")
     assert (sel.node, sel.source) == ("claude", "cli")
 
@@ -635,7 +632,7 @@ class TestSelectAgentSeam:
       lambda *a, **k: {"claude": object},
     )
     std, proj = _std(tmp_path), _proj(tmp_path)
-    std.settings.write_text(yaml.safe_dump({"system": {"agent": "claude"}}))
+    dump_doc(std.settings, {"system": {"agent": "claude"}})
     box_file, _ws = _box_workset(proj)
     box_file.write_text(f"pref:\n  system:\n    agent: {spelling}\n")
     with pytest.raises(AgentNoDefaultError) as ei:
@@ -735,7 +732,7 @@ class TestABlankExplicitRefIsGivenNotUnset:
       lambda *a, **k: {"claude": object},
     )
     std, proj = _std(tmp_path), _proj(tmp_path)
-    std.settings.write_text(yaml.safe_dump({"system": {"agent": "claude"}}))
+    dump_doc(std.settings, {"system": {"agent": "claude"}})
     box_file, _ws = _box_workset(proj)
     box_file.write_text("pref:\n  system:\n    agent:\n")
 
@@ -764,7 +761,7 @@ class TestABlankExplicitRefIsGivenNotUnset:
     )
     std, proj = _std(tmp_path), _proj(tmp_path)
     box_file, _ws = _box_workset(proj)
-    box_file.write_text(yaml.safe_dump({"pref": {"system": {"agent": "goose"}}}))
+    dump_doc(box_file, {"pref": {"system": {"agent": "goose"}}})
 
     with pytest.raises(ConfigError) as ei:
       select_agent(std=std, proj=proj, explicit_agent="")
@@ -792,7 +789,7 @@ class TestABlankExplicitRefIsGivenNotUnset:
       lambda *a, **k: {"claude": object},
     )
     std, proj = _std(tmp_path), _proj(tmp_path)
-    std.settings.write_text(yaml.safe_dump({"system": {"agent": ""}}))
+    dump_doc(std.settings, {"system": {"agent": ""}})
 
     with pytest.raises(ConfigError) as ei:
       select_agent(std=std, proj=proj, explicit_agent=None)
@@ -801,7 +798,7 @@ class TestABlankExplicitRefIsGivenNotUnset:
     # by the OTHER message. Three states, and a blank is none of them.
     from kanibako.errors import AgentUnsetError
 
-    std.settings.write_text(yaml.safe_dump({"system": {}}))
+    dump_doc(std.settings, {"system": {}})
     with pytest.raises(AgentUnsetError):
       select_agent(std=std, proj=proj, explicit_agent=None)
 
@@ -829,7 +826,7 @@ class TestSelectAgentSeamBoxArgument:
     )
     std, proj = _std(tmp_path), _proj(tmp_path, name="myproj")
     box_file, _ws = _box_workset(proj)
-    box_file.write_text(yaml.safe_dump({"box": {"agent_name": "goose"}}))
+    dump_doc(box_file, {"box": {"agent_name": "goose"}})
     with pytest.raises(SettingsError) as ei:
       select_agent(std=std, proj=proj, explicit_agent=None)
     msg = str(ei.value)
@@ -863,7 +860,7 @@ class TestSelectAgentSeamBoxArgument:
     )
     std, proj = _std(tmp_path), _proj(tmp_path, name=None)
     box_file, _ws = _box_workset(proj)
-    box_file.write_text(yaml.safe_dump({"box": {"agent_name": "goose"}}))
+    dump_doc(box_file, {"box": {"agent_name": "goose"}})
     with pytest.raises(SettingsError) as ei:
       select_agent(std=std, proj=proj, explicit_agent=None)
     msg = str(ei.value)
@@ -882,9 +879,7 @@ class TestSelectAgentSeamBoxArgument:
       lambda *a, **k: {"claude": object},
     )
     std, proj = _std(tmp_path), _proj(tmp_path, name="myproj")
-    std.settings.write_text(
-      yaml.safe_dump({"agent": {"default": {"default_agent": "claude"}}}),
-    )
+    dump_doc(std.settings, {"agent": {"default": {"default_agent": "claude"}}})
     with pytest.raises(SettingsError) as ei:
       select_agent(std=std, proj=proj, explicit_agent=None)
     msg = str(ei.value)
@@ -912,7 +907,7 @@ class TestRetiredKeyCureIsLevelAppropriate:
   def _msg(self, tmp_path, level, data):
     f = _yaml(tmp_path / f"{level}.yaml", data)
     with pytest.raises(SettingsError) as ei:
-      refuse_retired_keys(yaml.safe_load(f.read_text()), level=level, path=f)
+      refuse_retired_keys(parse_doc_text(f.read_text()), level=level, path=f)
     return str(ei.value)
 
   def test_box_and_workset_get_the_pref_cure(self, tmp_path):
