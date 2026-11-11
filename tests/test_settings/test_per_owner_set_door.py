@@ -20,6 +20,7 @@ import yaml
 from kanibako.project.workset import create_workset, default_workset
 from kanibako.settings.config import WORKSET_META_FILE
 from kanibako.settings.config_interface import set_config_value
+from kanibako.settings.config_io import parse_doc_text
 from kanibako.settings.config_keys import KEY_OWNERS, ConfigLevel
 
 
@@ -97,7 +98,7 @@ class TestCase1WorksetBoxesFromTheSystem:
   @pytest.mark.parametrize("value", _forms("/srv/kb/<meta.workset.path>"))
   def test_the_cure_is_written(self, value, seeded):
     assert _system_set(self.KEY, value, seeded) == f"Set {self.KEY}={value}"
-    assert yaml.safe_load(seeded.settings.read_text())["workset"]["boxes"] == value
+    assert parse_doc_text(seeded.settings.read_text())["workset"]["boxes"] == value
 
 
 class TestCase3MailboxesFromTheSystem:
@@ -256,7 +257,7 @@ class TestOnlyTheFloorsBlindnessIsForgiven:
   @pytest.mark.parametrize("stored", [*_forms(_CYCLE), *_forms(_UNKNOWN_VAR)])
   def test_a_stored_defect_is_refused_at_the_workset_door(self, stored, ws, std):
     file = ws.root / WORKSET_META_FILE
-    doc = (yaml.safe_load(file.read_text()) if file.exists() else None) or {}
+    doc = (parse_doc_text(file.read_text()) if file.exists() else None) or {}
     file.write_text(yaml.safe_dump(doc | {"box": {"shell": stored}}))
     before = _digest(file)
     assert _workset_set("box.canon", "{box.shell}", ws, std).startswith("Error:")
@@ -294,7 +295,7 @@ class TestTheCureThroughTheCli:
     assert run("system", "get", "system.agent").returncode == 0
     chain = {f"V{i}": f"{{box.env.V{i + 1}}}" for i in range(39)} | {"V39": "seg"}
     settings = home / ".local/share/kanibako/global/settings.yaml"
-    doc = (yaml.safe_load(settings.read_text()) if settings.exists() else None) or {}
+    doc = (parse_doc_text(settings.read_text()) if settings.exists() else None) or {}
     settings.parent.mkdir(parents=True, exist_ok=True)
     settings.write_text(yaml.safe_dump(doc | {"box": {"env": chain}}))
     run.settings = settings  # type: ignore[attr-defined]

@@ -8,6 +8,7 @@ import pytest
 import yaml
 
 from kanibako.settings.config_interface import set_config_value
+from kanibako.settings.config_io import parse_doc_text
 from kanibako.settings.config_keys import ConfigLevel
 
 
@@ -37,7 +38,7 @@ def _box_set(tmp_path, key, value, *, agent_doc=None):
 
 
 def _stored(path, *keys):
-  node = yaml.safe_load(path.read_text())
+  node = parse_doc_text(path.read_text())
   for key in keys:
     node = (node or {}).get(key)
   return node

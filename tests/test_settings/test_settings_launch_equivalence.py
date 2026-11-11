@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import pytest
 
+from kanibako.settings import config_io
 from kanibako.settings.settings_launch import (
   build_launch_snapshot,
   snapshot_category_entries,
@@ -369,9 +370,7 @@ def _behavior_snapshot(agent, *, floor, agent_self, agent_path, box_path, system
 
 
 def _write_yaml(path, data):
-  import yaml
-
-  path.write_text(yaml.safe_dump(data))
+  config_io.dump_doc(path, data)
   return path
 
 

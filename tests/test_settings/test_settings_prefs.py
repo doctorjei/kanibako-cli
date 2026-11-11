@@ -10,8 +10,8 @@ from __future__ import annotations
 import logging
 
 import pytest
-import yaml
 
+from kanibako.settings import config_io
 from kanibako.settings.kb_store import Bind, BindEntry
 from kanibako.settings.keystore import KeyStore
 from kanibako.settings.settings_keyspace import PREF_ALLOWLIST, glob_match
@@ -52,7 +52,7 @@ def req(target, value="v", level="box", source=None):
 
 def write(path, doc):
   path.parent.mkdir(parents=True, exist_ok=True)
-  path.write_text(yaml.safe_dump(doc), encoding="utf-8")
+  config_io.dump_doc(path, doc)
   return path
 
 

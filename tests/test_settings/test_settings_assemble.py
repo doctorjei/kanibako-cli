@@ -19,8 +19,8 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-import yaml
 
+from kanibako.settings import config_io
 from kanibako.settings.kb_store import Bind, BindEntry
 from kanibako.settings.kb_store import __MISSING__, SCOPE_CONTAINMENT
 from kanibako.settings.keystore import KeyStore
@@ -39,7 +39,7 @@ BOX, WORKSET, AGENT_ACTIVE, AGENT_DEFAULT, SYSTEM, BASE = range(6)
 
 
 def _write(path: Path, data: dict) -> Path:
-  path.write_text(yaml.safe_dump(data, sort_keys=False))
+  config_io.dump_doc(path, data)
   return path
 
 

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-import yaml
 
 from kanibako.settings import config_io, core_defaults
 from kanibako.settings.settings_launch import load_merged_config
@@ -24,10 +23,11 @@ def test_repeated_resolves_parse_the_shipped_file_once(cold_parse, tmp_path, mon
   MUTATION: bypass the cache (``_parse_doc.__wrapped__()``) and the count is 3.
   """
   calls: list[str] = []
+  parse_packaged = config_io.parse_packaged
 
   def counting_parse(text: str) -> object:
     calls.append(text)
-    return yaml.safe_load(text)
+    return parse_packaged(text)
 
   monkeypatch.setattr(config_io, "parse_packaged", counting_parse)
   for _ in range(3):

@@ -11,6 +11,7 @@ import pytest
 import yaml
 
 from kanibako.settings.config_interface import get_config_value, set_config_value, show_config
+from kanibako.settings.config_io import parse_doc_text
 from kanibako.settings.config_keys import ConfigLevel
 
 _LOGGER = "kanibako.settings.config_interface"
@@ -70,7 +71,7 @@ class TestSetRefusesOnABadEntry:
       msg = _system_set(tmp_path, "box.shell", "zsh", force=True)
     assert msg == "Set box.shell=zsh"
     assert "box.bogus = 1" in caplog.text
-    assert yaml.safe_load(ssp.read_text())["box"] == {"shell": "zsh", "bogus": 1}
+    assert parse_doc_text(ssp.read_text())["box"] == {"shell": "zsh", "bogus": 1}
 
   def test_a_clean_cascade_sets_silently(self, tmp_path, caplog):
     _write(tmp_path / "settings.yaml", {"box": {"shell": "bash"}})
@@ -92,7 +93,7 @@ class TestSetRefusesOnABadEntry:
       command_scope=ConfigLevel.workset,
     )
     assert msg.startswith("Error: ") and "box.zzz = 1" in msg
-    assert yaml.safe_load(ws_file.read_text()) == {"box": {"shell": "bash"}}
+    assert parse_doc_text(ws_file.read_text()) == {"box": {"shell": "bash"}}
 
   @pytest.mark.writes_undeclared("box.bogus", reason=_JUDGES)
   def test_a_ref_to_another_key_is_not_the_chain_arm(self, tmp_path, caplog):
@@ -151,7 +152,7 @@ class TestAnInChainBadEntryIsHard:
     msg = _system_set(tmp_path, "box.canon", "{agent.default.canon}/y", force=True)
     assert msg.startswith("Error: ") and "box.bogus" in msg, msg
     assert "--force does not set" in msg, msg
-    assert yaml.safe_load(ssp.read_text())["box"]["canon"] == "/tmp/ok"
+    assert parse_doc_text(ssp.read_text())["box"]["canon"] == "/tmp/ok"
 
   @pytest.mark.writes_undeclared("box.self", reason=_JUDGES)
   def test_a_self_referential_entry_terminates_and_is_refused(self, tmp_path):
@@ -279,7 +280,7 @@ class TestADottedSpellingIsNotOverwritten:
       msg, _ = _scoped_set(tmp_path, scope, "box.env.X", "2", force=True)
     assert msg == "Set box.env.X=2", msg
     assert "box | env.X = 1" in caplog.text
-    assert yaml.safe_load(path.read_text())["box"] == {"env.X": "1", "env": {"X": "2"}}
+    assert parse_doc_text(path.read_text())["box"] == {"env.X": "1", "env": {"X": "2"}}
 
   @pytest.mark.parametrize("scope", _SCOPES)
   def test_an_empty_table_above_the_key_is_still_exempt(self, tmp_path, caplog, scope):
