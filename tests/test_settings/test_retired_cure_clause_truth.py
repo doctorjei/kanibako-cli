@@ -29,10 +29,10 @@ import sys
 from pathlib import Path
 
 import pytest
-import yaml
 
 from kanibako.settings.agent_config import agent_settings_path
 from kanibako.settings.agent_file import _refuse_nested_tables
+from kanibako.settings.config_io import dump_doc, parse_doc_text
 from kanibako.settings.settings_assemble import (
   behavior_cure_checks_file,
   file_spelled_parents,
@@ -267,8 +267,6 @@ def _perform_printed_delete(path: Path, refusal: str) -> "tuple[list, list]":
   Leaf first, then each parent the leaf's removal leaves empty, exactly as the
   sentence names them. Nothing is unlinked and nothing is added.
   """
-  from kanibako.settings.config_io import dump_doc
-
   found = _DELETE_STEP.search(refusal)
   assert found, f"no delete step to perform in:\n{refusal}"
   entry = (
@@ -286,7 +284,7 @@ def _perform_printed_delete(path: Path, refusal: str) -> "tuple[list, list]":
       segments[-1] = segments[-1][:-1]
     parents.append(segments)
 
-  doc = yaml.safe_load(path.read_text()) or {}
+  doc = parse_doc_text(path.read_text()) or {}
   holder = doc
   for part in entry[:-1]:
     holder = holder[part]
@@ -324,7 +322,7 @@ def test_the_system_file_cure_runs_end_to_end(tree, tmp_path) -> None:
   entry, parents = _perform_printed_delete(stale, refusal)
   assert entry == ["agent", "default", "default_agent"]
   assert parents == [["agent", "default"], ["agent"]], "every enclosing table, top to bottom"
-  assert yaml.safe_load(stale.read_text()) == {}, f"left behind: {stale.read_text()!r}"
+  assert parse_doc_text(stale.read_text()) == {}, f"left behind: {stale.read_text()!r}"
 
   printed = tree.printed_cure(refusal)
   cure = tree.cli(*printed.split()[1:])

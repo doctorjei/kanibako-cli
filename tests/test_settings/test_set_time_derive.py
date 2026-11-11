@@ -5,15 +5,14 @@ while a reference to nothing is still refused."""
 from __future__ import annotations
 
 import pytest
-import yaml
 
 from kanibako.settings.config_interface import set_config_value
-from kanibako.settings.config_io import parse_doc_text
+from kanibako.settings.config_io import dump_doc, parse_doc_text
 from kanibako.settings.config_keys import ConfigLevel
 
 
 def _write(path, doc):
-  path.write_text(yaml.safe_dump(doc))
+  dump_doc(path, doc)
   return path
 
 

@@ -1358,14 +1358,13 @@ class TestOneSetTwoPositions:
     since 0c4fa47 lifted the file-naming wrap out of ``file_partial``; both tiers
     agree on it now.
     """
-    import yaml
-
     from kanibako.settings import settings_keyspace as ks
+    from kanibako.settings.config_io import dump_doc
     from kanibako.settings.settings_resolve import SettingsError
     from tests.support.assembly import assemble_levels_at
 
     box = tmp_path / "box.yaml"
-    box.write_text(yaml.safe_dump({"box": {"env": {"items": "x"}}}))
+    dump_doc(box, {"box": {"env": {"items": "x"}}})
     base = tmp_path / "base.yaml"
     base.write_text("{}\n")
 

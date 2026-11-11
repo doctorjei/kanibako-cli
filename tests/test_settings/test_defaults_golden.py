@@ -49,7 +49,6 @@ import re
 from pathlib import Path
 
 import pytest
-import yaml
 
 from kanibako.errors import PackagingError
 from kanibako.settings import agent_defaults, config_io, core_defaults
@@ -751,10 +750,10 @@ class TestCoreStaticEnvDefaults:
 
     proj = resolve_project(std, config, str(project_dir), initialize=True)
     box_path, _workset_path = box_workset_settings_paths(proj)
-    doc = yaml.safe_load(box_path.read_text()) if box_path.is_file() else {}
+    doc = config_io.parse_doc_text(box_path.read_text()) if box_path.is_file() else {}
     doc = doc or {}
     doc.setdefault("box", {}).setdefault("env", {})[var] = value
-    box_path.write_text(yaml.safe_dump(doc))
+    config_io.dump_doc(box_path, doc)
 
   def test_a_core_declared_env_default_reaches_the_floor(
     self,

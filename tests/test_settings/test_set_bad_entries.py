@@ -8,10 +8,9 @@ import io
 import logging
 
 import pytest
-import yaml
 
 from kanibako.settings.config_interface import get_config_value, set_config_value, show_config
-from kanibako.settings.config_io import parse_doc_text
+from kanibako.settings.config_io import dump_doc, parse_doc_text
 from kanibako.settings.config_keys import ConfigLevel
 
 _LOGGER = "kanibako.settings.config_interface"
@@ -22,7 +21,7 @@ _JUDGES = "the bad entry IS the input the rule judges; the set-time snapshot rea
 
 def _write(path, doc):
   path.parent.mkdir(parents=True, exist_ok=True)
-  path.write_text(yaml.safe_dump(doc))
+  dump_doc(path, doc)
 
 
 def _system_set(tmp_path, key, value, **kw):

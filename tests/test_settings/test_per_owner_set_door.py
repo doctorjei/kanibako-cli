@@ -15,12 +15,11 @@ import sys
 from pathlib import Path
 
 import pytest
-import yaml
 
 from kanibako.project.workset import create_workset, default_workset
 from kanibako.settings.config import WORKSET_META_FILE
 from kanibako.settings.config_interface import set_config_value
-from kanibako.settings.config_io import parse_doc_text
+from kanibako.settings.config_io import dump_doc, parse_doc_text
 from kanibako.settings.config_keys import KEY_OWNERS, ConfigLevel
 
 
@@ -62,7 +61,7 @@ def _workset_set(key: str, value: str, ws, std) -> str:
 def seeded(std):
   """The system file already holds a value, so "nothing was written" is a hash, not absence."""
   std.settings.parent.mkdir(parents=True, exist_ok=True)
-  std.settings.write_text(yaml.safe_dump({"box": {"shell": "bash"}}))
+  dump_doc(std.settings, {"box": {"shell": "bash"}})
   return std
 
 
@@ -227,7 +226,7 @@ class TestTheCureChainsAtTheSystemDoor:
     ],
   )
   def test_a_stored_referent_that_dangles_is_still_refused(self, boxes, seeded):
-    seeded.settings.write_text(yaml.safe_dump({"workset": {"boxes": boxes}}))
+    dump_doc(seeded.settings, {"workset": {"boxes": boxes}})
     before = _digest(seeded.settings)
     message = _system_set("workset.logs", "{workset.boxes}/lg", seeded)
     assert message.startswith("Error:") and "dangling reference" in message, message
@@ -249,7 +248,7 @@ class TestOnlyTheFloorsBlindnessIsForgiven:
 
   @pytest.mark.parametrize("stored", [*_forms(_CYCLE), *_forms(_UNKNOWN_VAR)])
   def test_a_stored_defect_is_refused_at_the_system_door(self, stored, seeded):
-    seeded.settings.write_text(yaml.safe_dump({"box": {"shell": stored}}))
+    dump_doc(seeded.settings, {"box": {"shell": stored}})
     before = _digest(seeded.settings)
     assert _system_set("box.canon", "{box.shell}", seeded).startswith("Error:")
     assert _digest(seeded.settings) == before
@@ -258,7 +257,7 @@ class TestOnlyTheFloorsBlindnessIsForgiven:
   def test_a_stored_defect_is_refused_at_the_workset_door(self, stored, ws, std):
     file = ws.root / WORKSET_META_FILE
     doc = (parse_doc_text(file.read_text()) if file.exists() else None) or {}
-    file.write_text(yaml.safe_dump(doc | {"box": {"shell": stored}}))
+    dump_doc(file, doc | {"box": {"shell": stored}})
     before = _digest(file)
     assert _workset_set("box.canon", "{box.shell}", ws, std).startswith("Error:")
     assert _digest(file) == before
@@ -297,7 +296,7 @@ class TestTheCureThroughTheCli:
     settings = home / ".local/share/kanibako/global/settings.yaml"
     doc = (parse_doc_text(settings.read_text()) if settings.exists() else None) or {}
     settings.parent.mkdir(parents=True, exist_ok=True)
-    settings.write_text(yaml.safe_dump(doc | {"box": {"env": chain}}))
+    dump_doc(settings, doc | {"box": {"env": chain}})
     run.settings = settings  # type: ignore[attr-defined]
     return run
 
