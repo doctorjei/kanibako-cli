@@ -226,7 +226,7 @@ def test_a_standalone_boxs_mark_is_not_a_bad_entry(cli):
   proj = cli.home / "sa"
   proj.mkdir()
   assert cli("box", "create", "--standalone", str(proj)).returncode == 0
-  assert (proj / "registry.yaml").read_text() == "__STANDALONE__\n"
+  assert (proj / "registry.yaml").read_text() == '"__STANDALONE__"\n'
   proc = cli("box", "set", str(proj), "box.shell=bash")
   assert proc.returncode == 0, proc.stderr
 

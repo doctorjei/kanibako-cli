@@ -292,7 +292,7 @@ class TestRootNameCollisions:
 
   def test_a_convert_out_lifts_a_users_registry_over_the_retiring_mark(self, env):
     root = _standalone(env)
-    assert (root / "registry.yaml").read_text() == "__STANDALONE__\n"
+    assert (root / "registry.yaml").read_text() == '"__STANDALONE__"\n'
     (root / "workspace" / "registry.yaml").write_text("boxes: {}\n")
     assert _convert(root, to_default=True) == 0
     assert (root / "registry.yaml").read_text() == "boxes: {}\n"
@@ -307,7 +307,7 @@ class TestRootNameCollisions:
 
     monkeypatch.setattr(_lifecycle, "_apply_ownership_and_markers", boom)
     assert _convert(root, to_default=True) != 0
-    assert (root / "registry.yaml").read_text() == "__STANDALONE__\n"
+    assert (root / "registry.yaml").read_text() == '"__STANDALONE__"\n'
     assert (root / "workspace" / "registry.yaml").read_text() == "boxes: {}\n"
 
   @pytest.mark.parametrize(
