@@ -533,7 +533,7 @@ class ContainerRuntime:
     deadline = time.monotonic() + timeout
     descriptors: set[int] = set()
     process: subprocess.Popen[bytes] | None = None
-    cancelled: BaseException | None = None
+    canceled: BaseException | None = None
     failed = False
     result = 0
 
@@ -597,10 +597,10 @@ class ContainerRuntime:
               view = view[sent:]
             elif event.fd == ack_read:
               try:
-                acknowledgement = os.read(ack_read, len(SECRET_READY_ACK) + 1)
+                acknowledgment = os.read(ack_read, len(SECRET_READY_ACK) + 1)
               except BlockingIOError:
                 continue
-              if acknowledgement != SECRET_READY_ACK:
+              if acknowledgment != SECRET_READY_ACK:
                 raise SecretDeliveryError("credential publication readiness invalid")
               selector.unregister(ack_read)
               close(ack_read)
@@ -611,7 +611,7 @@ class ContainerRuntime:
       if detach and result != 0:
         raise SecretDeliveryError("credential launcher failed after readiness")
     except (KeyboardInterrupt, SystemExit) as error:
-      cancelled = error
+      canceled = error
     except Exception:
       failed = True
     finally:
@@ -620,15 +620,15 @@ class ContainerRuntime:
           os.close(fd)
         except OSError:
           pass
-    if failed or cancelled is not None:
+    if failed or canceled is not None:
       complete = self._cancel_secret_launch(process, nonce)
       if not complete:
         logger.warning(
           "Credential launch cleanup incomplete; a late-created container may remain. "
           "Inspect the credential-launch label before removing anything."
         )
-      if cancelled is not None:
-        raise cancelled from None
+      if canceled is not None:
+        raise canceled from None
       raise ContainerError("Credential publication failed; the box did not become ready")
     return result
 

@@ -255,4 +255,5 @@ class TestHelperContainersCarryLabels:
       "kanibako.box": "myapp",
       "kanibako.workset_kuid": "00000",
       "kanibako.helper": "4",
+      "kanibako.target": "",
     }

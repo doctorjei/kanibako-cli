@@ -51,7 +51,12 @@ def test_read_registered_keyless_agent_preserves_identity(pg, harness, target, t
   assert result.identity.entry_path == path
   bundle = project_registered_persona(result, target())
   assert result.keyless
-  assert bundle.auth_env == ("ANTHROPIC_AUTH_TOKEN" if harness == "claude" else "")
+  native = pg.load("Scout")["agent"]["harness"]["config_store"]
+  assert bundle.auth_env == (
+    "ANTHROPIC_AUTH_TOKEN"
+    if harness == "claude"
+    else native["model_providers"][native["model_provider"]]["env_key"]
+  )
   assert bundle.token_path is None
   assert bundle.endpoint.startswith("http://")
   assert not any(key.startswith("secret_path.") for key in bundle.to_persona_values())
@@ -180,7 +185,16 @@ def test_captured_root_preserves_facade_misses_and_errors(monkeypatch, state):
 
 
 def test_claude_keyless_keeps_native_placeholder_without_fetch(pg, monkeypatch):
-  pg.create("scout", make_agent("ollama", "claude"))
+  import yapyon
+
+  definition = make_agent("ollama", "claude")
+  definition.merge(
+    yapyon.parse(
+      "agent:\n  harness:\n    config_store:\n      env:\n"
+      '        ANTHROPIC_AUTH_TOKEN:= "no-token-required"\n'
+    )
+  )
+  pg.create("scout", definition)
   monkeypatch.setattr(
     "kanibako.settings.config_io.fetch_persona_secret", lambda *_: pytest.fail("fetch")
   )
@@ -601,10 +615,12 @@ def test_resolved_component_names_stay_distinct(pg, tmp_path, component, name):
 def test_missing_persona_name_refuses(pg, name):
   import yapyon
 
-  definition = make_agent("ollama", "claude")
+  path = pg.create("Scout", make_agent("ollama", "claude"))
+  source = path / "agent.cfg"
+  definition = yapyon.parse(source.read_text())
   definition.merge(yapyon.parse(f"agent:\n  persona:\n    name:= {name!r}\n"))
-  pg.create("Scout", definition)
-  with pytest.raises(ConfigError, match="Scout.*persona name"):
+  source.write_text(definition.to_source())
+  with pytest.raises(ConfigError, match=r"(?i:Scout).*persona[ .]name"):
     read_registered_persona("scout")
 
 
@@ -623,11 +639,13 @@ def test_missing_persona_name_refuses(pg, name):
 def test_public_pg_syntax_errors_are_config_errors(pg, monkeypatch, document, reader):
   from yapyon import AkanError
 
-  path = pg.create("Scout", make_agent("ollama", "claude"))
+  definition = make_agent("ollama", "claude")
+  persona_label = definition["agent"].overrides["persona"].label
+  path = pg.create("Scout", definition)
   source = {
     "agent": path / "agent.cfg",
     "registry": pg.registry_path,
-    "component": pg.root / "personas" / "ollama.persona.tmpl",
+    "component": pg.component_path(persona_label),
   }[document]
   source.write_text("agent: [\n")
   before = {p: p.read_bytes() for p in pg.root.rglob("*") if p.is_file()}
@@ -710,9 +728,9 @@ def test_read_is_live_after_public_update(pg):
 
   pg.create("scout", make_agent("minimax", "claude"))
   before = project_registered_persona(read_registered_persona("scout"), ClaudeTarget()).model
-  definition = yapyon.parse(
-    "agent<base.agent>:\n  persona<minimax.persona>: {}\n"
-    '  harness<claude.harness>:\n    config_store: {model: "new-live-model"}\n'
+  definition = make_agent("minimax", "claude")
+  definition.merge(
+    yapyon.parse('agent:\n  harness:\n    config_store: {model: "new-live-model"}\n')
   )
   pg.update("scout", definition)
   after = project_registered_persona(read_registered_persona("scout"), ClaudeTarget()).model
@@ -797,13 +815,9 @@ def test_projection_retains_read_snapshot_after_public_update(pg):
   pg.create("scout", make_agent("minimax", "claude"))
   original = read_registered_persona("scout")
   before = project_registered_persona(original, ClaudeTarget())
-  pg.update(
-    "scout",
-    yapyon.parse(
-      "agent<base.agent>:\n  persona<minimax.persona>: {}\n"
-      '  harness<claude.harness>:\n    config_store: {model: "changed"}\n'
-    ),
-  )
+  definition = make_agent("minimax", "claude")
+  definition.merge(yapyon.parse('agent:\n  harness:\n    config_store: {model: "changed"}\n'))
+  pg.update("scout", definition)
   assert project_registered_persona(original, ClaudeTarget()) == before
   fresh = read_registered_persona("scout")
   assert project_registered_persona(fresh, ClaudeTarget()).model == "changed"

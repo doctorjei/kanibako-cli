@@ -1877,7 +1877,7 @@ class TestStandaloneNullWorkspaceHasNoPath:
       )
       is None
     )
-    inputs = _box_inputs(std=std, proj=proj, agent_name="", system_path=None)
+    inputs = _box_inputs(std=std, proj=proj, agent_name="", system_path=None, agent_identity=None)
     assert inputs.meta_identity is not None
     assert inputs.meta_identity["meta.box.workspace"] is None
     assert not (root / "workspace").exists()
@@ -1973,7 +1973,7 @@ class TestNamedInTreeNullWorkspaceHasNoPath:
     proj = _resolve_existing_box(std, config, "nullws/app")
     assert proj is not None and proj.name == "app"
     assert proj.project_path is None
-    inputs = _box_inputs(std=std, proj=proj, agent_name="", system_path=None)
+    inputs = _box_inputs(std=std, proj=proj, agent_name="", system_path=None, agent_identity=None)
     assert inputs.meta_identity is not None
     assert inputs.meta_identity["meta.box.workspace"] is None
     # The RECORD of where the files are survives the null: the hash is the box's
