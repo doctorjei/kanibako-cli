@@ -1,4 +1,4 @@
-"""``config_io.parse_packaged`` reads kanibako's shipped YAML with libyaml where PyYAML has it."""
+"""Legacy ``parse_packaged`` reads safe YAML; shipped files also fit owned Yapyon."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ def test_the_c_parser_is_used_where_pyyaml_has_it():
 @pytest.mark.parametrize(
   "name", ["core-defaults.yaml", "keyspace-manifest.yaml", "image-baseline.yaml"]
 )
-def test_the_shipped_files_match_the_guarded_python_reader(name):
+def test_the_shipped_files_match_the_owned_reader(name):
   text = Path(str(packaged_data_dir(*PACKAGED_SETTINGS_PARTS, name))).read_text()
   assert config_io.parse_packaged(text) == config_io.parse_doc_text(text)
 

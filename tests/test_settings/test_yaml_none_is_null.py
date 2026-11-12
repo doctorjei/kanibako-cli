@@ -1,8 +1,4 @@
-"""A plain ``None`` is null in kanibako's own YAML and on the ``set`` command line.
-
-A user who types Python's spelling means the null.  Only the plain scalar: a quoted
-``'None'`` stays a string, and the dumper quotes a str ``'None'`` so it reads back as written.
-"""
+"""``None`` is null; quoted spellings stay strings in owned documents and legacy YAML."""
 
 from __future__ import annotations
 
@@ -24,16 +20,24 @@ class TestTheLoaders:
   def test_a_quoted_none_stays_a_string(self, parse, text):
     assert parse(text) == {"a": "None"}
 
-  @pytest.mark.parametrize("word", ["none", "NONE", "Nonesuch"])
-  def test_only_the_exact_spelling_is_null(self, parse, word):
-    assert parse(f"a: {word}") == {"a": word}
+
+@pytest.mark.parametrize("word", ["none", "NONE", "Nonesuch"])
+def test_legacy_yaml_only_the_exact_spelling_is_null(word):
+  assert parse_packaged(f"a: {word}") == {"a": word}
+
+
+@pytest.mark.parametrize("word", ["none", "NONE", "Nonesuch"])
+def test_owned_words_are_not_implicit_strings(word):
+  from yapyon import AkanError
+
+  with pytest.raises(AkanError, match="bare word"):
+    parse_doc_text(f"a: {word}")
+  assert parse_doc_text(f'a: "{word}"') == {"a": word}
 
 
 def test_the_dumper_round_trips_the_string_none():
   doc = {"s": "None", "n": None}
-  text = _dump_text(doc)
-  assert "s: 'None'" in text
-  assert parse_doc_text(text) == doc
+  assert parse_doc_text(_dump_text(doc)) == doc
 
 
 def test_a_bare_none_at_a_bool_box_scalar_is_refused_like_null(tmp_path):
@@ -46,12 +50,13 @@ def test_a_bare_none_at_a_bool_box_scalar_is_refused_like_null(tmp_path):
     load_merged_config(box_yaml)
 
 
-def test_a_bare_none_env_value_is_the_suppression_null(tmp_path):
+@pytest.mark.parametrize("key", ["FOO", "null", "true"])
+def test_a_bare_none_env_value_is_the_suppression_null(tmp_path, key):
   agent_yaml = tmp_path / "claude" / "agent.yaml"
   agent_yaml.parent.mkdir()
-  agent_yaml.write_text("self:\n  env:\n    FOO: None\n    BAR: 'None'\n")
+  agent_yaml.write_text(f"self:\n  env:\n    {key}: None\n    BAR: 'None'\n")
   cfg = agent_record(agent_yaml, node="claude", purpose=ReadPurpose.RESOLVE)
-  assert cfg.env == {"FOO": None, "BAR": "None"}
+  assert cfg.env == {key: None, "BAR": "None"}
 
 
 class TestTheCommandLine:
@@ -114,28 +119,31 @@ def test_every_set_door_types_none_as_the_null(config_file, tmp_home, credential
 
 
 class TestAKeyThatIsNotAName:
-  """A config document's mapping key must be text; ``None:``, ``true:`` or ``1:`` is refused
-  by name, never a crash and never a silent ``{None: …}``."""
+  """Yapyon keywords and numeric keys refuse; names and quoted keywords stay strings."""
 
-  @pytest.mark.parametrize("key", ["None", "null", "true", "1"])
-  def test_a_box_file_is_refused_naming_the_table(self, tmp_path, key):
+  @pytest.mark.parametrize("key,problem", [("None", "keyword, not a key"), ("1", "numeric keys")])
+  def test_a_box_file_is_refused_naming_the_file(self, tmp_path, key, problem):
     from kanibako.errors import ConfigError
 
     box_yaml = tmp_path / "box.yaml"
-    box_yaml.write_text(f"box:\n  env:\n    {key}: x\n")
-    with pytest.raises(ConfigError, match=r"'box\.env'.*Quote that key"):
+    box_yaml.write_text(f"box:\n  env:\n    {key}: 'x'\n")
+    with pytest.raises(ConfigError, match=problem) as caught:
       load_merged_config(box_yaml)
+    assert f"{box_yaml}:3:" in str(caught.value)
 
   def test_an_agent_file_is_refused_too(self, tmp_path):
     from kanibako.errors import ConfigError
 
     agent_yaml = tmp_path / "claude" / "agent.yaml"
     agent_yaml.parent.mkdir()
-    agent_yaml.write_text("self:\n  env:\n    None: x\n")
-    with pytest.raises(ConfigError, match=r"'self\.env' that YAML reads as null"):
+    agent_yaml.write_text("self:\n  env:\n    None: 'x'\n")
+    with pytest.raises(ConfigError, match="keyword, not a key") as caught:
       agent_record(agent_yaml, node="claude", purpose=ReadPurpose.RESOLVE)
+    assert f"{agent_yaml}:3:" in str(caught.value)
 
-  def test_a_quoted_key_is_a_name(self, tmp_path):
-    p = tmp_path / "doc.yaml"
-    p.write_text("a:\n  'None': x\n")
-    assert load_doc(p) == {"a": {"None": "x"}}
+  @pytest.mark.parametrize("key,name", [("'None'", "None"), ("null", "null"), ("true", "true")])
+  def test_string_keys_are_names(self, tmp_path, key, name):
+    p = tmp_path / "box.yaml"
+    p.write_text(f"box:\n  env:\n    {key}: 'x'\n")
+    assert load_doc(p) == {"box": {"env": {name: "x"}}}
+    load_merged_config(p)
