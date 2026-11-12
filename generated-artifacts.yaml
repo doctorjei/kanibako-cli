@@ -108,6 +108,8 @@
   "api-docs/kanibako/launch/shells.py.md": None
   "api-docs/kanibako/launch/templates.py.md": None
   "api-docs/kanibako/log.py.md": None
+  "api-docs/kanibako/migration/__init__.py.md": None
+  "api-docs/kanibako/migration/yaml_to_yapyon.py.md": None
   "api-docs/kanibako/net/__init__.py.md": None
   "api-docs/kanibako/net/redirects.py.md": None
   "api-docs/kanibako/persona_store.py.md": None
