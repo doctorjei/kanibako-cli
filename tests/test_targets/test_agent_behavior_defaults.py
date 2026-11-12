@@ -479,7 +479,9 @@ class TestOneRulePerDeclaration:
     and both refusals carry the one message, differing only in the origin they
     name: the file, or the plugin.
     """
-    package, filename = declfile("behavior:\n  - key: provider\n    description: LLM provider\n")
+    package, filename = declfile(
+      'behavior:\n  - key: "provider"\n    description: "LLM provider"\n'
+    )
     with pytest.raises(SettingsError) as exc:
       agent_defaults.load_behavior(package, filename)
     msg = str(exc.value)
@@ -499,7 +501,7 @@ class TestOneRulePerDeclaration:
     """Q105 from the Python side: a ``default=None`` row for a key ``agent.default``
     already leaves ``<None>`` is REFUSED, naming the plugin and the key.
 
-    Its YAML twin (``default: null``) is refused by the loader; both carry one
+    Its YamlPlus twin (``default: None``) is refused by the loader; both carry one
     message, differing only in the origin they name.
 
     (Mutation: drop the ``None`` check from ``descriptor_floor`` → the floor
@@ -509,7 +511,7 @@ class TestOneRulePerDeclaration:
     with pytest.raises(SettingsError) as py_exc:
       descriptor_floor(descriptors, plugin="myplug")
     package, filename = declfile(
-      f"behavior:\n  - key: {key}\n    description: D\n    default: null\n"
+      f'behavior:\n  - key: "{key}"\n    description: "D"\n    default: None\n'
     )
     with pytest.raises(SettingsError) as yaml_exc:
       agent_defaults.load_behavior(package, filename)
