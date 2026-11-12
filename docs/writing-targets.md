@@ -182,19 +182,19 @@ shipped `target.py` constructs a `TargetSetting` anywhere in the module, and
 `test_no_shipped_plugin_imposes_a_model` reds if any shipped agent's `model`
 row sets a value at all.
 
-Codex's `codex-defaults.yaml` (trimmed to the fields covered above):
+Codex's Yapyon `codex-defaults.yaml` (trimmed to these fields):
 
-```yaml
+```yamlplus
 descriptor:
   command: ["codex"]
 
   bindings:
-    - key: binary
-      origin: binary
+    - key: "binary"
+      origin: "binary"
       box_dest: "{$GUEST_HOME}/.local/bin/codex"
-      kind: file
-      scope: agent_critical
-      ro: true
+      kind: "file"
+      scope: "agent_critical"
+      ro: True
 
   mode:
     start: []
@@ -205,38 +205,38 @@ descriptor:
       fragment: ["exec"]
 
   access_realization:
-    channel: flag
-    setting_key: access
+    channel: "flag"
+    setting_key: "access"
     tiers:
       restricted: {}                                       # emit nothing on the argv
       editing: {flag: ["-s", "workspace-write"]}
       full: {flag: ["--dangerously-bypass-approvals-and-sandbox"]}
 
   settings:
-    - setting_key: model
-      channel: flag
+    - setting_key: "model"
+      channel: "flag"
       flag: ["--model"]
-      # empty: emit | omit — does an empty value emit? Default: emit for model, omit otherwise.
+      # empty: "emit" | "omit" — emit an empty value? Default: "emit" for model, "omit" otherwise.
 
   cred_files:
     - home_rel: ".codex/auth.json"
       host_rel: ".codex/auth.json"
-      cadence: sync
-      mtime_gate: true
-      filtered: false
+      cadence: "sync"
+      mtime_gate: True
+      filtered: False
 
   init_dirs: [".codex"]
 
 # The `agent.codex.*` BEHAVIOR floor (spec §2d) -- setting_descriptors() returns
 # exactly this table, in file order.  A key core's `agent.default` declares may
-# omit `default:` and inherit `agent.default.<key>`; `default: null` there is
+# omit `default:` and inherit `agent.default.<key>`; `default: None` there is
 # refused when `agent.default` is already <None>.  Any other key must write its
-# `default:`, a string or `null` (<None>).
+# `default:`, a string or `None` (null).
 behavior:
   # The agent's human-readable DESCRIPTION -- `agent.codex.label` (spec §2d), and
   # what `kanibako agent info` prints.  Declare one or your agent reads the
   # all-agents fallback, the agent's own name.
-  - key: label
+  - key: "label"
     description: "Human-readable description of this agent"
     default: "Codex CLI"
   # 🛑 NO DEFAULT.  kanibako imposes no model on any shipped agent — the row
@@ -244,11 +244,10 @@ behavior:
   # omits, so codex falls back to its OWN built-in default until a user sets one
   # (`agent.default.model`, `agent.codex.model` or `-M`).  Pinned by
   # `test_no_shipped_plugin_imposes_a_model`; do not add a value here.
-  - key: model
+  - key: "model"
     description: "Model to use (unset = codex's own built-in default)"
-  - key: endpoint
-    description: "Alternate model-provider base-URL (persona); unset uses the
-      harness default"
+  - key: "endpoint"
+    description: "Alternate model-provider base-URL (persona); unset uses the harness default"
 ```
 
 `target.py` loads both tables at import time and returns them unmodified —
@@ -310,7 +309,7 @@ return a list of `TargetSetting`s, and both may be built by hand in Python (the
 "Method reference" section below still shows that shape, and it works).  What is
 never acceptable on *any* plugin, shipped or third-party: an opinionated `model`
 default.  Kanibako imposes no model — set none (`default=UNSET`, from
-`kanibako.settings.settings_resolve`, or no `default:` in YAML) so `model`
+`kanibako.settings.settings_resolve`, or no `default:` in Yapyon) so `model`
 inherits `agent.default.model` and the harness picks its own unless the user
 names one, exactly as codex, claude, and goose all do.  A `None` there would
 shadow a user's `agent.default.model`.
@@ -432,8 +431,8 @@ a user overrides one by writing the same key in a nearer file — the system fil
 or the agent's own.  An `agent.<agent>.*` key written in a workset or box file is
 dropped at assembly with a warning; a box overrides its agent through a
 `pref.agent.<agent>.<key>` request instead.  To *remove* one of your entries
-rather than repoint it, a user present-`null`s that destination inside the value
-(`pref.agent.<agent>.common: {<box_dest>: null}`).  All three default to `{}`.
+rather than repoint it, set the destination to `None` in the value
+(`pref.agent.<agent>.common: {"<box_dest>": None}`). All three default to `{}`.
 
 **Prefer the defaults file to Python.**  The shipped plugins declare `common:`
 and `env:` in their `<agent>-defaults.yaml` and read them with the loaders, which
@@ -447,9 +446,9 @@ def default_common(self) -> dict[str, BindArm]:
     return load_common(_DEFAULTS_PACKAGE, _DEFAULTS_FILE, self.name)
 ```
 
-```yaml
+```yamlplus
 common:
-  - host_src: plugins                          # rooted -> agents/<agent>/common/plugins
+  - host_src: "plugins"                        # rooted -> agents/<agent>/common/plugins
     box_dest: "{$GUEST_HOME}/.claude/plugins"
 ```
 

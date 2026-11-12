@@ -791,25 +791,21 @@ support `.shell.d/` on the next launch.
 
 ## Agent Configuration
 
-Each agent gets a YAML configuration file inside its per-agent store directory
-at `$XDG_DATA_HOME/kanibako/agents/{agent}/agent.yaml`.  The file is
-generated automatically on first use (via the target plugin's
-`generate_agent_config()` method) and can be edited afterwards.  It is generated
-EMPTY: it holds what you set and nothing else, and every default comes from the
-cascade under it.
+Each agent's Yapyon configuration lives at
+`$XDG_DATA_HOME/kanibako/agents/{agent}/agent.yaml`. The target plugin's
+`generate_agent_config()` creates it EMPTY on first use: it holds only your
+overrides; defaults come from the cascade. You can edit it afterwards.
 
-```yaml
+```yamlplus
 self:
   label: "My Claude"        # the agent's description; unset reads the plugin's own
   run_args: ["--verbose"]   # extra CLI args prepended on every launch (omit if none)
   model: "opus"             # agent-specific state knobs (e.g. --model for Claude)
   access: "editing"         # permission tier: restricted | editing | full (default)
-  env:
-    # KEY: "value"          # raw env vars injected into the box
+  env: {}                   # raw env vars; e.g. env: {KEY: "value"}
   # transform: "tweakcc"    # WHICH binary transform runs (tweakcc only)
-  transform_settings:
-    # enabled: false        # enable tweakcc binary patching
-    # config: "~/.tweakcc/config.json"  # external tweakcc config file
+  transform_settings: {}     # optional tweakcc settings:
+  # transform_settings: {enabled: False, config: "~/.tweakcc/config.json"}
 ```
 
 **Sections:**
@@ -913,10 +909,10 @@ A box can hide any guest path it likes with a **mask** — an empty tmpfs mounte
 over that path, so whatever the box home holds there is not visible inside the
 box at all:
 
-```yaml
+```yamlplus
 box:
   masks:
-    "~/private": true
+    "~/private": True
 ```
 
 No mask is applied by default. (Before 1.6.0 the vault lived inside the
@@ -1058,9 +1054,13 @@ system.template=<path>` writes one to the system settings file, and `get` and
 
 ### Files
 
-All kanibako config and settings files are YAML.  The extension names the layer:
-a `.cfg` file is bootstrap config and holds `config.*` keys only; everything else
-is `.yaml`.
+Owned config/settings use Yapyon; kanibako writes YamlPlus. Extensions still name
+layers: `.cfg` holds only bootstrap `config.*` paths; other owned documents keep
+`.yaml`.
+
+Native tool, workflow, and template formats stay native. There is no runtime
+format selector or legacy fallback. For explicit conversion, see
+[MIGRATION.md](MIGRATION.md#owned-documents-read-yapyon-and-write-yamlplus).
 
 - **Config (global)**: `$XDG_CONFIG_HOME/kanibako.cfg` (`config.*` bootstrap paths only)
 - **Config (site, optional)**: `/etc/kanibako/base.cfg`
@@ -1105,7 +1105,7 @@ The global config (`~/.config/kanibako.cfg`) holds only the `config.*` bootstrap
 paths -- the ones kanibako must resolve before it can find anything else.  Values
 may use the resolver grammar -- `{key}` refs, `{$XDG_*}`, `~`:
 
-```yaml
+```yamlplus
 config:
   data: "{$XDG_DATA_HOME}/kanibako"                # data root
   settings: "{config.data}/global/settings.yaml"   # the system settings file

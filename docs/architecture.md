@@ -18,12 +18,12 @@ aids, not the authority.
 |--------|------|
 | `cli.py` | Argparse tree, main() entry, `-v` flag |
 | `log.py` | Logging setup (`-v` enables debug output) |
-| `settings/config.py` | YAML config loading, defaults, merge logic (`system.*` config tier); agent resolution (`resolve_agent` validate-or-refuse, `resolve_and_load_settings` two-pass), setup-marker reader |
+| `settings/config.py` | Layer-1 bootstrap loading and flat `config.*` path resolution; settings cascade and agent resolution live elsewhere |
 | `settings/config_interface.py` | The config/settings VERBS (get/set/reset/show across box, workset, agent, system) plus the set-time cascade probe; `system.*` keys set and reset from the CLI like any other scope, with a programmatic `write_system_value` serving `setup` — it is `config.*` keys that are file-only (refused at set/reset) |
 | `settings/config_keys.py` | The CLI-facing key TAXONOMY: family recognizers/parsers, per-family displays and refusals, the scope tables, and the routing table. ⚑ Not the closed-keyspace validator — that is `settings_keyspace`, which this layer is constrained to defer to (today reached indirectly via `settings_prefs`) |
 | `settings/config_dest.py` | The ONE destination rule (`DestRoute`/`_write_dest`): which file and nested slot a key's value occupies, for every verb; plus the per-node agent file route |
 | `settings/config_display.py` | The `show` / `--effective` renderers: each `pref` request beside its result, each declaration above the binding it derives |
-| `settings/config_io.py` | Centralized YAML load/dump for every kanibako config document, plus the document mutators the verbs write through |
+| `settings/config_io.py` | Owned Yapyon reads/YamlPlus writes, explicit legacy text conversion, native codecs, and document mutators |
 | `errors.py` | Kanibako exception hierarchy (incl. `AgentResolutionError` / `AgentUnsetError` / `AgentNoDefaultError` / `AgentNotInstalledError`, surfaced verbatim by the top-level handler) |
 | `install_method.py` | Detect kanibako's own install method (pipx/uv/pip) to tailor the "install a plugin" command — in `AgentNotInstalledError`, and in `setup`'s Step 2 when no agent plugin is installed at all |
 | `settings/paths.py` · `utils/xdg.py` | Box/workset paths/init · XDG resolution/fallback |

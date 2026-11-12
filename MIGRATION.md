@@ -1,8 +1,8 @@
 # kanibako migration guides
 
-kanibako ships **no migration code**: each breaking change set is a manual runbook. Read
-the guide for the release you are upgrading **to**; if you are skipping releases, work
-through them oldest-first.
+Release guides are manual runbooks; unreleased changes are separate. Read your
+destination release's guide; when skipping releases, work oldest-first.
+The v1.8.0 guide's YAML examples describe that release, not today's owned format.
 
 | Upgrading to | Guide |
 |---|---|
@@ -15,6 +15,50 @@ config notes are in the [CHANGELOG](CHANGELOG.md).
 ---
 
 # Unreleased changes
+
+## Owned documents read Yapyon and write YamlPlus
+
+Owned config/settings, agent/default files, registries, and `spawn.yaml` read public
+Yapyon and write YamlPlus; extensions stay `.cfg`/`.yaml`. There is no runtime
+format selector or legacy fallback. Native tool configs, workflows, and template
+formats stay native; third-party stores, including Persona Grata's, are not
+Kanibako-owned conversion targets. Do not convert every `.yaml` file.
+
+Use `kanibako.settings.config_io.convert_legacy_doc_text(text, *, source=None) -> str`
+for explicitly selected legacy owned YAML. `source` labels diagnostics; it opens
+no path. In a Python environment containing this Kanibako build, preview disposable
+text before considering any real file:
+
+```bash
+python -I - <<'PY'
+from kanibako.settings.config_io import convert_legacy_doc_text
+
+text = 'self:\n  model: sonnet\n  continue_mode: true\n'
+print(convert_legacy_doc_text(text, source="disposable-agent.yaml"), end="")
+PY
+```
+
+This prints text only: no discovery, file replacement, or conversion CLI. It does
+not rename keys or perform the historical release guides' manual steps.
+
+Output normalization turns tuples into lists, dates/timestamps into ISO text
+(using their string spelling, including spaces/offsets), and bytes into strings
+such as `"b'abc'"`. References, environment expressions, and `~` paths remain
+unresolved strings. Python-type identity, alias identity, and source layout are
+not preserved; NaN/infinity handling is outside this conversion's scope.
+
+Conversion retains comment occurrences and destinations: trailing comments may
+move before their values; merge comments move to the receiving mapping. Later
+registry writes still rebuild the document, lose user comments, and restore the
+generated warning header; unknown top-level sections are dropped with a warning.
+Blank/comment-only bootstraps remain unchanged.
+
+New standalone markers contain `"__STANDALONE__"`, a quoted YamlPlus string.
+Existing raw markers remain accepted and are never automatically rewritten.
+Raw-only 1.8.x readers, including released 1.8.0, do not recognize quoted markers.
+Before downgrading, replace only the standalone marker with raw
+`__STANDALONE__`, by hand. No unrestricted 1.8.x/new-reader round trip is promised:
+an older writer may emit legacy text again. This change adds no 1.8.x shim.
 
 ## Registered Persona Grata agents and one-shot credentials
 
@@ -7995,11 +8039,6 @@ the file and the cure; a box settings file drops it with a warning. kanibako con
 'workset.registry' is RETIRED and is still set in the workset settings file <root>/workset.yaml (as `workset: registry:`). The workset registry is now meta.workset.registry, fixed at <workset root>/registry.yaml, and no file sets it.
   Fix, by hand: that null marked a standalone box, which <root>/registry.yaml now marks by holding only __STANDALONE__: write that file, then remove the line. See MIGRATION.md § "The workset registry is a fixed file, and a standalone box is marked in it".
 ```
-
-**YamlPlus conversion (unreleased).** New markers contain `"__STANDALONE__"`, a quoted
-YamlPlus string. Existing raw markers remain accepted and are never automatically rewritten.
-Raw-only 1.8.x readers, including released 1.8.0, do not recognize quoted markers. Before
-downgrading, replace only the standalone marker with the raw token shown below, by hand.
 
 **What you must do.**
 

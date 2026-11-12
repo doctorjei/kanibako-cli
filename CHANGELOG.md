@@ -12,6 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Explicit legacy owned-YAML text conversion through
+  `kanibako.settings.config_io.convert_legacy_doc_text`; preview instructions in
+  [MIGRATION.md](MIGRATION.md#owned-documents-read-yapyon-and-write-yamlplus).
 - Select registered Persona Grata agents through its public API. Winning manager
   credentials use a one-shot inherited pipe, closed before the existing entrypoint
   starts. Ordinary harness and file-secret delivery remain unchanged.
@@ -37,7 +40,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Owned documents read Yapyon, write YamlPlus. Native codecs remain; errors name sources.
   Packaged failures raise PackagingError.
 - New standalone markers use quoted YamlPlus; legacy markers stay unchanged. See
-  MIGRATION.md's standalone-registry section before downgrading to a raw-only 1.8.x reader.
+  [MIGRATION.md](MIGRATION.md#owned-documents-read-yapyon-and-write-yamlplus) before
+  downgrading to a raw-only 1.8.x reader.
 - **A blank `-e VAR=` now suppresses the credential instead of being ignored.** On
   `kanibako start`, a blank or whitespace-only value for a persona's token
   variable means "run without it": nothing is read, stat'd, fetched, staged,
