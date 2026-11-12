@@ -1386,7 +1386,6 @@ kind = "code-patterns"
   id = "pyyaml-emitters"
   antipatterns = ['\byaml\.(?:safe_)?dump\s*\(']
   home = [
-    "src/kanibako/settings/config_io.py",
     "src/kanibako/settings/agent_defaults.py",
   ]
   note = "Lexical PyYAML emitters; agent_defaults formats diagnostics, not persisted configuration"
@@ -1394,7 +1393,7 @@ kind = "code-patterns"
   [[registry.entry]]
   id = "yamlplus-emitters"
   antipatterns = ['\b(?:yapyon(?:\.yamlplus)?|yamlplus)\.dumps\s*\(']
-  home = ["src/kanibako/settings/config_io.py"]
+  home = []
   note = "Lexical Yapyon/YamlPlus emitters belong in config_io"
 
   # A regex that spells the header: the `#\s*` prefix, or the token followed by
