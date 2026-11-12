@@ -25,7 +25,7 @@ import kanibako
 import kinemata_artifacts
 from kanibako.settings import config_io
 from kinemata_artifacts import ArtifactRegistry
-from test_kinemata_manifest import (
+from tests.test_kinemata_manifest import (
   EDGE_YAML,
   _assert_same_registry,
   _load_registry,
