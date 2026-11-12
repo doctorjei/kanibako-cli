@@ -12,6 +12,8 @@ from pathlib import Path
 
 import pytest
 
+from kanibako.settings.config_io import convert_legacy_doc_text
+
 from kanibako.project import registry_store
 from kanibako.errors import (
   AmbiguousNameError,
@@ -816,7 +818,7 @@ class TestBoxAndWorksetShareAName:
     sa_root = tmp_home / "sa" / name
     sa_root.mkdir(parents=True)
     (sa_root / "box_data").mkdir()
-    (sa_root / "workset.yaml").write_text("box:\n  image: ghcr.io/x:1\n")
+    (sa_root / "workset.yaml").write_text(convert_legacy_doc_text("box:\n  image: ghcr.io/x:1\n"))
     (sa_root / "registry.yaml").write_text("__STANDALONE__\n")
     registry_store.register_standalone(std.registry, name, sa_root)
     ws_root = tmp_home / "worksets" / name

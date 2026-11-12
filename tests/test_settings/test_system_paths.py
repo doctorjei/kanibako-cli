@@ -28,6 +28,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from kanibako.settings.config_io import convert_legacy_doc_text
+
 from kanibako.settings.config import STANDARD_BIND_SOURCE_KEYS, load_config
 from kanibako.settings.paths import (
   CONFIG_PATH_DEFAULTS,
@@ -376,7 +378,7 @@ class TestLoadConfigPaths:
     from kanibako.settings.config import system_path_set_values
 
     settings = tmp_path / "settings.yaml"
-    settings.write_text("system:\n  agent: null\n")
+    settings.write_text(convert_legacy_doc_text("system:\n  agent: null\n"))
     assert "system.agent" in system_path_set_values(settings)
 
   def test_a_non_table_system_entry_reads_as_empty(self, tmp_path):
@@ -387,7 +389,7 @@ class TestLoadConfigPaths:
     from kanibako.settings.config import system_path_set_values
 
     settings = tmp_path / "settings.yaml"
-    settings.write_text("system: /x\n")
+    settings.write_text(convert_legacy_doc_text("system: /x\n"))
     assert system_path_set_values(settings) == {}
 
   def test_empty_config_has_no_config_paths(self, tmp_path):

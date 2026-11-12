@@ -20,6 +20,8 @@ from pathlib import Path
 
 import pytest
 
+from kanibako.settings.config_io import convert_legacy_doc_text
+
 from kanibako.project.workset import create_workset
 from kanibako.settings.agent_config import agent_settings_path
 from kanibako.settings.config import BOX_META_FILE, WORKSET_META_FILE
@@ -550,7 +552,7 @@ class TestABrokenTargetIsJudgedWithoutTheTarget:
     box_file, _ = box_workset_settings_paths(proj)
     box_file.parent.mkdir(parents=True, exist_ok=True)
     with box_file.open("a") as fh:
-      fh.write("pref:\n  system.agent: claude\n")
+      fh.write(convert_legacy_doc_text("pref:\n  system.agent: claude\n"))
 
   @_WRITES_THE_DOTTED_PREF
   def test_an_unrelated_value_is_written_only_with_force(self, std, config_file, tmp_home):
@@ -631,11 +633,14 @@ class TestABrokenTargetIsJudgedWithoutTheTarget:
     proj = _primary_box(std, config_file, tmp_home)
     box_file, workset_file = box_workset_settings_paths(proj)
     std.settings.parent.mkdir(parents=True, exist_ok=True)
-    std.settings.write_text("workset:\n  canon: /sys/canon\n")
+    std.settings.write_text(convert_legacy_doc_text("workset:\n  canon: /sys/canon\n"))
     workset_file.parent.mkdir(parents=True, exist_ok=True)
     workset_file.write_text('workset:\n  canon: "{workset.nonexistent_zz}/c"\n')
     box_file.parent.mkdir(parents=True, exist_ok=True)
-    box_file.write_text("box:\n  canon: /first\npref:\n  system.agent: claude\n")
+    box_file.write_text(
+      convert_legacy_doc_text("box:\n  canon: /first\npref:\n  system.agent: claude\n")
+    )
+    before = box_file.read_bytes()
     rc = run_set(
       argparse.Namespace(
         args=[str(proj.project_path), "box.canon={workset.canon}/x"],
@@ -646,7 +651,7 @@ class TestABrokenTargetIsJudgedWithoutTheTarget:
     err = capsys.readouterr().err
     assert rc == 1, err
     assert "did not resolve:" in err
-    assert "canon: /first" in box_file.read_text()
+    assert box_file.read_bytes() == before
 
   def test_a_caller_that_could_not_name_its_target_gets_the_same_rule(self, tmp_path):
     files = _files(tmp_path)
@@ -778,7 +783,7 @@ class TestASystemPathValueMayNotPointOutOfItsTier:
     this door is the one that refuses — and its message must not claim that any
     ``@system.*`` key is allowed."""
     files = _files(tmp_path)
-    files["system"].write_text("system:\n  agent: claude\n")
+    files["system"].write_text(convert_legacy_doc_text("system:\n  agent: claude\n"))
     message = _set("system.template", "{system.agent}/x", files, ConfigLevel.system)
     assert message.startswith("Error:"), message
     assert "'{system.agent}'" in message and "outside the system path tier" in message

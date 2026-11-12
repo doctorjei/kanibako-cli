@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import pytest
 
+from kanibako.settings.config_io import convert_legacy_doc_text
+
 from kanibako.launch.shells import resolve_box_shell
 from kanibako.settings.config import (
   KanibakoConfig,
@@ -78,7 +80,7 @@ class TestAPresentNoneSurvivesTheMerge:
     reaches the flat field intact.
     """
     box_yaml = tmp_path / BOX_META_FILE
-    box_yaml.write_text("box:\n  shell: null\n")
+    box_yaml.write_text(convert_legacy_doc_text("box:\n  shell: null\n"))
     merged = load_merged_config(box_yaml)
     assert merged.box_shell is None
 
@@ -92,14 +94,14 @@ class TestAPresentNoneSurvivesTheMerge:
     same shape §2h states for a box pref: the request is applied, not undone.
     """
     workset = tmp_path / "workset.yaml"
-    workset.write_text("box:\n  shell: /bin/zsh\n")
+    workset.write_text(convert_legacy_doc_text("box:\n  shell: /bin/zsh\n"))
     box_yaml = tmp_path / BOX_META_FILE
-    box_yaml.write_text("box:\n  shell: null\n")
+    box_yaml.write_text(convert_legacy_doc_text("box:\n  shell: null\n"))
     assert load_merged_config(box_yaml, workset_path=workset).box_shell is None
     # ⚑ The control: with the box tier silent the workset's value is what wins, so
     # the assertion above is about the ``null`` and not about the workset being ignored.
     silent_box = tmp_path / "box-silent.yaml"
-    silent_box.write_text("box:\n  image: x\n")
+    silent_box.write_text(convert_legacy_doc_text("box:\n  image: x\n"))
     assert load_merged_config(silent_box, workset_path=workset).box_shell == "/bin/zsh"
 
   def test_the_empty_string_is_still_a_real_distinct_value(self, tmp_path):
@@ -110,7 +112,7 @@ class TestAPresentNoneSurvivesTheMerge:
 
   def test_a_concrete_shell_is_untouched(self, tmp_path):
     box_yaml = tmp_path / BOX_META_FILE
-    box_yaml.write_text("box:\n  shell: /bin/zsh\n")
+    box_yaml.write_text(convert_legacy_doc_text("box:\n  shell: /bin/zsh\n"))
     assert load_merged_config(box_yaml).box_shell == "/bin/zsh"
 
   def test_a_typed_box_scalar_keeps_none_only_where_none_is_declared(self):
@@ -143,7 +145,7 @@ class TestTheConsumerAutoDetects:
   ):
     """THE PRODUCTION CHAIN: stored ``null`` → merged ``None`` → auto-detect."""
     box_yaml = tmp_path / BOX_META_FILE
-    box_yaml.write_text("box:\n  shell: null\n")
+    box_yaml.write_text(convert_legacy_doc_text("box:\n  shell: null\n"))
     cfg = load_merged_config(box_yaml)
     assert cfg.box_shell is None
     assert resolve_box_shell(cfg, std) == ("sh", "sh")
@@ -168,7 +170,7 @@ class TestTheEffectiveViewPrintsTheSpecSpelling:
     global_cfg = tmp_path / "kanibako.cfg"
     global_cfg.write_text("")
     box_yaml = tmp_path / BOX_META_FILE
-    box_yaml.write_text("box:\n  shell: null\n")
+    box_yaml.write_text(convert_legacy_doc_text("box:\n  shell: null\n"))
     show_config(
       command_scope=ConfigLevel.box,
       global_config_path=global_cfg,
@@ -185,7 +187,7 @@ class TestTheEffectiveViewPrintsTheSpecSpelling:
     global_cfg = tmp_path / "kanibako.cfg"
     global_cfg.write_text("")
     box_yaml = tmp_path / BOX_META_FILE
-    box_yaml.write_text("box:\n  shell: /bin/zsh\n")
+    box_yaml.write_text(convert_legacy_doc_text("box:\n  shell: /bin/zsh\n"))
     show_config(
       command_scope=ConfigLevel.box,
       global_config_path=global_cfg,
@@ -253,7 +255,7 @@ class TestTheLaunchRefusesAndTheSetDoorRefuses:
   def _box_yaml(self, tmp_path, dotted, spelling="null"):
     leaf = dotted.split(".", 1)[1]
     p = tmp_path / BOX_META_FILE
-    p.write_text(f"box:\n  {leaf}: {spelling}\n")
+    p.write_text(convert_legacy_doc_text(f"box:\n  {leaf}: {spelling}\n"))
     return p
 
   @pytest.mark.parametrize(
@@ -283,7 +285,7 @@ class TestTheLaunchRefusesAndTheSetDoorRefuses:
     """§2h's distinction: an ABSENT key is a default, and a present ``None`` is a
     value.  Only the second is refused, so an untouched box still launches."""
     p = tmp_path / BOX_META_FILE
-    p.write_text("box:\n  image: x\n")
+    p.write_text(convert_legacy_doc_text("box:\n  image: x\n"))
     assert load_merged_config(p).box_image == "x"
 
   def test_the_set_door_refuses_the_write_the_launch_refuses(self, tmp_path):
@@ -292,7 +294,8 @@ class TestTheLaunchRefusesAndTheSetDoorRefuses:
     from kanibako.settings.config_interface import set_config_value
 
     box_yaml = tmp_path / BOX_META_FILE
-    box_yaml.write_text("box:\n  shell: null\n")
+    box_yaml.write_text(convert_legacy_doc_text("box:\n  shell: null\n"))
+    before = box_yaml.read_bytes()
     message = set_config_value(
       "box.image",
       None,
@@ -304,7 +307,7 @@ class TestTheLaunchRefusesAndTheSetDoorRefuses:
     assert ERR_BOX_SCALAR_NULL_REASON in message
     assert "Nothing was written" in message
     # 🛑 NOTHING WAS WRITTEN — the whole point of refusing at the door.
-    assert "box.image" not in box_yaml.read_text()
+    assert box_yaml.read_bytes() == before
 
   def test_the_set_door_still_writes_a_null_box_shell(self, tmp_path):
     """🛑 THE CONTROL for the door too: ``--null box.shell`` is a legal write."""
@@ -366,7 +369,7 @@ class TestAPresentNullIsNotAnAbsentKey:
 
   def _box_yaml(self, tmp_path, dotted, spelling):
     p = tmp_path / BOX_META_FILE
-    p.write_text(f"box:\n  {dotted.split('.', 1)[1]}: {spelling}\n")
+    p.write_text(convert_legacy_doc_text(f"box:\n  {dotted.split('.', 1)[1]}: {spelling}\n"))
     return p
 
   @pytest.mark.parametrize("dotted", sorted(DEFAULTS))
@@ -435,7 +438,7 @@ class TestTheDisplaySurvivesAValueTheLaunchRefuses:
     global_cfg = tmp_path / "kanibako.cfg"
     global_cfg.write_text("")
     box_yaml = tmp_path / BOX_META_FILE
-    box_yaml.write_text(f"box:\n  {dotted.split('.', 1)[1]}: null\n")
+    box_yaml.write_text(convert_legacy_doc_text(f"box:\n  {dotted.split('.', 1)[1]}: null\n"))
     rc = show_config(
       command_scope=ConfigLevel.box,
       global_config_path=global_cfg,
@@ -461,7 +464,7 @@ class TestTheRefusalJudgesTheResolvedValue:
 
   def _write(self, path, text):
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text)
+    path.write_text(convert_legacy_doc_text(text))
     return path
 
   def test_a_system_tier_null_is_refused_naming_the_system_file(self, std):

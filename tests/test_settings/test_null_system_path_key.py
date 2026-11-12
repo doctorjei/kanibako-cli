@@ -14,6 +14,8 @@ from pathlib import Path
 
 import pytest
 
+from kanibako.settings.config_io import convert_legacy_doc_text
+
 from kanibako.settings.bootstrap import SYSTEM_PATH_DEFAULTS
 from kanibako.settings.config import (
   STANDARD_BIND_SOURCE_KEYS,
@@ -32,7 +34,7 @@ from kanibako.settings.settings_resolve import match_braced
 
 def _settings(tmp_path, doc: str):
   path = tmp_path / "settings.yaml"
-  path.write_text(doc)
+  path.write_text(convert_legacy_doc_text(doc))
   return path
 
 

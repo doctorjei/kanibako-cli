@@ -26,6 +26,8 @@ from pathlib import Path
 
 import pytest
 
+from kanibako.settings.config_io import convert_legacy_doc_text
+
 from tests.support.filenames import CONFIG_FILENAME
 
 #: A command that loads the standard paths and then wants a registered workset — so a
@@ -47,7 +49,7 @@ def _cli(argv, tmp_home, capsys):
 
 def _write(path: Path, body: str) -> None:
   path.parent.mkdir(parents=True, exist_ok=True)
-  path.write_text(textwrap.dedent(body).lstrip())
+  path.write_text(convert_legacy_doc_text(textwrap.dedent(body).lstrip()))
 
 
 def _settings(tmp_home, config_file) -> Path:

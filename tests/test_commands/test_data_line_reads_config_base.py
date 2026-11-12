@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import pytest
 
+from kanibako.settings.config_io import convert_legacy_doc_text
+
 import kanibako.settings.config as cfg_mod
 from kanibako.cli import main
 from kanibako.commands import diagnose
@@ -17,7 +19,7 @@ def site_data(tmp_home, config_file, monkeypatch):
   base = tmp_home / "etc" / "base.cfg"
   base.parent.mkdir()
   data = tmp_home / "site-data"
-  base.write_text(f"config:\n  data: {data}\n")
+  base.write_text(convert_legacy_doc_text(f"config:\n  data: {data}\n"))
   monkeypatch.setattr(cfg_mod, "config_base_path", lambda: base)
   assert load_std_paths().data == data == resolve_data_path()
   return data

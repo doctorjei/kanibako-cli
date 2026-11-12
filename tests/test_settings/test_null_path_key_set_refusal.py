@@ -26,6 +26,8 @@ from pathlib import Path
 
 import pytest
 
+from kanibako.settings.config_io import convert_legacy_doc_text
+
 from kanibako.project.workset import (
   create_workset,
   load_workset_settings_doc,
@@ -181,7 +183,7 @@ class TestTheLaunchStillRefusesTheStoredValue:
   def test_the_system_path_tier_reader_refuses_a_stored_null(self, std, tmp_path):
     files = _files(tmp_path)
     files["system"].parent.mkdir(parents=True, exist_ok=True)
-    files["system"].write_text("system:\n  channelroot: null\n")
+    files["system"].write_text(convert_legacy_doc_text("system:\n  channelroot: null\n"))
     with pytest.raises(Exception) as caught:
       system_path_set_values(files["system"])
     assert ERR_CONFIG_NULL_PATH_REASON in str(caught.value)
@@ -238,7 +240,7 @@ class TestTheRefusalCarriesTheLaunchsOwnReason:
     # not, this reds.  The LEAD and the CUE after it are per-door by contract and are
     # NOT compared here.
     files = _files(tmp_path)
-    files["system"].write_text("system:\n  channelroot: null\n")
+    files["system"].write_text(convert_legacy_doc_text("system:\n  channelroot: null\n"))
     with pytest.raises(Exception) as caught:
       system_path_set_values(files["system"])
     at_launch = str(caught.value)
@@ -327,32 +329,32 @@ class TestWhatStaysLenient:
   """⚑ THE OTHER HALF. A null that MEANS something, and every value that is not a null."""
 
   @pytest.mark.parametrize(
-    "key,scope_name",
+    "key,scope_name,expected",
     [
-      ("system.agent", "system"),  # "no default agent" (spec §2b)
-      # ⚑ THE FIVE A NULL OMITS A BIND FOR (spec §2a) — a null at a STANDARD bind's
-      # source key is an omission, not a refusal, so the set door WRITES it.
-      ("system.canon", "system"),
-      ("system.channels.common", "system"),
-      ("system.channels.chat", "system"),
-      ("system.channels.share", "system"),
-      ("system.channels.mailboxes", "system"),
-      ("workset.workspaces", "workset"),  # "no workspace dir" (spec §2c)
-      ("workset.logs", "workset"),  # "no logs dir"
-      ("workset.canon", "workset"),  # another workset dir key, not a member
-      ("workset.channels.chat", "workset"),  # ...and so is every other workset dir key
-      ("box.canon", "box"),
-      ("box.env.FOO", "box"),  # the §2h suppression idiom
+      ("system.agent", "system", {"system": {"agent": None}}),
+      ("system.canon", "system", {"system": {"canon": None}}),
+      ("system.channels.common", "system", {"system": {"channels": {"common": None}}}),
+      ("system.channels.chat", "system", {"system": {"channels": {"chat": None}}}),
+      ("system.channels.share", "system", {"system": {"channels": {"share": None}}}),
+      ("system.channels.mailboxes", "system", {"system": {"channels": {"mailboxes": None}}}),
+      ("workset.workspaces", "workset", {"workset": {"workspaces": None}}),
+      ("workset.logs", "workset", {"workset": {"logs": None}}),
+      ("workset.canon", "workset", {"workset": {"canon": None}}),
+      ("workset.channels.chat", "workset", {"workset": {"channels": {"chat": None}}}),
+      ("box.canon", "box", {"box": {"canon": None}}),
+      ("box.env.FOO", "box", {"box": {"env": {"FOO": None}}}),
     ],
   )
-  def test_a_null_that_means_something_is_still_written(self, key, scope_name, tmp_path):
+  def test_a_null_that_means_something_is_still_written(self, key, scope_name, expected, tmp_path):
+    from yapyon import loads
+
     files = _files(tmp_path)
     scope = ConfigLevel[scope_name]
     message = _set(key, None, files, scope)
     assert not message.startswith("Error:"), message
     assert f"Set {key}=null" in message, message
     destination = files["system"] if scope is ConfigLevel.system else files[scope.value]
-    assert destination.exists() and "null" in destination.read_text()
+    assert loads(destination.read_text()) == expected
 
   @pytest.mark.parametrize(
     "key,value",

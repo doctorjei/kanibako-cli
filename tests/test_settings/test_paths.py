@@ -7,6 +7,8 @@ import shutil
 
 import pytest
 
+from kanibako.settings.config_io import convert_legacy_doc_text
+
 from kanibako.settings.config import BOX_META_FILE, WORKSET_META_FILE, load_config
 from kanibako.errors import ConfigError, ProjectError, WorksetError
 from kanibako.settings.paths import (
@@ -3157,7 +3159,10 @@ class TestEarlySystemTierIsData:
     "text, arm",
     [
       ("- a\n- b\n", "the document does not load"),
-      ("system:\n  cache: null\n", "it loads, the system: table is refused"),
+      (
+        convert_legacy_doc_text("system:\n  cache: null\n"),
+        "it loads, the system: table is refused",
+      ),
     ],
   )
   def test_strict_raises_in_both_arms(self, tmp_home, text, arm):
@@ -3208,9 +3213,11 @@ class TestEarlySystemTierIsData:
     """
     baseline, _ = self._tier(tolerate=True)  # NO settings file yet: the declared defaults
     self._settings(
-      "system:\n  cache: null\n"
-      "workset:\n  boxes: /srv/kb/{meta.workset.path}\n"
-      "  template: /srv/tpl/{meta.workset.path}\n",
+      convert_legacy_doc_text(
+        "system:\n  cache: null\n"
+        "workset:\n  boxes: /srv/kb/{meta.workset.path}\n"
+        "  template: /srv/tpl/{meta.workset.path}\n"
+      ),
     )
 
     resolved, rec = self._tier(tolerate=True)
@@ -3230,7 +3237,9 @@ class TestEarlySystemTierIsData:
   def test_the_record_holds_the_raw_early_values_including_a_present_null(self, tmp_home):
     """``tier`` is the file's raw ``workset.*``: a present null is ``None``, an ABSENT
     key is not in the mapping at all, and ``file`` is the path a refusal names."""
-    sp = self._settings("workset:\n  boxes: /srv/kb/{meta.workset.path}\n  logs: null\n")
+    sp = self._settings(
+      convert_legacy_doc_text("workset:\n  boxes: /srv/kb/{meta.workset.path}\n  logs: null\n")
+    )
 
     _resolved, rec = self._tier()
     assert rec.tier["workset.boxes"] == "/srv/kb/{meta.workset.path}"
@@ -3243,8 +3252,10 @@ class TestEarlySystemTierIsData:
     """The record carries the RESOLVED ``system.*``, which is only possible because it is
     built AFTER the resolve -- not a second read of the stored expression."""
     self._settings(
-      "system:\n  canon: '{config.data}/global/canon'\n"
-      "workset:\n  boxes: /srv/kb/{meta.workset.path}\n",
+      convert_legacy_doc_text(
+        "system:\n  canon: '{config.data}/global/canon'\n"
+        "workset:\n  boxes: /srv/kb/{meta.workset.path}\n"
+      ),
     )
 
     resolved, rec = self._tier()
@@ -3256,7 +3267,7 @@ class TestEarlySystemTierIsData:
   def test_the_record_matches_system_path_floor_for_a_repointed_key(self, tmp_home):
     """``std.early_system.system_paths == system_path_floor(std)``, with one ``system.*``
     key repointed and no refusal -- the two carriers are ONE carrier."""
-    self._settings("system:\n  canon: /srv/canon\n")
+    self._settings(convert_legacy_doc_text("system:\n  canon: /srv/canon\n"))
     std = self._std()
 
     from kanibako.settings.paths import system_path_floor
@@ -3278,7 +3289,9 @@ class TestEarlySystemTierIsData:
     from kanibako.settings.paths import _path_tier_set_values
     from kanibako.utils.xdg import host_xdg_map
 
-    sp = self._settings("workset:\n  boxes: /srv/kb\nsystem:\n  canon: /srv/canon\n")
+    sp = self._settings(
+      convert_legacy_doc_text("workset:\n  boxes: /srv/kb\nsystem:\n  canon: /srv/canon\n")
+    )
     cfg, _s, data_home = self._paths()
     counts = self._count_reads(monkeypatch, sp)
 
@@ -3321,7 +3334,9 @@ class TestEarlySystemTierIsData:
     from kanibako.settings.paths import load_system_config, load_system_tier
 
     self._settings(
-      "workset:\n  boxes: /srv/kb/{meta.workset.path}\nsystem:\n  canon: /srv/canon\n",
+      convert_legacy_doc_text(
+        "workset:\n  boxes: /srv/kb/{meta.workset.path}\nsystem:\n  canon: /srv/canon\n"
+      ),
     )
     cfg, _s, data_home = self._paths()
     kw = dict(data_home=data_home, home=Path.home())
@@ -3525,7 +3540,9 @@ class TestBoxShapeRefusalPrecedesSetup:
     add_project(ws, "tablemem", tmp_home / "tablemem-ws")
     metadata_path = ws.projects_dir / "tablemem"
     metadata_path.mkdir(parents=True, exist_ok=True)
-    (metadata_path / BOX_META_FILE).write_text("box:\n  enable_vault: false\n")
+    (metadata_path / BOX_META_FILE).write_text(
+      convert_legacy_doc_text("box:\n  enable_vault: false\n")
+    )
 
     proj = resolve_workset_project(
       WorksetSpec.from_workset(ws), "tablemem", std, config, initialize=True
