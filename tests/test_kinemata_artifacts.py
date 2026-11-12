@@ -34,6 +34,7 @@ from tests.test_kinemata_manifest import (
 
 ROOT = Path(__file__).resolve().parents[1]
 TARGET = "kinemata_artifacts:ArtifactRegistry"
+OWNED_EDGE_YAML = config_io.convert_legacy_doc_text(EDGE_YAML)
 
 
 def _declaration():
@@ -97,9 +98,9 @@ def test_source_identity_and_cwd_independence(tmp_path, monkeypatch):
 @pytest.mark.parametrize("clause_field", [None, "spec"])
 def test_complete_typed_records(monkeypatch, section, clause_field):
   native = yaml.safe_load(EDGE_YAML)
-  owned = config_io.parse_doc_text(EDGE_YAML)
+  owned = config_io.parse_doc_text(OWNED_EDGE_YAML)
   assert _typed(owned) == _typed(native)
-  monkeypatch.setattr(kinemata_artifacts, "read_doc_text", lambda *a, **kw: EDGE_YAML)
+  monkeypatch.setattr(kinemata_artifacts, "read_doc_text", lambda *a, **kw: OWNED_EDGE_YAML)
   expected = native
   for step in [section] if isinstance(section, str) else section:
     expected = expected[step]
@@ -116,7 +117,7 @@ def test_complete_typed_records(monkeypatch, section, clause_field):
 
 
 def test_where_is_public_loader_owned(tmp_path, monkeypatch):
-  monkeypatch.setattr(kinemata_artifacts, "read_doc_text", lambda *a, **kw: EDGE_YAML)
+  monkeypatch.setattr(kinemata_artifacts, "read_doc_text", lambda *a, **kw: OWNED_EDGE_YAML)
   options = 'where = { id_matches = "^scalar-" }\n'
   block = f'''[[registry]]
 name = "selected-artifacts"
@@ -197,7 +198,7 @@ def test_descriptor_oracle_uses_owned_codec(monkeypatch, capsys):
   assert lines and all(line.startswith("kanibako-entry-owner: ") for line in lines)
 
 
-@pytest.mark.parametrize("text", ["artifacts: false\n", "false\n", "None\n"])
+@pytest.mark.parametrize("text", ["artifacts: False\n", "False\n", "None\n"])
 def test_scalar_section_fails(monkeypatch, text):
   monkeypatch.setattr(kinemata_artifacts, "read_doc_text", lambda *a, **kw: text)
   with pytest.raises(ValueError, match="missing or is not a mapping"):
