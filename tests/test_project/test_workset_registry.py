@@ -196,7 +196,7 @@ def test_register_drops_an_unknown_section_and_prints_it(reg: Path, caplog) -> N
   assert load_doc(reg) == {"boxes": {"alpha": "/abs/alpha"}}
   assert caplog.messages == [
     f"{reg}: dropped the section 'connected', which kanibako does not read. It held:\n"
-    "connected:\n  /ext:\n    workset: w\n    box: b"
+    'connected:\n  "/ext":\n    workset: "w"\n    box: "b"'
   ]
 
 
@@ -215,7 +215,9 @@ def test_the_registry_is_written_under_the_generated_header(reg: Path) -> None:
   reg.parent.mkdir(parents=True)
   reg.write_text("# keep me?\nboxes:\n  beta: /abs/beta  # and me?\n")
   workset_registry.register_workset_box(reg, "alpha", Path("/abs/alpha"))
-  assert reg.read_text() == (REGISTRY_HEADER + "boxes:\n  alpha: /abs/alpha\n  beta: /abs/beta\n")
+  assert reg.read_text() == (
+    REGISTRY_HEADER + 'boxes:\n  alpha: "/abs/alpha"\n  beta: "/abs/beta"\n'
+  )
 
 
 def test_register_writes_only_boxes_section(reg: Path) -> None:

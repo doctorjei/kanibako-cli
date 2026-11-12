@@ -1,11 +1,10 @@
-"""Centralized configuration I/O, YAML/native codecs, and document mutators.
+"""Configuration I/O, owned/native codecs, and document mutators.
 
-A config DOCUMENT is a settings-cascade file, agent file, registry, or
-``spawn.yaml``; native tool configurations retain their own codecs. A DOCUMENT
-MUTATOR performs read-modify-write at a ``(sections, leaf)`` path without knowing
-the KEYSPACE. :mod:`kanibako.settings.config_keys` and
-:mod:`kanibako.settings.config_dest` locate keys within files.
-Python packaging's ``pyproject.toml`` is excluded.
+Owned documents include settings-cascade files, agent files, registries, and
+``spawn.yaml``; native tool formats keep their codecs. Mutators edit
+``(sections, leaf)`` paths without knowing the keyspace;
+:mod:`kanibako.settings.config_keys` and :mod:`kanibako.settings.config_dest`
+locate keys. ``pyproject.toml`` is excluded.
 """
 
 from __future__ import annotations
@@ -19,6 +18,7 @@ import signal
 import subprocess
 import sys
 import tomllib
+from datetime import date
 from importlib.resources.abc import Traversable
 from pathlib import Path
 from typing import Any, Callable
@@ -177,12 +177,20 @@ def load_packaged_mapping(ref: Traversable, filename: str) -> dict[str, Any]:
   return _plain_containers(raw)  # type: ignore[no-any-return]
 
 
-def _plain_containers(value: Any) -> Any:
+def _plain_containers(value: Any, memo: dict[int, Any] | None = None) -> Any:
+  if not isinstance(value, (dict, list, tuple)):
+    return value
+  if memo is None:
+    memo = {}
+  if id(value) in memo:
+    return memo[id(value)]
+  plain: Any = {} if isinstance(value, dict) else []
+  memo[id(value)] = plain
   if isinstance(value, dict):
-    return {key: _plain_containers(child) for key, child in value.items()}
-  if isinstance(value, list):
-    return [_plain_containers(child) for child in value]
-  return value
+    plain.update((key, _plain_containers(child, memo)) for key, child in value.items())
+  else:
+    plain.extend(_plain_containers(child, memo) for child in value)
+  return plain
 
 
 def yaml_problem(exc: yaml.YAMLError) -> str:
@@ -636,17 +644,27 @@ _read_none_as_null(_SafeDumper)
 
 
 def _dump_text(data: dict) -> str:
-  return yaml.dump(
-    data,
-    Dumper=_SafeDumper,
-    sort_keys=False,
-    default_flow_style=False,
-    allow_unicode=True,
-  )
+  from yapyon import yamlplus  # type: ignore[import-untyped]
+
+  document = _plain_containers(data)
+  pending = [document]
+  visited: set[int] = set()
+  while pending:
+    table = pending.pop()
+    if id(table) in visited:
+      continue
+    visited.add(id(table))
+    for key, value in table.items() if isinstance(table, dict) else enumerate(table):
+      if isinstance(value, (dict, list)):
+        pending.append(value)
+      elif isinstance(value, (date, bytes)):
+        # Legacy YAML objects reach string-valued consumers as this text.
+        table[key] = str(value)
+  return yamlplus.dumps(document)  # type: ignore[no-any-return]
 
 
 def dump_doc(path: Path, data: dict, *, header: str = "") -> None:
-  """Serialize *data* to *path* as YAML, atomically (creates parent dirs), after *header*."""
+  """Atomically write YamlPlus after *header*, creating parent directories."""
   write_doc_text(path, header + _dump_text(data))
 
 

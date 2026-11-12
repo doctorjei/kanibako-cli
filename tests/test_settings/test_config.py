@@ -578,7 +578,7 @@ class TestHostDocumentText:
       config_io, "write_doc_text", lambda path, text: written.append((path, text))
     )
     config_io.dump_doc(path, {"value": "written"}, header="# header\n")
-    assert written == [(path, "# header\nvalue: written\n")]
+    assert written == [(path, '# header\nvalue: "written"\n')]
 
 
 class TestBoxDocumentText:

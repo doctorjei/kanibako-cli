@@ -106,10 +106,9 @@ that into a `ConfigError` naming the file. Spec §0: PyYAML's last-wins (table a
 accept that drops the first spelling. Being a `yaml.YAMLError`, a reader that forgot this subclass
 still reads the document as unreadable rather than last-wins.
 
-⚑ **A plain `None` is null.** `_UniqueKeyLoader`, `_PackagedLoader` and `_SafeDumper` share one
-resolver (`_read_none_as_null`): only a plain `None`, never `none`; a quoted `'None'` stays a
-string, and the dumper quotes one. `load_doc` (not `parse_doc_text`: a compared
-template may hold `on:` keys) refuses a non-`str` mapping key.
+⚑ **A plain `None` is null.** `_UniqueKeyLoader` and `_PackagedLoader` use
+`_read_none_as_null`; quoted `'None'` stays text. `load_doc`, unlike the template
+comparison reader, refuses a non-`str` mapping key.
 
 * **Why the node tree:** the constructed `dict` has already lost the first spelling, and only the
   nodes carry lines and parentage.
@@ -151,18 +150,18 @@ one-line `⚑` at that statement is deliberate: deleting the guard is silent unt
 ```python
 def dump_doc(path: Path, data: dict, *, header: str = "") -> None
 ```
-Serialize *data* to *path* as YAML (creates parent dirs), after *header*.
+Atomically write YamlPlus after *header*, creating parent directories.
 
 The write is atomic (temp file in the same dir + `os.replace`) so a crash mid-write can never leave
 a torn/corrupt config document on disk. `_atomic.atomic_write_text` additionally `fsync`s before the
 rename, creates `path.parent` with `parents=True, exist_ok=True`, and on any failure removes the
 temp file and leaves the original intact.
 
-Dump options are pinned: `sort_keys=False` (authoring order survives a round-trip),
-`default_flow_style=False` (block style), `allow_unicode=True` (non-ASCII is emitted literally
-rather than `\uXXXX`-escaped). The dumper is `_SafeDumper`, a `yaml.SafeDumper` that writes a `str`
-SUBCLASS as a plain string (BARE-REF-GUARD: `settings_resolve.DataExpr`; the stock safe
-representer refuses a subclass).
+`_dump_text` uses public `yamlplus.dumps`; string subclasses remain strings.
+`_plain_containers` memoizes container copies, preserving sharing and normalizing tuples to lists.
+A visited-container walk converts legacy YAML date/datetime/bytes leaves to string-consumer text;
+other scalars remain unchanged. Owned reads still use guarded PyYAML; native codecs stay native.
+`_SafeDumper` remains for `agent_defaults._build_setting_arg`'s invalid-`empty` diagnostic.
 
 ## Document mutators (load → mutate → dump)
 

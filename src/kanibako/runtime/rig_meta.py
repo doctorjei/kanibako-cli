@@ -9,10 +9,8 @@ Because the metadata lives at a fixed path inside the rootfs, it rides
 ``podman save`` / ``load`` / ``push`` natively -- whoever ends up with the image
 also ends up with its ``rig.yaml``, no side-channel required.
 
-All on-disk serialization goes through PyYAML: writing with
-:func:`kanibako.settings.config_io._dump_text`, reading through
-:func:`kanibako.settings.config_io.parse_doc_text`, which is a SafeLoader with kanibako's
-document refusals on top. There is no hand-rolled serializer or parser here.
+Write YamlPlus through :func:`kanibako.settings.config_io._dump_text`; read through
+:func:`kanibako.settings.config_io.parse_doc_text`, currently guarded PyYAML.
 """
 
 from __future__ import annotations

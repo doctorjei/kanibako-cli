@@ -67,7 +67,7 @@ def read_stored_leaf(noun_file: 'Path | None', sections: tuple[str, ...], leaf: 
 def render_stored_pref(v: object) -> str
 def read_stored_pref(noun_file: 'Path | None', sections: tuple[str, ...], leaf: str, *, render: 'Callable[[object], str]'=render_stored_pref) -> str | None
 def _read_none_as_null(cls: type) -> None
-def _plain_containers(value: Any) -> Any
+def _plain_containers(value: Any, memo: dict[int, Any] | None=None) -> Any
 def _unquoted_brace_hint(mark: yaml.Mark | None) -> str
 def _guard_document(data: object) -> None
 def _parse_guarded_yaml(text: str) -> object

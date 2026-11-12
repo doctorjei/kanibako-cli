@@ -12,6 +12,172 @@ from kanibako.errors import PackagingError
 from kanibako.settings import config_io
 
 
+def test_owned_emitter_preserves_shared_containers_until_public_export(monkeypatch):
+  from yapyon import loads, yamlplus
+
+  shared = ({"value": "雪"},)
+  original = {"first": shared, "second": shared}
+  real_dumps = yamlplus.dumps
+
+  def capture(document):
+    assert document["first"] is document["second"]
+    assert document["first"] is not shared
+    assert document["first"][0] is not shared[0]
+    return real_dumps(document)
+
+  monkeypatch.setattr(yamlplus, "dumps", capture)
+  assert loads(config_io._dump_text(original)) == {
+    "first": [{"value": "雪"}],
+    "second": [{"value": "雪"}],
+  }
+  assert original["first"] is original["second"] is shared
+
+
+def test_owned_emitter_leaves_shared_output_budget_to_public_writer(tmp_path, monkeypatch):
+  from yapyon import yamlplus
+
+  shared = {"value": "x" * 80}
+  original = {"first": shared, "second": shared}
+  path = tmp_path / "settings.yaml"
+  path.write_bytes(b"sentinel\n")
+  real_dumps = yamlplus.dumps
+
+  def bounded(document):
+    assert document["first"] is document["second"]
+    return real_dumps(document, max_size=128)
+
+  monkeypatch.setattr(yamlplus, "dumps", bounded)
+  with pytest.raises(ValueError, match="max_size"):
+    config_io.dump_doc(path, original)
+  assert path.read_bytes() == b"sentinel\n"
+  assert original["first"] is original["second"] is shared
+
+
+@pytest.mark.parametrize("kind", [dict, list])
+def test_owned_emitter_public_cycle_error_leaves_file_and_input_untouched(tmp_path, kind):
+  from yapyon import AkanError
+
+  cycle = kind()
+  if kind is dict:
+    cycle["again"] = cycle
+  else:
+    cycle.append(cycle)
+  path = tmp_path / "settings.yaml"
+  path.write_bytes(b"sentinel\n")
+  with pytest.raises(AkanError, match="cycle"):
+    config_io.dump_doc(path, {"loop": cycle})
+  assert path.read_bytes() == b"sentinel\n"
+  assert (cycle["again"] if kind is dict else cycle[0]) is cycle
+
+
+def test_owned_emitter_uses_public_yamlplus_without_legacy_fallback(monkeypatch):
+  from yapyon import loads, yamlplus
+
+  original = {"box": {"bindings": {"rw": {"/workspace": ("~/source", "z")}}}}
+  calls = []
+  real_dumps = yamlplus.dumps
+
+  def capture(document):
+    calls.append(document)
+    return real_dumps(document)
+
+  def forbidden(*args, **kwargs):
+    pytest.fail("owned emitter used PyYAML")
+
+  monkeypatch.setattr(yamlplus, "dumps", capture)
+  monkeypatch.setattr(yaml, "dump", forbidden)
+  text = config_io._dump_text(original)
+  assert loads(text) == {"box": {"bindings": {"rw": {"/workspace": ["~/source", "z"]}}}}
+  assert len(calls) == 1
+  assert calls[0] is not original
+  assert calls[0]["box"] is not original["box"]
+  assert original["box"]["bindings"]["rw"]["/workspace"] == ("~/source", "z")
+
+
+def test_owned_emitter_copies_nested_tuples_and_preserves_scalar_meanings():
+  from yapyon import loads
+
+  from kanibako.settings.settings_resolve import DataExpr
+
+  values = [None, False, 0, "", "None", "on", "雪", DataExpr("{meta.box.home}"), "{$HOME}"]
+  original = {"box": {"env": {"LABEL": "None"}}, "rows": ({"values": values},)}
+  text = config_io._dump_text(original)
+  actual = loads(text)
+  assert list(actual) == ["box", "rows"]
+  assert actual == {"box": {"env": {"LABEL": "None"}}, "rows": [{"values": values}]}
+  assert config_io.parse_doc_text(text) == actual
+  assert text.endswith("\n") and "雪" in text
+  assert isinstance(original["rows"], tuple)
+  assert original["rows"][0]["values"] is values
+  assert isinstance(values[-2], DataExpr)
+
+
+@pytest.mark.parametrize(
+  "source",
+  [
+    "box:\n  shell: !!binary YWJj\n",
+    "box:\n  shell: 2026-11-02\n",
+    "box:\n  shell: 2026-11-02T03:04:05.123456+05:30\n",
+    "box:\n  shell: 2026-11-02T03:04:05Z\n",
+  ],
+)
+def test_owned_emitter_preserves_legacy_scalar_consumer_text(tmp_path, source):
+  from yapyon import loads
+
+  from kanibako.settings.settings_launch import _box_scalar_config
+
+  path = tmp_path / "settings.yaml"
+  path.write_text(source)
+  original = config_io.load_doc(path)
+  value = original["box"]["shell"]
+  before = _box_scalar_config({"box.shell": value}).box_shell
+  config_io.dump_doc(path, original)
+  text = path.read_text()
+  current = config_io.load_doc(path)["box"]["shell"]
+  public = loads(text)["box"]["shell"]
+  assert _box_scalar_config({"box.shell": current}).box_shell == before
+  assert _box_scalar_config({"box.shell": public}).box_shell == before
+  assert current == public == str(value)
+  assert original["box"]["shell"] is value
+
+
+@pytest.mark.parametrize("existing", [False, True])
+def test_owned_emitter_failure_never_reaches_file_transport(tmp_path, monkeypatch, existing):
+  path = tmp_path / "nested" / "settings.yaml"
+  if existing:
+    path.parent.mkdir()
+    path.write_bytes(b"host sentinel\n")
+    path.chmod(0o640)
+    before = path.stat()
+  writes = []
+  monkeypatch.setattr(config_io, "write_doc_text", lambda *args: writes.append(args))
+  with pytest.raises(TypeError):
+    config_io.dump_doc(path, {"box": {"shell": object()}}, header="# header\n")
+  assert writes == []
+  if existing:
+    after = path.stat()
+    assert path.read_bytes() == b"host sentinel\n"
+    assert (after.st_ino, after.st_mode) == (before.st_ino, before.st_mode)
+  else:
+    assert not path.parent.exists()
+
+
+def test_owned_emitter_keeps_public_writer_failure_without_fallback(tmp_path, monkeypatch):
+  from yapyon import yamlplus
+
+  path = tmp_path / "settings.yaml"
+  failure = RuntimeError("writer failed")
+
+  def fail(_document):
+    raise failure
+
+  monkeypatch.setattr(yamlplus, "dumps", fail)
+  with pytest.raises(RuntimeError) as caught:
+    config_io.dump_doc(path, {"box": {"shell": "sh"}})
+  assert caught.value is failure
+  assert not path.exists()
+
+
 def test_packaged_mapping_uses_public_yapyon_and_copies_plain_containers(tmp_path, monkeypatch):
   import yapyon
   from yapyon import yamlplus
