@@ -30,6 +30,7 @@ def parse_packaged(text: str) -> object
 def load_packaged_mapping(ref: Traversable, filename: str) -> dict[str, Any]
 def yaml_problem(exc: yaml.YAMLError) -> str
 def parse_doc_text(text: str, *, source: str | None=None) -> object
+def convert_legacy_doc_text(text: str, *, source: str | None=None) -> str
 def parse_template_yaml(text: str) -> object
 def read_doc_text(path: Path, *, encoding: str | None=None) -> str
 def read_doc_text_capped(path: Path, *, cap: int, encoding: str | None=None) -> str
@@ -73,6 +74,7 @@ def _guard_document(data: object) -> None
 def _parse_guarded_yaml(text: str) -> object
 def _strip_jsonc(text: str) -> str
 def _unnamed_key(data: dict) -> tuple[str, object] | None
+def _owned_output_data(data: Any) -> Any
 def _dump_text(data: dict) -> str
 def _resolved_section(table: dict, section: str) -> str
 ```
@@ -101,6 +103,9 @@ class _UniqueKeyLoader(yaml.SafeLoader):
     def construct_document(self, node: yaml.Node) -> object
 
     def _check_duplicates(self, node: yaml.Node, where: str, seen_nodes: set[int]) -> None
+
+class _LegacyDocLoader(_UniqueKeyLoader):
+    def construct_document(self, node: yaml.Node) -> object
 
 class _SafeDumper(yaml.SafeDumper):
 ```

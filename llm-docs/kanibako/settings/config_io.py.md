@@ -83,19 +83,19 @@ hint; unmarked errors use whitespace-flattened text. Native `None` normalization
 remains on `_UniqueKeyLoader` and `_PackagedLoader`, never on Goose's SafeLoader.
 
 ```python
+def convert_legacy_doc_text(text: str, *, source: str | None = None) -> str
 def dump_doc(path: Path, data: dict, *, header: str = "") -> None
 ```
-Atomically write YamlPlus after *header*, creating parent directories.
+Explicit legacy conversion: public `from_yaml(yaml_compatible=True)`→`yamlplus.normalize`,
+using `_UniqueKeyLoader`'s dialect/duplicates, `_guard_document`, and source diagnostics.
+No I/O or runtime fallback; scalar markers survive, blank/comment-only text stays exact.
+Comments retain paths/occurrences; trailing comments may precede values, merge comments move to their mapping.
 
-The write is atomic (temp file in the same dir + `os.replace`) so a crash mid-write can never leave
-a torn/corrupt config document on disk. `_atomic.atomic_write_text` additionally `fsync`s before the
-rename, creates `path.parent` with `parents=True, exist_ok=True`, and on any failure removes the
-temp file and leaves the original intact.
-
-`_dump_text` uses public `yamlplus.dumps`; string subclasses remain strings.
-`_plain_containers` memoizes container copies, preserving sharing and normalizing tuples to lists.
-A visited-container walk converts legacy YAML date/datetime/bytes leaves to string-consumer text;
-other scalars remain unchanged. Native codecs stay native.
+Both outputs share `_owned_output_data`: detached plain containers, preserved sharing,
+tuples→lists, date/datetime/bytes→string-consumer text; other scalars/string subclasses remain.
+`_dump_text` uses public `yamlplus.dumps`; native codecs stay native.
+`dump_doc` prepends *header*; `_atomic.atomic_write_text` creates parents, writes/fsyncs a
+same-directory temp, then `os.replace`s. Failure removes the temp, preserving the original.
 `_SafeDumper` remains for `agent_defaults._build_setting_arg`'s invalid-`empty` diagnostic.
 
 ## Document mutators (load → mutate → dump)

@@ -156,7 +156,7 @@ def parse_native_yaml(text: str | bytes) -> Any:
 
 
 def parse_packaged(text: str) -> object:
-  """Parse a YAML file kanibako SHIPS (never a user's file) with the fastest safe loader."""
+  """Read legacy tooling YAML; owned runtime resources use load_packaged_mapping."""
   return yaml.load(text, Loader=_PackagedLoader)
 
 
@@ -377,6 +377,28 @@ def parse_doc_text(text: str, *, source: str | None = None) -> object:
   if all(not line.strip() or line.lstrip().startswith("#") for line in text.splitlines()):
     return None
   return _plain_containers(loads(text, source=source))
+
+
+class _LegacyDocLoader(_UniqueKeyLoader):
+  def construct_document(self, node: yaml.Node) -> object:
+    try:
+      data = super().construct_document(node)
+    except RecursionError as exc:
+      raise DocumentTooDeepError("", MAX_DOC_DEPTH) from exc
+    _guard_document(data)
+    return _owned_output_data(data)
+
+
+def convert_legacy_doc_text(text: str, *, source: str | None = None) -> str:
+  """Convert explicit legacy owned YAML to YamlPlus text without file access."""
+  from yapyon import yamlplus  # type: ignore[import-untyped]
+
+  from kanibako.migration.yaml_to_yapyon import from_yaml
+
+  if all(not line.strip() or line.lstrip().startswith("#") for line in text.splitlines()):
+    return text
+  converted = from_yaml(text, source=source, Loader=_LegacyDocLoader, yaml_compatible=True)
+  return yamlplus.normalize(converted.text, source=source)  # type: ignore[no-any-return]
 
 
 def parse_template_yaml(text: str) -> object:
@@ -632,10 +654,12 @@ _SafeDumper.add_multi_representer(str, yaml.SafeDumper.represent_str)
 _read_none_as_null(_SafeDumper)
 
 
-def _dump_text(data: dict) -> str:
-  from yapyon import yamlplus  # type: ignore[import-untyped]
-
+def _owned_output_data(data: Any) -> Any:
   document = _plain_containers(data)
+  if isinstance(document, (date, bytes)):
+    return str(document)
+  if not isinstance(document, (dict, list)):
+    return document
   pending = [document]
   visited: set[int] = set()
   while pending:
@@ -649,7 +673,13 @@ def _dump_text(data: dict) -> str:
       elif isinstance(value, (date, bytes)):
         # Legacy YAML objects reach string-valued consumers as this text.
         table[key] = str(value)
-  return yamlplus.dumps(document)  # type: ignore[no-any-return]
+  return document
+
+
+def _dump_text(data: dict) -> str:
+  from yapyon import yamlplus  # type: ignore[import-untyped]
+
+  return yamlplus.dumps(_owned_output_data(data))  # type: ignore[no-any-return]
 
 
 def dump_doc(path: Path, data: dict, *, header: str = "") -> None:
