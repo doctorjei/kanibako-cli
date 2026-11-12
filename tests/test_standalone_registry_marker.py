@@ -13,11 +13,11 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-import yaml
 
 from kanibako.errors import ConfigError
 from kanibako.launch import box_resolve
 from kanibako.settings.config import WORKSET_META_FILE
+from kanibako.settings.config_io import convert_legacy_doc_text, dump_doc, parse_doc_text
 from kanibako.settings.paths import STANDALONE_META_DIR
 from kanibako.settings.settings_resolve import SettingsError
 
@@ -60,8 +60,6 @@ class TestCreateWritesTheMark:
   def test_registry_file_holds_only_the_mark(self, config_file, tmp_home, credentials_dir):
     root = _create_standalone(tmp_home)
     assert (root / "registry.yaml").read_text() == MARK
-    from kanibako.settings.config_io import parse_doc_text
-
     doc = parse_doc_text((root / WORKSET_META_FILE).read_text())
     assert doc["workset"]["kuid"]
     assert "registry" not in doc["workset"]
@@ -130,7 +128,7 @@ class TestDetection:
 
   def test_box_data_alone_is_not_the_marker(self, tmp_path):
     (tmp_path / STANDALONE_META_DIR).mkdir()
-    (tmp_path / WORKSET_META_FILE).write_text("workset:\n  kuid: abcde\n")
+    (tmp_path / WORKSET_META_FILE).write_text(convert_legacy_doc_text("workset:\n  kuid: abcde\n"))
     assert box_resolve.is_standalone_root(tmp_path) is False
 
   def test_a_containing_roots_mark_never_counts(self, tmp_path):
@@ -142,7 +140,7 @@ class TestDetection:
     (tmp_path / "registry.yaml").write_text(MARK)
     (tmp_path / WORKSET_META_FILE).write_text("workset:\n  canon: @x\n")
     assert box_resolve.is_standalone_root(tmp_path) is True
-    with pytest.raises(ConfigError, match="is not valid YAML"):
+    with pytest.raises(ConfigError, match="is not valid Yapyon"):
       box_resolve.is_standalone_root(tmp_path, strict=True)
 
 
@@ -155,7 +153,9 @@ class TestStoredRegistryKeyRefuses:
   """The migration guard: a stored ``workset.registry`` refuses, naming the cure."""
 
   def test_the_old_null_marker_refuses_with_the_mark_as_cure(self, tmp_path):
-    (tmp_path / WORKSET_META_FILE).write_text("workset:\n  kuid: abcde\n  registry: null\n")
+    (tmp_path / WORKSET_META_FILE).write_text(
+      convert_legacy_doc_text("workset:\n  kuid: abcde\n  registry: null\n")
+    )
     with pytest.raises(SettingsError) as exc:
       box_resolve.is_standalone_root(tmp_path)
     message = str(exc.value)
@@ -168,7 +168,9 @@ class TestStoredRegistryKeyRefuses:
   @pytest.mark.parametrize("held", [MARK, "boxes:\n  a: /x\n"])
   def test_a_null_beside_an_existing_registry_is_only_removed(self, tmp_path, held):
     (tmp_path / "registry.yaml").write_text(held)
-    (tmp_path / WORKSET_META_FILE).write_text("workset:\n  registry: null\n")
+    (tmp_path / WORKSET_META_FILE).write_text(
+      convert_legacy_doc_text("workset:\n  registry: null\n")
+    )
     with pytest.raises(SettingsError) as exc:
       box_resolve.is_standalone_root(tmp_path)
     message = str(exc.value)
@@ -188,7 +190,9 @@ class TestStoredRegistryKeyRefuses:
     primary = load_std_paths(load_config(config_file)).primary_workset
     members = (primary / "registry.yaml").read_text()
     assert str(root) in members
-    (primary / WORKSET_META_FILE).write_text("workset:\n  registry: null\n")
+    (primary / WORKSET_META_FILE).write_text(
+      convert_legacy_doc_text("workset:\n  registry: null\n")
+    )
     rc, out = _info(root, capsys)
     assert rc == 1, out
     assert "Fix, by hand: remove that line." in out
@@ -204,7 +208,9 @@ class TestStoredRegistryKeyRefuses:
     primary = load_std_paths(load_config(config_file)).primary_workset
     primary.mkdir(parents=True, exist_ok=True)
     assert not (primary / "registry.yaml").exists()
-    (primary / WORKSET_META_FILE).write_text("workset:\n  registry: null\n")
+    (primary / WORKSET_META_FILE).write_text(
+      convert_legacy_doc_text("workset:\n  registry: null\n")
+    )
     root = tmp_home / "home" / "pb"
     root.mkdir()
     capsys.readouterr()
@@ -227,7 +233,9 @@ class TestStoredRegistryKeyRefuses:
     assert (tmp_path / "registry.yaml").read_text() == "boxes: {}\n"
 
   def test_a_path_value_refuses_naming_the_fixed_file(self, tmp_path):
-    (tmp_path / WORKSET_META_FILE).write_text("workset:\n  registry: /srv/reg.yaml\n")
+    (tmp_path / WORKSET_META_FILE).write_text(
+      convert_legacy_doc_text("workset:\n  registry: /srv/reg.yaml\n")
+    )
     with pytest.raises(SettingsError) as exc:
       box_resolve.is_standalone_root(tmp_path)
     message = str(exc.value)
@@ -240,9 +248,9 @@ class TestStoredRegistryKeyRefuses:
   ):
     root = _create_standalone(tmp_home)
     (root / "registry.yaml").unlink()
-    doc = yaml.safe_load((root / WORKSET_META_FILE).read_text())
+    doc = parse_doc_text((root / WORKSET_META_FILE).read_text())
     doc["workset"]["registry"] = None
-    (root / WORKSET_META_FILE).write_text(yaml.safe_dump(doc))
+    dump_doc(root / WORKSET_META_FILE, doc)
     rc, out = _info(root, capsys)
     assert rc == 1, out
     assert "'workset.registry' is RETIRED" in out
@@ -260,7 +268,7 @@ class TestStoredRegistryKeyRefuses:
     assert _cli(["create", str(root)]) == 0
     std = load_std_paths(load_config(config_file))
     std.settings.parent.mkdir(parents=True, exist_ok=True)
-    std.settings.write_text("workset:\n  registry: /srv/reg.yaml\n")
+    std.settings.write_text(convert_legacy_doc_text("workset:\n  registry: /srv/reg.yaml\n"))
     assert box_resolve.is_standalone_root(root) is False
     rc, out = _info(root, capsys)
     assert rc == 1, out
@@ -322,7 +330,7 @@ class TestMalformedRootFileDetection:
     root = tmp_home / "home" / "loose"
     root.mkdir()
     (root / WORKSET_META_FILE).write_text("bad: @x\n")
-    with pytest.raises(ConfigError, match="is not valid YAML"):
+    with pytest.raises(ConfigError, match="is not valid Yapyon"):
       self._detect(config_file, root)
 
   def test_malformed_ancestor_file_stays_lenient(self, config_file, tmp_home, credentials_dir):
