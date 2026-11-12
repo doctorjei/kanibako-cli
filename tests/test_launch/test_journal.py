@@ -32,7 +32,7 @@ class TestReadJournal:
     from kanibako.errors import ConfigError
 
     jp = tmp_path / "journal.yaml"
-    jp.write_text("- entries\n")
+    jp.write_text('["entries"]\n')
     with pytest.raises(ConfigError) as exc:
       journal.read_journal(jp)
     assert str(jp) in str(exc.value)
@@ -40,7 +40,7 @@ class TestReadJournal:
   def test_malformed_entries_is_empty(self, tmp_path: Path) -> None:
     """A non-mapping ``entries`` value yields an empty dict (defensive)."""
     jp = tmp_path / "journal.yaml"
-    jp.write_text("entries: not-a-mapping\n")
+    jp.write_text('"entries": "not-a-mapping"\n')
     assert journal.read_journal(jp) == {}
 
 

@@ -84,7 +84,7 @@ class TestIsStandaloneRoot:
     # registry.yaml mark is the whole signal (the legacy
     # ``_is_standalone_meta_dir`` required ``box.mode == standalone``).
     (project_dir / STANDALONE_META_DIR).mkdir()
-    (project_dir / WORKSET_META_FILE).write_text("box:\n  enable_vault: false\n")
+    (project_dir / WORKSET_META_FILE).write_text('"box":\n  "enable_vault": False\n')
     (project_dir / "registry.yaml").write_text("__STANDALONE__\n")
     assert box_resolve.is_standalone_root(project_dir) is True
 
@@ -213,7 +213,7 @@ class TestDetectBoxMode:
     # A legacy marker refuses within its tree as at its root, as outside a member.
     old = member / "old"
     (old / "sub").mkdir(parents=True)
-    (old / WORKSET_META_FILE).write_text("workset:\n  registry:\n")
+    (old / WORKSET_META_FILE).write_text('"workset":\n  "registry": None\n')
     for subject in (old, old / "sub"):
       with pytest.raises(SettingsError, match="RETIRED"):
         box_resolve.detect_box_mode(subject, std, config)
@@ -353,7 +353,7 @@ class TestResolveBoxIdentity:
     # (the leaf tracks the dir; the kuid is the stable prefix). Mutation:
     # revert box_resolve to ``registered_name or box_root.name`` → this goes RED.
     (project_dir / STANDALONE_META_DIR).mkdir(parents=True, exist_ok=True)
-    (project_dir / WORKSET_META_FILE).write_text("workset:\n  kuid: abcde\n")
+    (project_dir / WORKSET_META_FILE).write_text('"workset":\n  "kuid": "abcde"\n')
     (project_dir / "registry.yaml").write_text("__STANDALONE__\n")
     registry_store.register_standalone(std.registry, "abcde_oldleaf", project_dir.resolve())
     identity = box_resolve.resolve_box_identity(project_dir, std, config)
@@ -381,7 +381,7 @@ class TestResolveBoxIdentity:
     # ``project.mode`` field, so build that ancestor marker here.
     box_root = tmp_home / "sabox"
     (box_root / STANDALONE_META_DIR).mkdir(parents=True)
-    (box_root / WORKSET_META_FILE).write_text("project:\n  mode: standalone\n")
+    (box_root / WORKSET_META_FILE).write_text('"project":\n  "mode": "standalone"\n')
     (box_root / "registry.yaml").write_text("__STANDALONE__\n")
     registry_store.register_standalone(std.registry, "sakey", box_root.resolve())
     subdir = box_root / "deep" / "sub"

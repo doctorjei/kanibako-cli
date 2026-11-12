@@ -38,13 +38,13 @@ def test_absent_file_is_empty_membership(reg: Path) -> None:
 def test_present_but_null_boxes_section_is_empty(reg: Path) -> None:
   """A registry file with a PRESENT-but-NULL ``boxes:`` section → ``{}``.
 
-  Regression: yaml ``boxes:\\n`` makes the key present with value ``None``, so
+  A null makes the key present with value ``None``, so
   the ``dict.get(..., {})`` default never fires — the ``or {}`` guard coerces
   it to empty.  Mutation guard: dropping ``or {}`` makes this RED (``dict(None)``
   raises ``TypeError``).
   """
   reg.parent.mkdir(parents=True, exist_ok=True)
-  reg.write_text("boxes:\n")
+  reg.write_text('"boxes": None\n')
   assert workset_registry.load_workset_boxes(reg) == {}
   assert workset_registry.workset_box_path(reg, "mybox") is None
   # A register onto the null section still works (no crash) and preserves it.
@@ -213,7 +213,7 @@ def test_the_registry_is_written_under_the_generated_header(reg: Path) -> None:
   from kanibako.project.registry_store import REGISTRY_HEADER
 
   reg.parent.mkdir(parents=True)
-  reg.write_text("# keep me?\nboxes:\n  beta: /abs/beta  # and me?\n")
+  reg.write_text('# keep me?\nboxes:\n  beta: "/abs/beta"  # and me?\n')
   workset_registry.register_workset_box(reg, "alpha", Path("/abs/alpha"))
   assert reg.read_text() == (
     REGISTRY_HEADER + 'boxes:\n  alpha: "/abs/alpha"\n  beta: "/abs/beta"\n'

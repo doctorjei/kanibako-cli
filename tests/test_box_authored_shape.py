@@ -37,16 +37,16 @@ REPO_SRC = Path(__file__).resolve().parents[1] / "src"
 #: A ``box`` section that is not a table, one per YAML shape.  ``refuse_scalar_sections``
 #: answers from ``isinstance``, so the corpus is a pin on the RULE, not an inventory.
 NON_TABLE_BOX_BODIES = [
-  pytest.param("box:\n", id="null"),
+  pytest.param('"box": None\n', id="null"),
   pytest.param("box: ''\n", id="empty-string"),
   pytest.param("box: 0\n", id="zero"),
-  pytest.param("box: false\n", id="false"),
-  pytest.param("box: true\n", id="true"),
+  pytest.param('"box": False\n', id="false"),
+  pytest.param('"box": True\n', id="true"),
   pytest.param("box: 42\n", id="nonzero-int"),
-  pytest.param("box: /x\n", id="path-string"),
+  pytest.param('"box": "/x"\n', id="path-string"),
   pytest.param("box: []\n", id="empty-list"),
-  pytest.param("box: [image]\n", id="list-holding-the-key"),
-  pytest.param("box: [[image, ubuntu]]\n", id="list-of-pairs"),
+  pytest.param('"box": ["image"]\n', id="list-holding-the-key"),
+  pytest.param('"box": [["image", "ubuntu"]]\n', id="list-of-pairs"),
   pytest.param("box: 'image: ubuntu'\n", id="string-holding-the-key"),
 ]
 
@@ -101,18 +101,18 @@ class TestReadBoxImageAsksTheShapeGuard:
     """
     from kanibako.commands.box._parser import _read_box_image
 
-    p = _write(tmp_path / "box.yaml", "box: [[image, ubuntu]]\n")
+    p = _write(tmp_path / "box.yaml", '"box": [["image", "ubuntu"]]\n')
 
     with pytest.raises(ConfigError) as exc:
       _read_box_image(p)
     assert "at 'box', where a table of keys belongs" in str(exc.value)
-    assert p.read_text() == "box: [[image, ubuntu]]\n"
+    assert p.read_text() == '"box": [["image", "ubuntu"]]\n'
 
   @pytest.mark.parametrize(
     "body",
     [
-      pytest.param("box:\n  image: custom:v1\n", id="table"),
-      pytest.param("box:\n  enable_vault: false\n", id="table-without-image"),
+      pytest.param('"box":\n  "image": "custom:v1"\n', id="table"),
+      pytest.param('"box":\n  "enable_vault": False\n', id="table-without-image"),
     ],
   )
   def test_a_table_box_still_reads_its_image(self, tmp_path, body):
@@ -175,7 +175,7 @@ class TestCarriedBoxSettingsAsksTheShapeGuard:
 
     p = _write(
       tmp_path / "box.yaml",
-      ("box:\n  image: custom:v1\n  enable_vault: false\nworkset:\n  kuid: wks_1\n"),
+      ('"box":\n  "image": "custom:v1"\n  "enable_vault": False\n"workset":\n  "kuid": "wks_1"\n'),
     )
     assert carried_box_settings(p) == {
       "box": {"image": "custom:v1", "enable_vault": False},
@@ -202,7 +202,7 @@ def _make_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, str]
       "XDG_STATE_HOME": str(dirs["state"]),
       "XDG_CACHE_HOME": str(dirs["cache"]),
       "XDG_RUNTIME_DIR": str(dirs["runtime"]),
-      "PYTHONPATH": str(REPO_SRC),
+      "PYTHONPATH": os.pathsep.join(filter(None, (str(REPO_SRC), os.environ.get("PYTHONPATH")))),
     }
   )
   for key, value in env.items():
@@ -305,14 +305,14 @@ class TestRealDoors:
     env = _make_env(tmp_path, monkeypatch)
     boxes = _make_box("scalarbox", tmp_path / "ws" / "scalarbox")
     tier = boxes / "box.yaml"
-    tier.write_text("box: /x\n")
+    tier.write_text('"box": "/x"\n')
 
     res = _cli(env, "box", "rm", "scalarbox")
 
     assert res.returncode == 1, res.stdout + res.stderr
     assert "holds /x at 'box', where a table of keys belongs" in res.stderr
     assert f"{tier}" in res.stderr, "the refusal must NAME the file to fix by hand"
-    assert tier.read_text() == "box: /x\n", "the malformed file was rewritten"
+    assert tier.read_text() == '"box": "/x"\n', "the malformed file was rewritten"
     assert "scalarbox" in _primary_index(), "the refusal left the box unregistered"
     assert registry_store.load_deregistered(_std().registry) == {}
 
@@ -341,13 +341,13 @@ class TestRealDoors:
     root = tmp_path / "ws" / "sabox"
     name = _make_standalone_box(root)
     tier, _ = _standalone_settings_files(root, early=_early_scope(_std(), BoxMode.standalone))
-    tier.write_text("box: /x\n")
+    tier.write_text('"box": "/x"\n')
 
     res = _cli(env, "box", "rm", name)
 
     assert res.returncode == 1, res.stdout + res.stderr
     assert "holds /x at 'box', where a table of keys belongs" in res.stderr
-    assert tier.read_text() == "box: /x\n"
+    assert tier.read_text() == '"box": "/x"\n'
     assert name in registry_store.load_standalone(_std().registry), (
       "the refusal left the box unregistered"
     )
@@ -379,7 +379,7 @@ class TestRealDoors:
     src = tmp_path / "ws" / "srcbox"
     src_boxes = _make_box("srcbox", src)
     (src / "file.txt").write_text("payload\n")
-    (src_boxes / "box.yaml").write_text("box: /x\n")
+    (src_boxes / "box.yaml").write_text('"box": "/x"\n')
     dst = tmp_path / "ws" / "dstbox"
 
     res = _cli(env, "box", "duplicate", str(src), str(dst), "--to", "primary", stdin="yes\n")
@@ -403,9 +403,9 @@ class TestBareDuplicateAsksTheShapeGuard:
   @pytest.mark.parametrize(
     "body",
     [
-      pytest.param("box: /x\n", id="path-string"),
-      pytest.param("box:\n", id="null"),
-      pytest.param("box: [[image, ubuntu]]\n", id="list-of-pairs"),
+      pytest.param('"box": "/x"\n', id="path-string"),
+      pytest.param('"box": None\n', id="null"),
+      pytest.param('"box": [["image", "ubuntu"]]\n', id="list-of-pairs"),
     ],
   )
   def test_a_non_table_box_refuses_before_anything_is_written(
@@ -453,7 +453,7 @@ class TestBareDuplicateAsksTheShapeGuard:
     env = _make_env(tmp_path, monkeypatch)
     src = tmp_path / "ws" / "srcbox"
     tier = _make_box("srcbox", src) / "box.yaml"
-    _write(tier, "box: [[image, ubuntu]]\n")
+    _write(tier, '"box": [["image", "ubuntu"]]\n')
     dst = tmp_path / "ws" / "dstbox"
 
     res = _cli(env, "box", "duplicate", str(src), str(dst), stdin="yes\n")
@@ -473,7 +473,7 @@ class TestBareDuplicateAsksTheShapeGuard:
     env = _make_env(tmp_path, monkeypatch)
     src = tmp_path / "ws" / "srcbox"
     tier = _make_box("srcbox", src) / "box.yaml"
-    _write(tier, "box: /x\n")
+    _write(tier, '"box": "/x"\n')
     dst = tmp_path / "ws" / "dstbox"
     dst.mkdir()
     (dst / "keepme.txt").write_text("retained\n")
@@ -494,8 +494,10 @@ class TestBareDuplicateStillCopies:
     [
       pytest.param("", id="no-box-section"),
       pytest.param("box: {}\n", id="empty-table"),
-      pytest.param("box:\n  image: custom:v1\n", id="table"),
-      pytest.param("box:\n  image: custom:v1\n  enable_vault: false\n", id="table-two-keys"),
+      pytest.param('"box":\n  "image": "custom:v1"\n', id="table"),
+      pytest.param(
+        '"box":\n  "image": "custom:v1"\n  "enable_vault": False\n', id="table-two-keys"
+      ),
     ],
   )
   def test_a_well_formed_tier_survives_the_round_trip_unchanged(
@@ -532,7 +534,7 @@ class TestBareDuplicateStillCopies:
     env = _make_env(tmp_path, monkeypatch)
     src = tmp_path / "ws" / "srcbox"
     tier = _make_box("srcbox", src) / "box.yaml"
-    _write(tier, "box:\n  image: custom:v1\n")
+    _write(tier, '"box":\n  "image": "custom:v1"\n')
     dst = tmp_path / "ws" / "dstbox"
     dst.mkdir()
     (dst / "keepme.txt").write_text("retained\n")

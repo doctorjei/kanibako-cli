@@ -1704,7 +1704,7 @@ class TestStandaloneDeregisterPurge:
     std = load_std_paths(config)
     root = tmp_home / "sa_root"
     (root / STANDALONE_META_DIR).mkdir(parents=True)
-    (root / WORKSET_META_FILE).write_text("box:\n  image: ghcr.io/x:1\n")
+    (root / WORKSET_META_FILE).write_text('"box":\n  "image": "ghcr.io/x:1"\n')
     (root / "vault").mkdir()
     (root / "keep.txt").write_text("workspace file")
     registry_store.register_standalone(std.registry, "k_box", root)

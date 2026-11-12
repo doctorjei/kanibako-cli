@@ -375,8 +375,8 @@ class TestDeleteWorkset:
     "malformed",
     [
       pytest.param("workset:\n  meta:\n   - [broken: :\n", id="invalid-yaml"),
-      pytest.param("- one\n- two\n", id="top-level-list"),
-      pytest.param("just-a-scalar\n", id="top-level-scalar"),
+      pytest.param('["one", "two"]\n', id="top-level-list"),
+      pytest.param('"just-a-scalar"\n', id="top-level-scalar"),
     ],
   )
   def test_purge_removes_a_root_whose_settings_file_is_malformed(
@@ -522,7 +522,7 @@ class TestAddProject:
     from kanibako.settings.paths import workset_settings_path
 
     ws = create_workset("my_set", tmp_home / "worksets" / "my_set", std)
-    workset_settings_path(ws).write_text("box:\n  enable_vault: false\n")
+    workset_settings_path(ws).write_text('"box":\n  "enable_vault": False\n')
     add_project(ws, "cool_app", tmp_home / "project", std)
 
     assert (ws.projects_dir / "cool_app").is_dir()
@@ -2415,9 +2415,9 @@ class TestRetiredWorksetIdentityLocation:
 
 #: The three shapes ``load_doc`` refuses: unparseable, a top-level list, a scalar.
 _MALFORMED_WORKSET_DOCS = [
-  pytest.param("workset:\n  meta:\n   - [broken: :\n", "not valid YAML", id="invalid-yaml"),
-  pytest.param("- one\n- two\n", "is a list, not a mapping", id="top-level-list"),
-  pytest.param("just-a-scalar\n", "is a single value, not a mapping", id="top-level-scalar"),
+  pytest.param("workset:\n  meta:\n   - [broken: :\n", "not valid Yapyon", id="invalid-yaml"),
+  pytest.param('["one", "two"]\n', "is a list, not a mapping", id="top-level-list"),
+  pytest.param('"just-a-scalar"\n', "is a single value, not a mapping", id="top-level-scalar"),
 ]
 
 
@@ -2468,8 +2468,8 @@ class TestMalformedWorksetSettingsDoc:
     "malformed",
     [
       pytest.param("workset:\n  meta:\n   - [broken: :\n", id="invalid-yaml"),
-      pytest.param("- one\n- two\n", id="top-level-list"),
-      pytest.param("just-a-scalar\n", id="top-level-scalar"),
+      pytest.param('["one", "two"]\n', id="top-level-list"),
+      pytest.param('"just-a-scalar"\n', id="top-level-scalar"),
     ],
   )
   def test_the_ancestor_walk_still_falls_through(
@@ -2866,7 +2866,7 @@ class TestStandaloneVaultTeardownSkeleton:
 
     root = self._root(tmp_path)
     (root / "vault" / "rw" / "data.txt").write_text("mine")
-    (root / "workset.yaml").write_text("workset:\n  vault_rw: null\n")
+    (root / "workset.yaml").write_text('"workset":\n  "vault_rw": None\n')
     removable, retained = standalone_vault_teardown(
       root, early=early_record(tmp_path, mode=BoxMode.standalone)
     )
@@ -2878,7 +2878,7 @@ class TestStandaloneVaultTeardownSkeleton:
     from kanibako.project.workset import standalone_vault_teardown
 
     root = self._root(tmp_path)
-    (root / "workset.yaml").write_text("workset:\n  vault_rw: null\n")
+    (root / "workset.yaml").write_text('"workset":\n  "vault_rw": None\n')
     removable, retained = standalone_vault_teardown(
       root, early=early_record(tmp_path, mode=BoxMode.standalone)
     )

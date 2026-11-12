@@ -591,7 +591,7 @@ class TestRunCreatePreWriteRootShape:
   nothing on disk.
   """
 
-  MALFORMED = "workset: /x\n"
+  MALFORMED = '"workset": "/x"\n'
 
   def _malformed_root(self, root: Path, text: str | None = None) -> Path:
     root.mkdir(parents=True, exist_ok=True)
@@ -678,11 +678,11 @@ class TestRunCreatePreWriteRootShape:
   @pytest.mark.parametrize(
     "text, found",
     [
-      ("workset:\n", "null"),
+      ('"workset": None\n', "null"),
       ("workset: 0\n", "0"),
       ("workset: ''\n", '""'),
       ("workset: []\n", "[]"),
-      ("workset: /x\n", "/x"),
+      ('"workset": "/x"\n', "/x"),
     ],
   )
   def test_any_non_table_at_workset_is_refused_before_any_write(
@@ -719,7 +719,7 @@ class TestRunCreatePreWriteRootShape:
     "text",
     [
       "",
-      "box:\n  enable_vault: false\n",
+      '"box":\n  "enable_vault": False\n',
     ],
   )
   def test_a_usable_root_file_does_not_refuse(
@@ -782,7 +782,7 @@ class TestRunCreatePreWriteRootShape:
     assert run_create(_create_args(root, standalone=True)) == 0
 
     # A well-formed root file, and a pending entry for a box that never finished.
-    (root / "workset.yaml").write_text("workset:\n  kuid: k1\n")
+    (root / "workset.yaml").write_text('"workset":\n  "kuid": "k1"\n')
     std = load_std_paths(load_config(config_file))
     proj = SimpleNamespace(
       shell_path=root / "box_data" / "home",
@@ -2483,7 +2483,7 @@ class TestPreJournalWindowUndoesItsOwnWrites:
     path.mkdir()
     outside.mkdir()
     path.joinpath("workset.yaml").write_text(
-      f"workset:\n  vault_ro: {outside}/vault_ro\n  vault_rw: {outside}/vault_rw\n"
+      f'workset:\n  vault_ro: "{outside}/vault_ro"\n  vault_rw: "{outside}/vault_rw"\n'
     )
     (outside / "KEPT.txt").write_text("a neighbor's file\n")
     dirs_before = {p for p in _dirs(std.data, path, outside)}
@@ -2502,7 +2502,7 @@ class TestPreJournalWindowUndoesItsOwnWrites:
     # The pre-existing root file is back to its own bytes, so the re-run reads
     # the user's settings rather than a rewritten one — and completes.
     assert path.joinpath("workset.yaml").read_text() == (
-      f"workset:\n  vault_ro: {outside}/vault_ro\n  vault_rw: {outside}/vault_rw\n"
+      f'workset:\n  vault_ro: "{outside}/vault_ro"\n  vault_rw: "{outside}/vault_rw"\n'
     )
     assert run_create(_create_args(path, standalone=True, no_vault=False)) == 0
     assert (path / "box_data").is_dir()
@@ -2726,7 +2726,7 @@ class TestWindowUndoRestoresARootWorksetFile:
       lambda std, config, proj, **kw: None,
     )
 
-  _ROOT = "# my box's settings -- keep this comment\nworkset:\n  kuid: my-own-kuid-0001\n"
+  _ROOT = "# my box's settings -- keep this comment\nworkset:\n  kuid: 'my-own-kuid-0001'\n"
 
   def _fail(self):
     def _entry_write(std, proj):
@@ -3470,7 +3470,9 @@ def _killed_create(point: str, argv: "list[str]") -> int:
   import kanibako
 
   env = dict(os.environ)
-  env["PYTHONPATH"] = str(Path(kanibako.__file__).parents[1])
+  env["PYTHONPATH"] = os.pathsep.join(
+    filter(None, (str(Path(kanibako.__file__).parents[1]), env.get("PYTHONPATH")))
+  )
   return subprocess.run(
     [sys.executable, "-c", _KILLED_CREATE, point, *argv],
     env=env,

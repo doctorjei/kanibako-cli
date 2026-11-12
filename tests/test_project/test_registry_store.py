@@ -122,7 +122,7 @@ def test_projects_section_retired(reg: Path, caplog) -> None:
   # ... and the save says so, printing what it dropped.
   assert caplog.messages == [
     f"{reg}: dropped the section 'projects', which kanibako does not read. It held:\n"
-    "projects:\n  myapp: /home/user/myapp"
+    'projects:\n  myapp: "/home/user/myapp"'
   ]
 
 

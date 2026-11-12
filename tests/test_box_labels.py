@@ -24,7 +24,7 @@ def _proj(
 ):
   settings = tmp_path / "workset.yaml"
   if kuid is not None:
-    settings.write_text(f"workset:\n  kuid: {kuid}\n")
+    settings.write_text(f'workset:\n  kuid: "{kuid}"\n')
   proj = SimpleNamespace(
     mode=SimpleNamespace(value=mode),
     name=name,
