@@ -1369,18 +1369,19 @@ kind = "code-patterns"
   home = ["src/kanibako/utils/files.py", "src/kanibako/settings/config_io.py"]
   note = "an unreachable path is refused through utils.files.unreadable_path_error"
 
-  # ⚑ A PROXY, WIDER THAN THE DEFECT. The defect was a packaged-YAML loader
-  # that returned {} for a non-mapping document; matching is per line, so that
-  # two-line shape cannot be expressed. Parser calls stay in approved homes;
-  # config_io's document/packaged loaders refuse non-mappings.
+  # ⚑ A PROXY, WIDER THAN THE DEFECT: a packaged loader returned {} for
+  # non-mappings. Line matching cannot express this shape. Parser calls stay in
+  # approved homes, including portable conversion; config_io's document/packaged
+  # loaders refuse non-mappings.
   [[registry.entry]]
   id = "load_packaged_mapping"
   antipatterns = ['\byaml\.(safe_)?load\(']
   home = [
     "src/kanibako/settings/config_io.py",
     "src/kinemata_views.py",
+    "src/kanibako/migration/yaml_to_yapyon.py::from_yaml",
   ]
-  note = "Native YAML uses config_io; load_doc and load_packaged_mapping refuse non-mappings"
+  note = "Native YAML: config_io/tooling/from_yaml; document/packaged loaders refuse non-mappings"
 
   [[registry.entry]]
   id = "pyyaml-emitters"
@@ -1394,8 +1395,11 @@ kind = "code-patterns"
   [[registry.entry]]
   id = "yamlplus-emitters"
   antipatterns = ['\b(?:yapyon(?:\.yamlplus)?|yamlplus)\.dumps\s*\(']
-  home = ["src/kanibako/settings/config_io.py"]
-  note = "Lexical Yapyon/YamlPlus emitters belong in config_io"
+  home = [
+    "src/kanibako/settings/config_io.py",
+    "src/kanibako/migration/yaml_to_yapyon.py::from_yaml",
+  ]
+  note = "Yapyon/YamlPlus: runtime config_io; portable from_yaml"
 
   # A regex that spells the header: the `#\s*` prefix, or the token followed by
   # a group, a class, or `:\s`. All three regexes the one grammar replaced

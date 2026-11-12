@@ -20,6 +20,7 @@ else:
   pytest.importorskip("kinemata")
 
 from kinemata.adapters.mapping import MappingRegistry
+from kinemata.bypass import scan
 from kinemata.config import ConfigError, load
 from kinemata.contract import MISSING, NAMED_BOUNDARIES, Selected, at_path, population
 
@@ -111,6 +112,92 @@ def _load_registry(tmp_path, block, filename="registry.toml"):
   settings = load(path)
   assert len(settings.registries) == 1
   return settings.registries[0]
+
+
+CONVERTER_PATH = Path("src/kanibako/migration/yaml_to_yapyon.py")
+CONVERTER_HOME = f"{CONVERTER_PATH.as_posix()}::from_yaml"
+
+
+def _converter_declarations():
+  text = (ROOT / "kinemata.toml").read_text(encoding="utf-8")
+  wanted = {"load_packaged_mapping", "yamlplus-emitters"}
+  found = {}
+  for block in re.findall(r"(?ms)^\[\[registry\]\]\n.*?(?=^\[\[registry\]\]|\Z)", text):
+    if tomllib.loads(block)["registry"][0]["name"] != "seams":
+      continue
+    header = block.split("  [[registry.entry]]", 1)[0]
+    for entry in re.findall(
+      r"(?ms)^  \[\[registry.entry\]\]\n.*?(?=^  \[\[registry.entry\]\]|\Z)", block
+    ):
+      row = tomllib.loads("[[registry]]\n" + entry)["registry"][0]["entry"][0]
+      if row["id"] in wanted:
+        assert row["id"] not in found
+        assert CONVERTER_HOME in row["home"]
+        found[row["id"]] = header + entry
+  assert set(found) == wanted, "codec declaration discovery is incomplete"
+  return found
+
+
+CONVERTER_DECLARATIONS = _converter_declarations()
+
+
+def _converter_copy(tmp_path, source):
+  path = tmp_path / CONVERTER_PATH
+  path.parent.mkdir(parents=True, exist_ok=True)
+  path.write_text(source, encoding="utf-8")
+
+
+@pytest.mark.parametrize("entry_id", CONVERTER_DECLARATIONS)
+def test_converter_scoped_codec_ownership(tmp_path, entry_id):
+  _converter_copy(tmp_path, (ROOT / CONVERTER_PATH).read_text(encoding="utf-8"))
+  block = CONVERTER_DECLARATIONS[entry_id]
+  registry = _load_registry(tmp_path, block)
+  assert scan(registry, tmp_path) == []
+  unowned = block.replace(f'    "{CONVERTER_HOME}",\n', "")
+  assert unowned != block
+  findings = scan(_load_registry(tmp_path, unowned), tmp_path)
+  assert findings, "unowned converter calls were not discovered"
+  assert {finding.entry_id for finding in findings} == {entry_id}
+
+
+@pytest.mark.parametrize("scope", ["module", "sibling"])
+@pytest.mark.parametrize(
+  "entry_id,call",
+  [
+    ("load_packaged_mapping", 'yaml.load("key: value")'),
+    ("load_packaged_mapping", 'yaml.safe_load("key: value")'),
+    ("yamlplus-emitters", "yapyon.dumps({})"),
+    ("yamlplus-emitters", "yapyon.yamlplus.dumps({})"),
+    ("yamlplus-emitters", "yamlplus.dumps({})"),
+  ],
+)
+def test_converter_codec_calls_outside_home_remain_findings(tmp_path, entry_id, call, scope):
+  source = (ROOT / CONVERTER_PATH).read_text(encoding="utf-8")
+  addition = call if scope == "module" else f"def sibling():\n  {call}"
+  _converter_copy(tmp_path, source + "\n\n" + addition + "\n")
+  registry = _load_registry(tmp_path, CONVERTER_DECLARATIONS[entry_id])
+  findings = scan(registry, tmp_path)
+  assert len(findings) == 1
+  finding = findings[0]
+  assert finding.entry_id == entry_id
+  assert finding.path == CONVERTER_PATH.as_posix()
+  assert finding.line > len(source.splitlines())
+  assert finding.text.strip() == call
+
+
+@pytest.mark.parametrize("entry_id", CONVERTER_DECLARATIONS)
+@pytest.mark.parametrize("binding", ["missing", "renamed"])
+def test_converter_scoped_home_requires_function(tmp_path, entry_id, binding):
+  source = (ROOT / CONVERTER_PATH).read_text(encoding="utf-8")
+  assert source.count("def from_yaml(") == 1
+  source = (
+    "pass\n"
+    if binding == "missing"
+    else source.replace("def from_yaml(", "def renamed_from_yaml(")
+  )
+  _converter_copy(tmp_path, source)
+  with pytest.raises(ConfigError, match="binds nothing called 'from_yaml'"):
+    _load_registry(tmp_path, CONVERTER_DECLARATIONS[entry_id])
 
 
 @pytest.fixture(scope="module")
