@@ -1499,7 +1499,7 @@ def plugin_descriptors() -> list[str]:
 
 def owner_rows(source: str) -> list[tuple[str, dict[str, Any]]]:
   """`(location, row)` for every mapping in *source* that carries `owner:`."""
-  from kanibako.settings.config_io import parse_packaged
+  from kanibako.settings.config_io import parse_doc_text, read_doc_text
 
   found: list[tuple[str, dict[str, Any]]] = []
 
@@ -1513,7 +1513,8 @@ def owner_rows(source: str) -> list[tuple[str, dict[str, Any]]]:
       for index, value in enumerate(node):
         walk(value, f"{where}[{index}]")
 
-  walk(parse_packaged((_TREE / source).read_text()), "")
+  path = _TREE / source
+  walk(parse_doc_text(read_doc_text(path), source=str(path)), "")
   return found
 
 
@@ -1598,11 +1599,12 @@ class AgentCredFiles(_TailRegistry):
     super().__init__(name=name, **options)
 
   def _rows(self) -> list[dict[str, object]]:
-    from kanibako.settings.config_io import parse_packaged
+    from kanibako.settings.config_io import parse_doc_text, read_doc_text
 
     out: list[dict[str, object]] = []
     for source in plugin_descriptors():
-      doc = parse_packaged((_TREE / source).read_text()) or {}
+      path = _TREE / source
+      doc = parse_doc_text(read_doc_text(path), source=str(path)) or {}
       for cred in (doc.get("descriptor") or {}).get("cred_files") or []:
         out.append({"key": str(cred["host_rel"]), "source": source})
     return out
