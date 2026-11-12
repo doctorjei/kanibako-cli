@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from kanibako.settings.config_io import convert_legacy_doc_text
 from kanibako.commands.diagnose import (
   _SettingsErrorLog,
   _check_agents,
@@ -1130,10 +1131,10 @@ class TestDiagnoseBaseline:
   def test_list_overlay_is_reported_not_fatal(
     self, config_file, tmp_home, credentials_dir, capsys
   ) -> None:
-    """A top-level YAML list overlay names itself and leaves the rest of the run."""
+    """A top-level list overlay names itself and leaves the rest of the run."""
     from kanibako.errors import ContainerError
 
-    overlay = self._break_baseline_overlay(tmp_home, "- a\n- b\n")
+    overlay = self._break_baseline_overlay(tmp_home, convert_legacy_doc_text("- a\n- b\n"))
     with patch(
       "kanibako.runtime.container.ContainerRuntime",
       side_effect=ContainerError("none"),
@@ -1156,7 +1157,8 @@ class TestDiagnoseBaseline:
     """A repeated key in the overlay names itself and leaves the rest of the run."""
     from kanibako.errors import ContainerError
 
-    overlay = self._break_baseline_overlay(tmp_home, "git: [rg]\ngit: [rg2]\n")
+    text = 'git: ["rg"]\ngit: ["rg2"]\n'
+    overlay = self._break_baseline_overlay(tmp_home, text)
     with patch(
       "kanibako.runtime.container.ContainerRuntime",
       side_effect=ContainerError("none"),
@@ -1164,7 +1166,12 @@ class TestDiagnoseBaseline:
       rc = run_rig_diagnose(argparse.Namespace())
     assert rc == 0
     out = capsys.readouterr().out
-    self._assert_overlay_is_reported(out, overlay, f"the config file {overlay} sets 'git' twice")
+    self._assert_overlay_is_reported(
+      out,
+      overlay,
+      f"{overlay}:2:0: duplicate key 'git' (first defined on line 1)",
+    )
+    assert overlay.read_bytes() == text.encode()
     assert "Error:" not in out
     assert "Rig (Image) Diagnostics" in out
     assert "Container runtime" in out
@@ -1525,7 +1532,7 @@ def _write_undeclared_key(config_file: Path) -> Path:
     home=Path.home(),
   )["config.settings"]
   settings_path.parent.mkdir(parents=True, exist_ok=True)
-  settings_path.write_text(f"box:\n  {_UNDECLARED_KEY}: yes\n")
+  settings_path.write_text(convert_legacy_doc_text(f"box:\n  {_UNDECLARED_KEY}: yes\n"))
   return settings_path
 
 
@@ -1672,7 +1679,7 @@ class TestMalformedConfigIsSurfaced:
   keyspace resolve, so neither can reach the spec §0 read gate those tests
   drive -- which is exactly why no `writes_undeclared` marker belongs here.
   What they bury instead is the `ConfigError` that `config_io.load_doc`
-  raises for unparseable YAML, which already names the file, the parse
+  raises for malformed Yapyon, which names the file, the parse
   position and the cure.  Same user-visible harm (a bland "cannot check"),
   different trigger.
 
@@ -1684,7 +1691,7 @@ class TestMalformedConfigIsSurfaced:
   BROKEN = 'box:\n  image: "unterminated\n   nope: [1, 2\n'
 
   def _break_config(self, config_file: Path) -> Path:
-    """Replace the config file with unparseable YAML."""
+    """Write malformed Yapyon to the config file."""
     config_file.write_text(self.BROKEN)
     return config_file
 
@@ -1692,8 +1699,10 @@ class TestMalformedConfigIsSurfaced:
     """The ConfigError reached the user intact: file, reason, and cure."""
     assert _SETTINGS_ERROR_DETAIL in out
     assert str(config_file) in out
-    assert "is not valid YAML" in out
+    assert "is not valid Yapyon" in out
+    assert f"{config_file}:2:9: newline in single-line string" in out
     assert "Fix or remove the file, then retry." in out
+    assert config_file.read_bytes() == self.BROKEN.encode()
 
   def test_journal_names_the_broken_file(
     self, config_file, tmp_home, credentials_dir, capsys
@@ -1873,7 +1882,9 @@ class TestSettingsErrorsAreConsolidated:
     for label in ("Image", "Storage", "Journal"):
       assert f"[!!] {label}: {_SETTINGS_ERROR_DETAIL}" in out
     assert "    affects: Image, Storage, Journal" in out
-    assert out.count("is not valid YAML") == 1
+    assert out.count("is not valid Yapyon") == 1
+    assert f"{config_file}:2:9: newline in single-line string" in out
+    assert config_file.read_bytes() == b'box:\n  image: "unterminated\n   nope: [1, 2\n'
 
   def test_two_different_errors_both_print(
     self, config_file, tmp_home, credentials_dir, capsys

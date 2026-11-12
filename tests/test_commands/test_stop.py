@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from kanibako.settings.config_io import convert_legacy_doc_text
 from kanibako.commands.stop import run, _stop_one, _stop_all
 from kanibako.errors import ConfigError
 from kanibako.settings.settings_launch import AuthSource
@@ -816,8 +817,8 @@ class TestStopWithMalformedBoxSettings:
   #: ``(label, file body)`` — the three shapes ``config_io.load_doc`` refuses.
   _MALFORMED = [
     ("invalid-yaml", "box: [unclosed\n  bad: :\n"),
-    ("a-list", "- one\n- two\n"),
-    ("a-scalar", "just a string\n"),
+    ("a-list", convert_legacy_doc_text("- one\n- two\n")),
+    ("a-scalar", convert_legacy_doc_text("just a string\n")),
   ]
 
   @pytest.fixture
@@ -854,7 +855,7 @@ class TestStopWithMalformedBoxSettings:
     proj = resolve_project(std, config, project_dir=str(workspace), initialize=True)
     box_yaml = proj.metadata_path / "box.yaml"
     box_yaml.parent.mkdir(parents=True, exist_ok=True)
-    box_yaml.write_text("box:\n  enable_vault: false\n")
+    box_yaml.write_text(convert_legacy_doc_text("box:\n  enable_vault: false\n"))
     return workspace, proj.name, box_yaml
 
   @staticmethod
@@ -868,7 +869,7 @@ class TestStopWithMalformedBoxSettings:
     # (the kwarg used to exist here and be silently dropped).
     name, *_ = establish_standalone(std, root, enable_vault=True)
     box_yaml = root / "box_data" / "box.yaml"
-    box_yaml.write_text("box:\n  enable_vault: false\n")
+    box_yaml.write_text(convert_legacy_doc_text("box:\n  enable_vault: false\n"))
     return root, name, box_yaml
 
   @pytest.mark.parametrize("shape", _MALFORMED, ids=[s[0] for s in _MALFORMED])
@@ -1056,7 +1057,7 @@ class TestStopWithMalformedGlobalSettings:
 
   _MALFORMED = [
     ("invalid-yaml", "system: [unclosed\n  bad: :\n"),
-    ("a-list", "- one\n- two\n"),
+    ("a-list", convert_legacy_doc_text("- one\n- two\n")),
   ]
 
   @pytest.fixture
@@ -1174,7 +1175,7 @@ class TestStopRefusalIsNotPrecededByADeceptiveWarning:
     workspace.mkdir(parents=True)
     resolve_project(std, config, project_dir=str(workspace), initialize=True)
     std.registry.parent.mkdir(parents=True, exist_ok=True)
-    std.registry.write_text("- one\n- two\n")
+    std.registry.write_text(convert_legacy_doc_text("- one\n- two\n"))
     capsys.readouterr()
 
     with (
@@ -1213,10 +1214,9 @@ class TestStopUnderAPerOwnerCollision:
 
   @staticmethod
   def _write_system(std, doc):
-    import yaml
+    from kanibako.settings.config_io import dump_doc
 
-    std.settings.parent.mkdir(parents=True, exist_ok=True)
-    std.settings.write_text(yaml.safe_dump(doc))
+    dump_doc(std.settings, doc)
 
   @staticmethod
   def _main(live_runtime, argv):
@@ -1271,7 +1271,7 @@ class TestStopUnderAPerOwnerCollision:
   @pytest.mark.parametrize(
     "system",
     [
-      "workset:\n  boxes: /srv/kb\n",
+      convert_legacy_doc_text("workset:\n  boxes: /srv/kb\n"),
       "workset: [unclosed\n",
     ],
     ids=["collided", "unreadable"],
@@ -1573,7 +1573,7 @@ class TestStopAllSkipsABoxThatRendersNoName:
   ):
     """The walk only names skipped boxes, so a refused file is WARNED, never hidden."""
     std.registry.parent.mkdir(parents=True, exist_ok=True)
-    std.registry.write_text("- one\n- two\n")
+    std.registry.write_text(convert_legacy_doc_text("- one\n- two\n"))
     live_runtime.list_running.return_value = [
       ("kb-primary-other", "img:latest", "Up 1 minute"),
     ]
@@ -1648,7 +1648,7 @@ class TestStopAllIsolatesARegistryRefusal:
     self._one_box_in_every_mode(std, config, tmp_home)
     registry = self._primary_registry(std)
     assert registry.is_file(), registry
-    registry.write_text("- not a mapping\n")
+    registry.write_text(convert_legacy_doc_text("- not a mapping\n"))
     live_runtime.list_running.return_value = [
       ("kb-primary-other", "img:latest", "Up 1 minute"),
     ]
@@ -1672,7 +1672,7 @@ class TestStopAllIsolatesARegistryRefusal:
     """ISOLATION, NOT SILENCE: the broken registry is named, and the sweep runs."""
     self._one_box_in_every_mode(std, config, tmp_home)
     registry = self._primary_registry(std)
-    registry.write_text("- not a mapping\n")
+    registry.write_text(convert_legacy_doc_text("- not a mapping\n"))
     live_runtime.list_running.return_value = [
       ("kb-primary-other", "img:latest", "Up 1 minute"),
     ]
@@ -1701,7 +1701,7 @@ class TestStopAllIsolatesARegistryRefusal:
     """
     self._one_box_in_every_mode(std, config, tmp_home)
     std.registry.parent.mkdir(parents=True, exist_ok=True)
-    std.registry.write_text("- not a mapping\n")
+    std.registry.write_text(convert_legacy_doc_text("- not a mapping\n"))
     live_runtime.list_running.return_value = [
       ("kb-primary-other", "img:latest", "Up 1 minute"),
     ]

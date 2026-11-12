@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from kanibako.settings.config_io import convert_legacy_doc_text
 from kanibako.commands.code_cmd import (
   _CodeShimError,
   _attach_uri,
@@ -600,7 +601,7 @@ def test_settings_refusal_warns_and_still_launches(
     home=Path.home(),
   )["config.settings"]
   settings_path.parent.mkdir(parents=True, exist_ok=True)
-  settings_path.write_text("box:\n  frobnicate: yes\n")
+  settings_path.write_text(convert_legacy_doc_text("box:\n  frobnicate: yes\n"))
 
   mock_runtime.container_image.return_value = None
   stack, _proj = _patched(mock_runtime)

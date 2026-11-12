@@ -6,6 +6,7 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
+from kanibako.settings.config_io import convert_legacy_doc_text
 from kanibako.errors import KanibakoError, UserCanceled
 from kanibako.settings.paths import ProjectGroup, BoxMode
 
@@ -182,7 +183,7 @@ class TestLazyInit:
 
     settings = tmp_home / "data" / "kanibako" / "global" / "settings.yaml"
     settings.parent.mkdir(parents=True)
-    settings.write_text("system:\n  state: null\n")
+    settings.write_text(convert_legacy_doc_text("system:\n  state: null\n"))
 
     with (
       patch("kanibako.cli.build_parser") as mock_bp,
@@ -215,7 +216,7 @@ class TestLazyInit:
 
     settings = tmp_home / "data" / "kanibako" / "global" / "settings.yaml"
     settings.parent.mkdir(parents=True)
-    settings.write_text("system:\n  state: null\n")
+    settings.write_text(convert_legacy_doc_text("system:\n  state: null\n"))
 
     config_file = tmp_home / "config" / CONFIG_FILENAME
 
@@ -235,7 +236,7 @@ class TestLazyInit:
     assert not config_file.exists(), "kanibako.cfg must not exist after a refused first run"
 
     # Fix the bad settings key.
-    settings.write_text("system:\n  state: ~/.local/state/kanibako\n")
+    settings.write_text(convert_legacy_doc_text("system:\n  state: ~/.local/state/kanibako\n"))
 
     # Second run: succeeds and creates the config file AND installs templates.
     install_completion = patch("kanibako.commands.install._install_completion")

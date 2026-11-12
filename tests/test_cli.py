@@ -8,6 +8,7 @@ import re
 
 import pytest
 
+from kanibako.settings.config_io import convert_legacy_doc_text
 from kanibako.cli import build_parser
 from kanibako.settings.paths import BoxMode
 
@@ -1803,7 +1804,7 @@ class TestLegacySetupMarkerGuard:
     assert calls == []
     capsys.readouterr()
     legacy.unlink()
-    user_config_file().write_text(f"config:\n  data: {custom}\n")
+    user_config_file().write_text(convert_legacy_doc_text(f"config:\n  data: {custom}\n"))
     assert self._main(["setup", "--agent", "shell", "--refresh-templates"]) == 0
     capsys.readouterr()
     assert self._main(["start"]) == 0

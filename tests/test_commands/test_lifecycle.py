@@ -22,7 +22,7 @@ from kanibako.commands.box._lifecycle import (
   resolve_lifecycle_target,
 )
 from kanibako.settings.config import load_config
-from kanibako.settings.config_io import dump_doc, load_doc
+from kanibako.settings.config_io import convert_legacy_doc_text, dump_doc, load_doc
 from kanibako.errors import AmbiguousNameError, ProjectError, WorksetError
 from kanibako.settings.paths import _early_scope, load_primary_boxes
 from kanibako.settings.paths import (
@@ -3072,7 +3072,9 @@ class TestDefaultStateFromMeta:
     """
     config, std, tmp_home = env
     pdir = _make_default(env, name="tablebox")
-    (std.boxes / "tablebox" / "box.yaml").write_text("box:\n  enable_vault: false\n")
+    (std.boxes / "tablebox" / "box.yaml").write_text(
+      convert_legacy_doc_text("box:\n  enable_vault: false\n")
+    )
 
     state = resolve_lifecycle_target(str(pdir), std, config)
     assert state.name == "tablebox"
@@ -3149,7 +3151,7 @@ class TestDuplicateRefusalCreatesNothing:
     assert not dst.exists()
 
     # The cure, exactly as the refusal prints it: hand-fix the section, retry.
-    box_tier.write_text("box:\n  enable_vault: false\n")
+    box_tier.write_text(convert_legacy_doc_text("box:\n  enable_vault: false\n"))
     with patch("kanibako.utils.confirm_prompt", return_value=True):
       rc = _duplicate_to_standalone(pdir, dst, force=False)
 

@@ -11,6 +11,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from kanibako.settings.config_io import convert_legacy_doc_text
 from kanibako.settings.agent_config import agent_settings_path
 from tests.support.agent_selection import agent_selection
 from kanibako.commands.start import (
@@ -446,7 +447,7 @@ class TestBoxScalarsResolveAfterSelection:
     std = load_std_paths(config)
     agent_file = agent_settings_path(std.agents, "claude")
     agent_file.parent.mkdir(parents=True, exist_ok=True)
-    agent_file.write_text("self: {}\nbox:\n  image: agentfile/rig:1\n")
+    agent_file.write_text(convert_legacy_doc_text("self: {}\nbox:\n  image: agentfile/rig:1\n"))
     if box_file_image is not None:
       box_file = std.boxes / "imgbox" / "box.yaml"
       doc = load_doc(box_file)
@@ -1177,9 +1178,8 @@ class TestResolveBootstrapProgramFailSoft:
     )
 
   def test_a_bootstrap_read_error_surfaces(self, std, project_dir):
-    """Selection succeeds (``shell``); the READ fails — the node's agent file is
-    not valid YAML — and the ``ConfigError`` must not become a silent ``tmux``
-    launch, as a swallowed agent-file load used to make it."""
+    """Selection succeeds (``shell``); malformed Yapyon in the agent file raises
+    ``ConfigError``, never a silent ``tmux`` launch from a swallowed read error."""
     from kanibako.commands.start import _resolve_bootstrap_program
     from kanibako.errors import ConfigError
     from kanibako.settings.agent_config import agent_settings_path
@@ -1187,8 +1187,12 @@ class TestResolveBootstrapProgramFailSoft:
     agent_file = agent_settings_path(std.agents, "shell")
     agent_file.parent.mkdir(parents=True, exist_ok=True)
     agent_file.write_text("self:\n  bootstrap: [unclosed\n")
-    with pytest.raises(ConfigError, match="not valid YAML"):
+    with pytest.raises(
+      ConfigError, match="not valid Yapyon:.*unclosed bracket at end of file"
+    ) as exc:
       _resolve_bootstrap_program(str(project_dir), "shell")
+    assert str(agent_file) in str(exc.value)
+    assert agent_file.read_bytes() == b"self:\n  bootstrap: [unclosed\n"
 
   def test_a_box_not_created_yet_resolves_its_bootstrap(self, config_file, project_dir):
     """The ``run_start`` pre-flight runs BEFORE create, so the box has no name yet.
@@ -5362,7 +5366,7 @@ class TestSpawnBudgetReachesTheDirector:
     from kanibako.errors import ConfigError
 
     host = tmp_path / "system.yaml"
-    host.write_text(f"system:\n  helpers:\n    depth: {raw}\n")
+    host.write_text(convert_legacy_doc_text(f"system:\n  helpers:\n    depth: {raw}\n"))
     with pytest.raises(ConfigError) as exc:
       _spawn_budget_of(self._snapshot(tmp_path, host), host)
     msg = str(exc.value)
@@ -6741,7 +6745,9 @@ class TestApplyInitSeeds:
     # tweak.  ⚑ The request names the DESTINATION, because that is the entry's
     # whole identity now (2026-08-08c) — there is no entry name to name.
     ptoml = tmp_path / "box.yaml"
-    ptoml.write_text('pref:\n  agent:\n    claude:\n      seeded:\n        "~/x": null\n')
+    ptoml.write_text(
+      convert_legacy_doc_text('pref:\n  agent:\n    claude:\n      seeded:\n        "~/x": null\n')
+    )
     self._call(
       tmp_path,
       proj=self._proj(shell),
@@ -10463,7 +10469,7 @@ class TestPreflightCodexPersona:
     from kanibako.settings.paths import resolve_project
 
     system_file = tmp_path / "settings.yaml"
-    system_file.write_text(f"agent:\n  codex:\n    model: {stored}\n")
+    system_file.write_text(convert_legacy_doc_text(f"agent:\n  codex:\n    model: {stored}\n"))
     proj = resolve_project(std, config, str(project_dir), initialize=True)
     selection = agent_selection(node="codex", source="settings").selection_level
     _auth, _endpoint, model, _secrets = start_cmd._resolve_box_launch_decisions(
@@ -12821,7 +12827,7 @@ class TestPersonaLiveTierWiring:
     target = self._target()
     path = agent_settings_path(std.agents, self._NODE)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("self:\n  model: null\n")
+    path.write_text(convert_legacy_doc_text("self:\n  model: null\n"))
 
     _auth, endpoint, model, _secrets = _resolve_box_launch_decisions(
       std=std,
@@ -16932,9 +16938,13 @@ class TestGoneBoxCureIsSafeAfterARepoint:
     (root / "registry.yaml").write_text("__STANDALONE__\n")
 
     for spec in (name, str(root)):
-      with pytest.raises(ConfigError, match="is not valid YAML") as exc:
+      with pytest.raises(
+        ConfigError, match="not valid Yapyon:.*unclosed bracket at end of file"
+      ) as exc:
         _no_box_error(spec, std)
+      assert str(root / "workset.yaml") in str(exc.value)
       assert "standalone marker" not in str(exc.value)
+      assert (root / "workset.yaml").read_bytes() == b"workset:\n  boxes: [unclosed\n"
 
   def test_standalone_at_its_default_rebuilds_as_today(
     self,

@@ -313,8 +313,12 @@ class TestFocusedRegisteredIdentity:
       patch("kanibako.commands.start.resolve_target", return_value=ClaudeTarget()) as target,
     ):
       if fail:
-        with pytest.raises(ConfigError, match="not valid YAML"):
+        with pytest.raises(
+          ConfigError, match="not valid Yapyon:.*unclosed bracket at end of file"
+        ) as exc:
           start._resolve_bootstrap_program(str(project_dir))
+        assert str(path) in str(exc.value)
+        assert path.read_bytes() == b"self:\n  bootstrap: [unclosed\n"
       else:
         choice = start._resolve_bootstrap_program(str(project_dir))
         assert (choice.program, choice.node) == ("zellij", "navigator")

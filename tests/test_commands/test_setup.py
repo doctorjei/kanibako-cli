@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from kanibako.settings.config_io import convert_legacy_doc_text
 from kanibako.commands.setup_cmd import TemplateStep, run_setup
 
 
@@ -260,7 +261,7 @@ class TestSettingsRefusalStopsSetup:
       home=Path.home(),
     )["config.settings"]
     settings_path.parent.mkdir(parents=True, exist_ok=True)
-    settings_path.write_text(f"box:\n  {self.UNDECLARED}: yes\n")
+    settings_path.write_text(convert_legacy_doc_text(f"box:\n  {self.UNDECLARED}: yes\n"))
     return settings_path
 
   def test_setup_stops_and_names_the_refusal(self, config_file, tmp_home, capsys) -> None:

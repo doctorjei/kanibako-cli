@@ -34,7 +34,7 @@ from pathlib import Path
 from kanibako.commands.system_cmd import run_get, run_reset, run_set, run_show
 from kanibako.settings.agent_config import agent_settings_path
 from kanibako.settings.config import load_config, read_system_agent
-from kanibako.settings.config_io import dump_doc, load_doc
+from kanibako.settings.config_io import convert_legacy_doc_text, dump_doc, load_doc
 from kanibako.settings.config_io import write_nested_key
 from kanibako.settings.config_keys import ConfigLevel
 from kanibako.settings.paths import load_std_paths
@@ -2349,7 +2349,7 @@ def test_show_effective_reads_a_legal_config_table_as_layer_1(
   read that file as the BOX tier, which refuses the table with a cure that is already true.
   MUTATION: feed *config_path* to ``load_merged_config`` in ``show_config`` again and this reds."""
   with config_file.open("a") as fh:
-    fh.write(f"config:\n  journal: {tmp_home / 'journal'}\n")
+    fh.write(convert_legacy_doc_text(f"config:\n  journal: {tmp_home / 'journal'}\n"))
   assert _set("box.image=sys/img:1") == 0
   capsys.readouterr()
   assert _show(effective=True) == 0
