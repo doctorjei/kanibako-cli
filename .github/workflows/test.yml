@@ -192,7 +192,7 @@ jobs:
       # invariant of `settings/settings_categories.py` is a property of that module
       # and is unaffected.
       - run: pip install -e '.[dev]' -e packages/agent-claude/ -e packages/agent-goose/ -e packages/agent-codex/
-      - run: KANI_REQUIRE_KINEMATA=1 pytest tests/test_kinemata_manifest.py -v
+      - run: KANI_REQUIRE_KINEMATA=1 pytest tests/test_kinemata_manifest.py tests/test_kinemata_artifacts.py -v
       # ⚑ NO SPEC IS FETCHED. The parity views whose oracle reads the keyspace
       # spec (`spec-2g-*`, `agent-<node>-stated`) live in `kinemata-spec.toml`
       # and run locally only, where the canon holds the spec. CI does not clone

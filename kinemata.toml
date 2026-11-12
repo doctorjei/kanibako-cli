@@ -1560,19 +1560,11 @@ match_mode = "strings"
 # as control 3 below. The file's own header carries the rest of the reasoning
 # and the one command that regenerates its rows.
 #
-# ⚑ `yaml-mapping` IS FORCED BY THE TOOL, not chosen. `code-patterns` -- the
-# other kind that can hold a literal list -- refuses an entry with no
-# `antipatterns` ("an entry with none is invisible to every check",
-# `adapters/patterns.py`), and its own docstring scopes it to "a handful, not
-# hundreds". `yaml-mapping` also contributes nothing to the duplication gate,
-# which is right: these are `.md` paths and `check` reads no `.md`. Measured
-# 2026-09-19 -- adding this registry moves `check`'s `silent:` tally by exactly
-# 139 (159/251 to 298/390) and changes no finding, which is the same arithmetic
-# the five narrowed views produced and is not a signal.
+# The owned reader preserves ledger values; the public loader owns selection.
 [[registry]]
 name = "api-doc-artifacts"
-kind = "yaml-mapping"
-source = "generated-artifacts.yaml"
+kind = "import"
+target = "kinemata_artifacts:ArtifactRegistry"
 section = "artifacts"
 
 # ---------------------------------------------------------------------------
@@ -4000,11 +3992,12 @@ authority = "produced"
 [[parity]]
 registry = "cred-entry-owners"
 command = ["{python}", "-c", """
-import pathlib, yaml
+import pathlib
+from kanibako.settings.config_io import parse_packaged
 from kinemata_views import plugin_descriptors, synced_cells
 cells = synced_cells()
 for source in plugin_descriptors():
-    doc = yaml.safe_load(pathlib.Path(source).read_text())
+    doc = parse_packaged(pathlib.Path(source).read_text())
     for cred in (doc.get("descriptor") or {}).get("cred_files") or []:
         dest = f"~/{cred['home_rel']}"
         owner = (cells.get(dest) or {}).get("owner")
