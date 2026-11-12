@@ -15,9 +15,9 @@ import os
 from pathlib import Path
 
 import pytest
-import yaml
 
 from kanibako.settings.config import WORKSET_META_FILE, load_config
+from kanibako.settings.config_io import dump_doc, parse_doc_text
 from kanibako.settings.paths import box_log_files, load_std_paths, resolve_project
 
 
@@ -51,9 +51,9 @@ def _surgeon(holder: Path, ws=None) -> Path:
     # forced share is staged in the registry by hand, as Step 4's --force will.
     workspace.mkdir(parents=True)
     registry = ws.root / "registry.yaml"
-    doc = yaml.safe_load(registry.read_text())
+    doc = parse_doc_text(registry.read_text())
     doc["boxes"]["alpha"] = str(workspace)
-    registry.write_text(yaml.safe_dump(doc))
+    dump_doc(registry, doc)
   (workspace / "alpha.txt").write_text("alpha's data\n")
   return workspace
 
@@ -326,9 +326,9 @@ def test_workset_rm_purge_keeps_a_workspace_recorded_inside_its_root(env, tmp_ho
   workspace.mkdir()
   (workspace / "alpha.txt").write_text("alpha's data\n")
   registry = std.primary_workset / "registry.yaml"
-  doc = yaml.safe_load(registry.read_text())
+  doc = parse_doc_text(registry.read_text())
   doc["boxes"]["alpha"] = str(workspace)
-  registry.write_text(yaml.safe_dump(doc))
+  dump_doc(registry, doc)
   capsys.readouterr()
 
   rc = _door("workset", "rm", "w", "--purge", "--force")

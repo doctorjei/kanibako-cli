@@ -60,7 +60,9 @@ class TestCreateWritesTheMark:
   def test_registry_file_holds_only_the_mark(self, config_file, tmp_home, credentials_dir):
     root = _create_standalone(tmp_home)
     assert (root / "registry.yaml").read_text() == MARK
-    doc = yaml.safe_load((root / WORKSET_META_FILE).read_text())
+    from kanibako.settings.config_io import parse_doc_text
+
+    doc = parse_doc_text((root / WORKSET_META_FILE).read_text())
     assert doc["workset"]["kuid"]
     assert "registry" not in doc["workset"]
 

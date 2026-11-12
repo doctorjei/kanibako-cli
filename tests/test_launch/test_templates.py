@@ -10,6 +10,8 @@ import time
 import pytest
 import yaml
 
+from kanibako.settings.config_io import dump_doc, parse_doc_text
+
 from kanibako.settings.agent_config import agent_settings_path
 from tests.support.agent_selection import agent_selection
 from kanibako.settings.paths import (
@@ -1221,9 +1223,9 @@ class TestLayeredHomeSeed:
     (ws_default / "DEFAULT.txt").write_text("default")
 
     wsf = std.primary_workset / "workset.yaml"
-    doc = (yaml.safe_load(wsf.read_text()) if wsf.exists() else {}) or {}
+    doc = (parse_doc_text(wsf.read_text()) if wsf.exists() else {}) or {}
     doc.setdefault("workset", {})["template"] = str(tmp_path / "custom-tpl")
-    wsf.write_text(yaml.safe_dump(doc))
+    dump_doc(wsf, doc)
 
     _seed(std, primary_proj)
     home = primary_proj.shell_path
@@ -1857,9 +1859,9 @@ class TestBoxHandbookHostCopyThroughTheSeam:
     (custom / "CUSTOM.md").write_text("custom")
 
     wsf = std.primary_workset / "workset.yaml"
-    doc = (yaml.safe_load(wsf.read_text()) if wsf.exists() else {}) or {}
+    doc = (parse_doc_text(wsf.read_text()) if wsf.exists() else {}) or {}
     doc.setdefault("workset", {})["template"] = str(tmp_path / "custom-tpl")
-    wsf.write_text(yaml.safe_dump(doc))
+    dump_doc(wsf, doc)
 
     _install_handbook(std, primary_proj)
     hb = _handbook_dir(primary_proj)
@@ -1873,9 +1875,9 @@ class TestBoxHandbookHostCopyThroughTheSeam:
     from kanibako.settings.paths import box_workset_settings_paths
 
     wsf, _ = box_workset_settings_paths(proj)
-    doc = (yaml.safe_load(wsf.read_text()) if wsf.exists() else {}) or {}
+    doc = (parse_doc_text(wsf.read_text()) if wsf.exists() else {}) or {}
     doc.setdefault("box", {})["canon"] = str(value)
-    wsf.write_text(yaml.safe_dump(doc))
+    dump_doc(wsf, doc)
 
   def test_an_escaping_box_canon_is_skipped_with_a_warning(
     self,
@@ -2456,7 +2458,7 @@ class TestWorksetStampFollowsTheKeys:
     root = tmp_home / name
     root.mkdir()
     if repoints:
-      (root / "workset.yaml").write_text(yaml.safe_dump({"workset": dict(repoints)}))
+      dump_doc(root / "workset.yaml", {"workset": dict(repoints)})
     return root
 
   def test_standalone_init_honors_a_workset_canon_repoint(self, std, config, tmp_home):
@@ -2528,9 +2530,7 @@ class TestWorksetStampFollowsTheKeys:
     install_packaged_templates(std, ["claude"])
     ws = tmp_path / "ws-template-repoint"
     ws.mkdir()
-    (ws / "workset.yaml").write_text(
-      yaml.safe_dump({"workset": {"template": "{meta.workset.path}/molds"}})
-    )
+    dump_doc(ws / "workset.yaml", {"workset": {"template": "{meta.workset.path}/molds"}})
     install_workset_template(std, ws, workset_name=ws.name)
     assert (ws / "molds" / "box" / "home" / "canon" / "notebook").is_dir()
     assert (ws / "molds" / "box" / "home" / "canon" / "workbook").is_dir()
@@ -2699,7 +2699,7 @@ class TestWorksetStampRefusesAnEscapingLeaf:
     root = tmp_path / name
     root.mkdir()
     if repoints:
-      (root / "workset.yaml").write_text(yaml.safe_dump({"workset": dict(repoints)}))
+      dump_doc(root / "workset.yaml", {"workset": dict(repoints)})
     return root
 
   def test_an_out_of_root_canon_repoint_names_the_key_file_and_value(self, std, tmp_path):

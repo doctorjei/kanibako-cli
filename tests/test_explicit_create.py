@@ -2562,9 +2562,9 @@ def test_a_member_create_gives_one_account_of_its_rollback(
   assert err.count(f"could not remove {boxes / 'alpha'}") == int(stuck), err
   assert err.count("was not fully undone") == int(stuck), err
   assert (boxes / "alpha").exists() is stuck
-  import yaml
+  from kanibako.settings.config_io import parse_doc_text
 
-  entries = (yaml.safe_load(std.journal.read_text()) or {}).get("entries") or {}
+  entries = (parse_doc_text(std.journal.read_text()) or {}).get("entries") or {}
   assert bool(entries) is stuck, entries
   cure = f"cd {shlex.quote(str(ws.root))} && kanibako create --recover alpha"
   rerun = f"run: {cure}" if stuck else "run the same 'kanibako create' again."
@@ -2580,5 +2580,5 @@ def test_a_member_create_gives_one_account_of_its_rollback(
   monkeypatch.setattr(paths_mod, "_register_workset_box_membership", real)
   assert run_create(_create_args("alpha", recover=True, no_vault=False)) == 0
   assert (boxes / "alpha").is_dir()
-  entries = (yaml.safe_load(std.journal.read_text()) or {}).get("entries") or {}
+  entries = (parse_doc_text(std.journal.read_text()) or {}).get("entries") or {}
   assert not entries, entries

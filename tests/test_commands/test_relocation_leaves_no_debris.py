@@ -525,13 +525,13 @@ def _digest(path):
 
 def _rows(tmp_home):
   """Every box row of every registry: ``(section, name, path)``."""
-  import yaml
+  from kanibako.settings.config_io import parse_doc_text
 
   out = []
   for f in sorted(tmp_home.rglob("*.yaml")):
     if (tmp_home / "t") in f.parents:
       continue
-    doc = yaml.safe_load(f.read_text()) or {}
+    doc = parse_doc_text(f.read_text()) or {}
     if not isinstance(doc, dict):
       continue
     for section in ("standalone", "boxes"):
@@ -1002,7 +1002,7 @@ class TestLandedBindsResolveByIdentity:
   @pytest.mark.usefixtures("stash_dir")
   @pytest.mark.parametrize("kind", ["C", "E", "F"])
   def test_the_landed_set_is_the_shown_set(self, env, monkeypatch, kind):
-    import yaml
+    from kanibako.settings.config_io import dump_doc, parse_doc_text
 
     sc = _Scenario(env, kind)
     outside = sc.tmp_home / "outside"
@@ -1014,9 +1014,9 @@ class TestLandedBindsResolveByIdentity:
     if kind == "F":
       # A W-tier binding: the member mounts it, the standalone it becomes does not.
       tier = sc.state.ws.root / "workset.yaml"
-      doc = (yaml.safe_load(tier.read_text()) if tier.is_file() else None) or {}
+      doc = (parse_doc_text(tier.read_text()) if tier.is_file() else None) or {}
       doc.update(bind)
-      tier.write_text(yaml.safe_dump(doc))
+      dump_doc(tier, doc)
     else:
       box_tier = (
         lc.box_metadata_dir(
@@ -1026,7 +1026,7 @@ class TestLandedBindsResolveByIdentity:
         )
         / "box.yaml"
       )
-      box_tier.write_text(yaml.safe_dump(bind))
+      dump_doc(box_tier, bind)
     before = resolve_lifecycle_target(str(sc.src), sc.std, sc.config).bind_sources
     assert before
     landed = []
