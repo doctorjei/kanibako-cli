@@ -601,7 +601,7 @@ class TestStandalonePurge:
     _create(root, standalone=True)
     (root / "canon" / "mine.txt").write_text("mine\n")
     with (root / "workset.yaml").open("a") as fh:
-      fh.write("  canon: null\n")
+      fh.write("  canon: None\n")
     capsys.readouterr()
 
     assert _rm(str(root), force=True) == 0
@@ -626,7 +626,7 @@ class TestStandalonePurge:
       fh.write("  canon: @meta.workset.path/canon\n")
     before = sorted(p.relative_to(root) for p in root.rglob("*"))
 
-    with pytest.raises(ConfigError, match="is not valid YAML"):
+    with pytest.raises(ConfigError, match="is not valid Yapyon"):
       _rm(str(root), force=True)
     assert sorted(p.relative_to(root) for p in root.rglob("*")) == before
 

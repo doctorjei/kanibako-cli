@@ -603,7 +603,7 @@ class TestBoxMoveOfTheWorksetsOwnWorkspace:
     dest = tmp_home / "ext" / "alpha"
 
     registry_path = workset_registry_path(ws.root)
-    before = registry_path.read_text()
+    before = registry_path.read_bytes()
 
     def boom(*a, **kw):
       raise RuntimeError("injected late failure")
@@ -613,10 +613,10 @@ class TestBoxMoveOfTheWorksetsOwnWorkspace:
     with pytest.raises(RuntimeError, match="injected late failure"):
       run_move(_move_args(leaf, dest))
 
-    after = registry_path.read_text()
+    after = registry_path.read_bytes()
     assert after == before
-    assert f"alpha: {leaf}" in after
-    assert f"alpha: {real}" not in after
+    assert f'alpha: "{leaf}"'.encode() in after
+    assert f'alpha: "{real}"'.encode() not in after
 
 
 class TestUnregisteredStandaloneMove:

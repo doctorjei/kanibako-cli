@@ -53,7 +53,9 @@ def _member_with_workspace(tmp_home, config_file, name, workspace, linked=True):
     workspace.mkdir(parents=True, exist_ok=True)
     leaf.symlink_to(workspace)
   add_project(ws, name, leaf, std)
-  (root / "registry.yaml").write_text(f"boxes:\n  {name}: {leaf}\n")
+  from kanibako.settings.config_io import dump_doc
+
+  dump_doc(root / "registry.yaml", {"boxes": {name: str(leaf)}})
   return config, std, leaf
 
 

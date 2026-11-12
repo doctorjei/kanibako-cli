@@ -29,8 +29,10 @@ def _move_args(old, new, *, to_workset=None):
 
 def _bind(box_dir, *sources):
   """Declare one read-only bind per source in the box tier, at ``/opt/m<N>``."""
-  rows = "".join(f'      /opt/m{n}: ["{src}"]\n' for n, src in enumerate(sources))
-  (box_dir / "box.yaml").write_text(f"box:\n  bindings:\n    ro:\n{rows}")
+  from kanibako.settings.config_io import dump_doc
+
+  rows = {f"/opt/m{n}": [src] for n, src in enumerate(sources)}
+  dump_doc(box_dir / "box.yaml", {"box": {"bindings": {"ro": rows}}})
 
 
 def _seed(tree, outside):
@@ -209,9 +211,7 @@ class TestUnresolvedBindingsCarryLinksVerbatim:
     box_dir = resolve_project(
       std, load_config(config_file), project_dir=str(project_dir)
     ).metadata_path
-    (box_dir / "box.yaml").write_text(
-      'box:\n  bindings:\n    ro:\n      /opt/m0: ["{no.such.key}/mounted"]\n'
-    )
+    _bind(box_dir, "{no.such.key}/mounted")
     dest = tmp_home / "a" / "b" / "moved"
     dest.parent.mkdir(parents=True)
 

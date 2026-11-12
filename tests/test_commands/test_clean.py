@@ -295,7 +295,9 @@ class TestCleanExtended:
     (project_dir / "box_data").mkdir(parents=True)
     (project_dir / "canon").mkdir()
     (project_dir / "canon" / "mine.txt").write_text("mine\n")
-    (project_dir / "workset.yaml").write_text("workset:\n  canon: null\n")
+    from kanibako.settings.config_io import convert_legacy_doc_text
+
+    (project_dir / "workset.yaml").write_text(convert_legacy_doc_text("workset:\n  canon: null\n"))
     (project_dir / "registry.yaml").write_text("__STANDALONE__\n")
 
     args = argparse.Namespace(path=str(project_dir), all_projects=False, force=True)
@@ -334,7 +336,7 @@ class TestCleanExtended:
     (project_dir / "registry.yaml").write_text("__STANDALONE__\n")
 
     args = argparse.Namespace(path=str(project_dir), all_projects=False, force=True)
-    with pytest.raises(ConfigError, match="is not valid YAML"):
+    with pytest.raises(ConfigError, match="is not valid Yapyon"):
       run(args)
     assert (project_dir / "box_data").is_dir()
     assert (project_dir / "workset.yaml").read_text() == bad

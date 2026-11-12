@@ -380,7 +380,7 @@ class TestALoopedLandingIsRefused:
     landing = wsdir / "workspaces" / "L" / "q"
     landing.mkdir(parents=True)
     with (root / "workset.yaml").open("a") as f:
-      f.write(f"  workspaces: {landing}\n")
+      f.write(f'  workspaces: "{landing}"\n')
     shutil.rmtree(wsdir / "workspaces" / "L")
     (wsdir / "workspaces" / "L").symlink_to("L")
     self._assert_refused(

@@ -317,8 +317,10 @@ class TestWorksetCreate:
 
     def _install_and_stamp_settings(std, workset_path, **kwargs):
       real_install(std, workset_path, **kwargs)
+      from kanibako.settings.config_io import convert_legacy_doc_text
+
       (workset_path / "workset.yaml").write_text(
-        "box:\n  shell: /bin/zsh\n  image: mold:stamped\n"
+        convert_legacy_doc_text("box:\n  shell: /bin/zsh\n  image: mold:stamped\n")
       )
 
     monkeypatch.setattr(templates, "install_workset_template", _install_and_stamp_settings)
@@ -4663,7 +4665,7 @@ class TestWorksetShowEffectiveReadsNoLayer1AsABoxTier:
     std = load_std_paths(load_config(config_file))
     create_workset("cfgtbl", tmp_home / "ws_cfgtbl", std)
     with config_file.open("a") as fh:
-      fh.write(f"config:\n  journal: {tmp_home / 'journal'}\n")
+      fh.write(f'config:\n  journal: "{tmp_home / "journal"}"\n')
     assert run_show(argparse.Namespace(workset="cfgtbl", effective=True)) == 0
     assert "config.* entries" not in capsys.readouterr().err
 

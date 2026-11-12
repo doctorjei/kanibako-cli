@@ -203,7 +203,9 @@ class TestAFailedConvertKeepsARepointedStore:
     store = tmp_home / "store"
     store.mkdir()
     (store / "keep.txt").write_text("theirs")
-    (pdir / "workset.yaml").write_text(f"workset:\n  boxes: {store}\n")
+    from kanibako.settings.config_io import dump_doc
+
+    dump_doc(pdir / "workset.yaml", {"workset": {"boxes": str(store)}})
     return config, std, pdir, store, resolve_lifecycle_target(str(pdir), std, config)
 
   def test_a_failed_metadata_copy_keeps_the_store(self, env, monkeypatch):

@@ -822,7 +822,9 @@ class TestExtractExtended:
     )
     shutil.rmtree(paths.standalone_box_store(Path(project_dir), early=proj._early))
     system_settings_path().parent.mkdir(parents=True, exist_ok=True)
-    system_settings_path().write_text("box:\n  enable_vault: false\n")
+    from kanibako.settings.config_io import convert_legacy_doc_text
+
+    system_settings_path().write_text(convert_legacy_doc_text("box:\n  enable_vault: false\n"))
 
     with (
       patch.object(paths, "establish_standalone", wraps=paths.establish_standalone) as est,
