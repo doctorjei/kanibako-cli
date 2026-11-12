@@ -198,7 +198,12 @@ def yaml_problem(exc: yaml.YAMLError) -> str:
   if isinstance(exc, yaml.MarkedYAMLError) and exc.problem:
     mark = exc.problem_mark
     where = f" (line {mark.line + 1}, column {mark.column + 1})" if mark is not None else ""
-    return f"{exc.problem}{where}{_unquoted_brace_hint(mark)}"
+    hint = (
+      _unquoted_brace_hint(getattr(mark, "buffer", None), mark.line + 1, mark.column + 1)
+      if mark is not None
+      else ""
+    )
+    return f"{exc.problem}{where}{hint}"
   return " ".join(str(exc).split())
 
 
@@ -206,15 +211,15 @@ def yaml_problem(exc: yaml.YAMLError) -> str:
 _BRACE_VALUE_RE = re.compile(r"^(\s*(?:-\s+)?(?:[^\s#'\"{-][^#]*?:\s+)?)(\{[^#]*?)\s*(?:\s#.*)?$")
 
 
-def _unquoted_brace_hint(mark: yaml.Mark | None) -> str:
-  """The cure when the failure is at or after an unquoted ``{``-leading value: YAML read
-  the ``{`` as a flow mapping, so a ``{$NAME}``/``{a.b}`` reference must be quoted."""
-  buffer = getattr(mark, "buffer", None)
-  if mark is None or not isinstance(buffer, str):
+def _unquoted_brace_hint(text: str | None, line: int | None, column: int | None) -> str:
+  """Quote an unquoted brace-leading value only at valid, 1-based failure coordinates."""
+  if not isinstance(text, str) or type(line) is not int or type(column) is not int:
     return ""
-  lines = buffer.rstrip("\0").split("\n")
-  m = _BRACE_VALUE_RE.match(lines[mark.line]) if mark.line < len(lines) else None
-  if m is None or mark.column < m.end(1):
+  lines = text.rstrip("\0").split("\n")
+  if not 1 <= line <= len(lines) or not 1 <= column <= len(lines[line - 1]) + 1:
+    return ""
+  m = _BRACE_VALUE_RE.match(lines[line - 1])
+  if m is None or column - 1 < m.end(1):
     return ""
   quoted = "'" + m.group(2).replace("'", "''") + "'"
   return f"; a value starting with '{{' must be quoted: {m.group(1).strip()} {quoted}".rstrip()
@@ -596,8 +601,19 @@ def load_doc(path: Path | None) -> dict:
   try:
     data = parse_doc_text(text, source=str(path))
   except (AkanError, RecursionError) as exc:
+    hint = (
+      _unquoted_brace_hint(text, exc.line, exc.col + 1)
+      if (
+        isinstance(exc, AkanError)
+        and exc.source == str(path)
+        and type(exc.col) is int
+        and exc.col >= 0
+      )
+      else ""
+    )
     raise ConfigError(
-      f"the config file {path} is not valid Yapyon: {exc}. Fix or remove the file, then retry."
+      f"the config file {path} is not valid Yapyon: {exc}{hint}. "
+      "Fix or remove the file, then retry."
     ) from exc
   if data is None:
     return {}

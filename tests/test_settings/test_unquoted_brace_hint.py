@@ -1,18 +1,16 @@
-"""An unquoted ``{``-leading value is a YAML flow mapping: the refusal says to quote it.
-
-``key: {$HOME}/x`` fails to parse; ``key: {$HOME}`` parses as the map ``{"$HOME": None}``
-and fails a later shape check. Both name the file and key, and show the quoted form.
-"""
+"""Brace-leading parse failures retain quoted repairs; reference-shaped maps get shape help."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
 import pytest
+import yaml
+from yapyon import AkanError
 
 from kanibako.errors import ConfigError
 from kanibako.settings.config import system_table_set_values
-from kanibako.settings.config_io import load_doc
+from kanibako.settings.config_io import load_doc, parse_template_yaml, yaml_problem
 from kanibako.settings.settings_assemble import _refuse_table_at_scalar_leaf
 from kanibako.settings.settings_categories import refuse_non_scalar_family_value
 from kanibako.settings.settings_resolve import SettingsError, unquoted_reference_hint
@@ -28,18 +26,63 @@ from kanibako.settings.workset_dirkeys import early_tier
   ],
 )
 def test_a_yaml_error_at_an_unquoted_brace_says_to_quote_it(tmp_path, text, cure) -> None:
+  with pytest.raises(yaml.MarkedYAMLError) as native:
+    parse_template_yaml(text)
+  native_message = yaml_problem(native.value)
+  assert "(line " in native_message
+  assert f"a value starting with '{{' must be quoted: {cure}" in native_message
   path = tmp_path / "settings.yaml"
   path.write_text(text)
   with pytest.raises(ConfigError) as ei:
     load_doc(path)
   msg = str(ei.value)
-  assert str(path) in msg and "(line " in msg, msg
+  cause = ei.value.__cause__
+  assert isinstance(cause, AkanError)
+  assert cause.source == str(path)
+  assert f"{path}:{cause.line}:{cause.col}:" in msg, msg
+  assert str(cause) in msg
   assert f"a value starting with '{{' must be quoted: {cure}." in msg, msg
+  assert path.read_text() == text
+  repaired = (
+    "\n".join(
+      line[: len(line) - len(line.lstrip())] + cure if "{" in line else line
+      for line in text.splitlines()
+    )
+    + "\n"
+  )
+  path.write_text(repaired)
+  assert load_doc(path) == parse_template_yaml(repaired)
 
 
-def test_a_yaml_error_elsewhere_gets_no_brace_hint(tmp_path) -> None:
+@pytest.mark.parametrize(
+  ("text", "column", "cure"),
+  [
+    ("a: 1\n{a: 2}\n", 0, "'{a: 2}'"),
+    ("a: 1\n  {a: 2}\n", 2, "'{a: 2}'"),
+    ("- {a: 2}\n{b: 3}\n", 0, "'{b: 3}'"),
+  ],
+)
+def test_real_owned_error_at_opening_brace_keeps_zero_based_column(tmp_path, text, column, cure):
   path = tmp_path / "settings.yaml"
-  path.write_text("a: b: c\n")
+  path.write_text(text)
+  with pytest.raises(ConfigError) as caught:
+    load_doc(path)
+  cause = caught.value.__cause__
+  assert isinstance(cause, AkanError)
+  assert (cause.line, cause.col) == (2, column)
+  assert text.splitlines()[cause.line - 1][cause.col] == "{"
+  message = str(caught.value)
+  assert f"{path}:2:{column}:" in message
+  assert str(cause) in message
+  assert "a value starting with '{' must be quoted:" in message
+  assert cure in message
+  assert path.read_text() == text
+
+
+@pytest.mark.parametrize("text", ["a: b: c\n", "safe: '{$HOME}/x'\nbad: ]\n"])
+def test_a_yaml_error_elsewhere_gets_no_brace_hint(tmp_path, text) -> None:
+  path = tmp_path / "settings.yaml"
+  path.write_text(text)
   with pytest.raises(ConfigError) as ei:
     load_doc(path)
   assert "must be quoted" not in str(ei.value)

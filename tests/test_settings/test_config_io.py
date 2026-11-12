@@ -8,8 +8,143 @@ from pathlib import Path
 import pytest
 import yaml
 
-from kanibako.errors import PackagingError
+from kanibako.errors import ConfigError, PackagingError
 from kanibako.settings import config_io
+
+
+@pytest.mark.parametrize(
+  ("line", "column"),
+  [
+    (None, 10),
+    (1, None),
+    (0, 10),
+    (-1, 10),
+    (4, 10),
+    (1, 0),
+    (1, -1),
+    (1, 100),
+    (True, 10),
+    (False, 10),
+    (1, True),
+    (1, False),
+    (1.0, 10),
+    ("1", 10),
+    (1, -0.5),
+    (1, "10"),
+    (1, 1),
+    (2, 7),
+  ],
+)
+def test_owned_parse_error_without_matching_location_has_no_brace_cure(
+  tmp_path, monkeypatch, line, column
+):
+  from yapyon import AkanError
+
+  path = tmp_path / "settings.yaml"
+  text = "value: {$HOME}/x\nother: ]\n"
+  path.write_text(text)
+  failure = AkanError("bad input", line, column, source=str(path))
+
+  def fail(*args, **kwargs):
+    raise failure
+
+  monkeypatch.setattr(config_io, "parse_doc_text", fail)
+  with pytest.raises(ConfigError) as caught:
+    config_io.load_doc(path)
+  assert caught.value.__cause__ is failure
+  assert str(failure) in str(caught.value)
+  assert "must be quoted" not in str(caught.value)
+  assert "{$HOME}" not in str(caught.value)
+  assert path.read_text() == text
+
+
+@pytest.mark.parametrize(
+  ("text", "column", "cure"),
+  [
+    ("v: {$X}/x\n", 3, "v: '{$X}/x'"),
+    ("{$X}/x\n", 0, "'{$X}/x'"),
+    ("v: {$X}/x\n", 2, None),
+    ("{$X}/x\n", -1, None),
+    ("{$X}/x\n", False, None),
+    ("{$X}/x\n", None, None),
+    ("{$X}/x\n", 0.0, None),
+    ("{$X}/x\n", "0", None),
+  ],
+)
+def test_owned_column_adapter_at_opening_brace(tmp_path, monkeypatch, text, column, cure):
+  from yapyon import AkanError
+
+  path = tmp_path / "settings.yaml"
+  path.write_text(text)
+  failure = AkanError("opening-brace refusal", 1, column, source=str(path))
+
+  def fail(*args, **kwargs):
+    raise failure
+
+  def forbidden(*args, **kwargs):
+    pytest.fail("owned diagnostic used YAML fallback")
+
+  monkeypatch.setattr(config_io, "parse_doc_text", fail)
+  monkeypatch.setattr(yaml, "load", forbidden)
+  with pytest.raises(ConfigError) as caught:
+    config_io.load_doc(path)
+  assert caught.value.__cause__ is failure
+  assert str(failure) in str(caught.value)
+  message = str(caught.value)
+  assert ("must be quoted" in message) is (cure is not None)
+  if cure is not None:
+    assert cure in message
+  assert path.read_text() == text
+
+
+@pytest.mark.parametrize("source", [None, "another-fragment.yaml"])
+def test_owned_parse_error_from_another_source_has_no_brace_cure(tmp_path, monkeypatch, source):
+  from yapyon import AkanError
+
+  path = tmp_path / "settings.yaml"
+  path.write_text("value: {$HOME}/x\n")
+  failure = AkanError("bad input", 1, 15, source=source)
+
+  def fail(*args, **kwargs):
+    raise failure
+
+  monkeypatch.setattr(config_io, "parse_doc_text", fail)
+  with pytest.raises(ConfigError) as caught:
+    config_io.load_doc(path)
+  assert caught.value.__cause__ is failure
+  assert "must be quoted" not in str(caught.value)
+
+
+@pytest.mark.parametrize("recursion", [False, True])
+def test_owned_parse_refusal_never_falls_back_to_yaml(tmp_path, monkeypatch, recursion):
+  from yapyon import AkanError
+
+  path = tmp_path / "settings.yaml"
+  path.write_text("value: {$HOME}/x\n")
+
+  def forbidden(*args, **kwargs):
+    pytest.fail("owned refusal fell back to YAML")
+
+  def exhaust(*args, **kwargs):
+    raise RecursionError("parser stack exhausted")
+
+  monkeypatch.setattr(yaml, "load", forbidden)
+  if recursion:
+    monkeypatch.setattr(config_io, "parse_doc_text", exhaust)
+  with pytest.raises(ConfigError) as caught:
+    config_io.load_doc(path)
+  assert isinstance(caught.value.__cause__, RecursionError if recursion else AkanError)
+  assert ("must be quoted" in str(caught.value)) is not recursion
+
+
+@pytest.mark.parametrize("buffer", [None, "value: {$HOME}/x\n\0"])
+def test_native_yaml_problem_without_matching_mark_has_no_brace_cure(buffer):
+  mark = yaml.Mark("native", 0, 0, 0, buffer, 0) if buffer is not None else None
+  failure = yaml.MarkedYAMLError(problem="bad input", problem_mark=mark)
+  assert config_io.yaml_problem(failure) == (
+    "bad input (line 1, column 1)" if mark is not None else "bad input"
+  )
+  assert config_io.yaml_problem(yaml.YAMLError("other\nproblem")) == "other problem"
 
 
 def test_owned_emitter_preserves_shared_containers_until_public_export(monkeypatch):

@@ -52,12 +52,11 @@ mean missing. Unreachable paths (`EACCES`, `EPERM`, `ELOOP`) use
 path-naming `ConfigError`s with their causes. Non-text read results return `{}`:
 an under-mocked read once exhausted host memory in a parser.
 
-The path is supplied as Yapyon's diagnostic source. `AkanError` becomes
-`ConfigError` with its diagnostic and cause intact, including duplicate and
-numeric-key failures. Parser stack exhaustion is also wrapped, never exposed as
-a CLI traceback. Nonmapping values name their shape (list/single value); nested
-non-string keys refuse through `_unnamed_key`. Parsing does not validate the
-closed settings keyspace: callers own that step.
+The path supplies Yapyon's source. `AkanError` retains its diagnostic/cause in
+`ConfigError`. Matching-source 1-based lines/zero-based columns adapt to native
+YAML's shared 1-based brace detector; only that line supplies a quoted cure.
+Invalid/missing locations give none. Stack exhaustion is wrapped. Nonmappings name
+their shape; `_unnamed_key` refuses nested non-string keys. Callers validate keyspace.
 
 `rig_meta.load_rig_meta` uses the same reader but retains `ValueError` and its
 cause; file errors propagate. `kinemata_artifacts` also reads owned text here.
