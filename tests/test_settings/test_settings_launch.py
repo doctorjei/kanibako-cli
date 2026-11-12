@@ -275,7 +275,9 @@ def test_a_PLUGIN_row_beats_a_users_agent_default_setting(tmp_path: Path):
   over the core ``<None>`` floor (rung 2 over rung 1).
   """
   system_file = tmp_path / "settings.yaml"
-  system_file.write_text("agent:\n  default:\n    model: mine\n    endpoint: mine\n")
+  system_file.write_text(
+    convert_legacy_doc_text("agent:\n  default:\n    model: mine\n    endpoint: mine\n")
+  )
   snap = _snap(
     system_path=system_file,
     behavior_floor={"model": None, "endpoint": None},
@@ -294,7 +296,7 @@ def test_the_SHELL_label_ignores_a_users_agent_default_label(tmp_path: Path):
   from kanibako.settings.core_defaults import behavior_defaults, pseudo_tier_defaults
 
   system_file = tmp_path / "settings.yaml"
-  system_file.write_text("agent:\n  default:\n    label: Mine\n")
+  system_file.write_text(convert_legacy_doc_text("agent:\n  default:\n    label: Mine\n"))
   snap = _snap(
     agent_name="shell",
     system_path=system_file,
@@ -314,8 +316,10 @@ def test_the_SHELL_inherits_a_users_agent_default_where_its_fence_has_no_row(tmp
 
   system_file = tmp_path / "settings.yaml"
   system_file.write_text(
-    "agent:\n  default:\n    bootstrap: none\n    access: restricted\n"
-    "    endpoint: http://e.example\n    model: mine\n    continue_mode: 'false'\n"
+    convert_legacy_doc_text(
+      "agent:\n  default:\n    bootstrap: none\n    access: restricted\n"
+      "    endpoint: http://e.example\n    model: mine\n    continue_mode: 'false'\n"
+    )
   )
   snap = _snap(
     agent_name="shell",
@@ -374,7 +378,7 @@ def test_a_user_set_agent_key_still_BEATS_the_plugin_floor(tmp_path: Path):
   directional enforcement drops one written in a workset or box file).
   """
   system_file = tmp_path / "settings.yaml"
-  system_file.write_text("agent:\n  goose:\n    provider: openrouter\n")
+  system_file.write_text(convert_legacy_doc_text("agent:\n  goose:\n    provider: openrouter\n"))
   snap = _snap(system_path=system_file, agent_behavior_floor={"provider": "openai"})
   assert snap.agent.goose.provider == "openrouter"
   assert effective_behavior(snap, active_agent="goose")["provider"] == "openrouter"
@@ -635,15 +639,15 @@ class TestNothingNestsUnderSelfButTheCategories:
     assert f"self.codex.{category}" in message
     assert var in message
     assert "/a/agent.yaml" in message
-    # The CURE every category gets: the FLAT table, spelled as the YAML to write — and
-    # that YAML, read back, IS the table (a list value is YAML, not a Python repr).
+    # Every category's CURE: the FLAT table, spelled as Yapyon to write — and
+    # read back as the same table, with lists, not Python reprs.
     import textwrap
 
-    import yaml
+    from yapyon import loads
 
     printed = message.split("sits DIRECTLY under it):\n", 1)[1].splitlines()
     block = "\n".join(line for line in printed if line.startswith("    "))
-    assert yaml.safe_load(textwrap.dedent(block)) == {"self": {category: {var: value}}}
+    assert loads(textwrap.dedent(block)) == {"self": {category: {var: value}}}
     # ⚑ AND THE VERB ONLY WHERE IT WORKS. ``agent set`` writes a per-VAR scalar, which
     # is ``env`` / ``secret_path`` and nothing else: the dest-keyed families take a
     # LIST value it cannot express, and it would store a dotted literal instead. A
@@ -1208,7 +1212,7 @@ class TestAMasksListInASETTINGSFILEIsRefusedByName:
 
   @staticmethod
   def _emit_from_box_file(path: Path, body: str):
-    path.write_text(body)
+    path.write_text(convert_legacy_doc_text(body))
     ctx = _ctx()
     snap = build_launch_snapshot(
       agent_name="claude",
@@ -1250,7 +1254,7 @@ class TestAMasksListInASETTINGSFILEIsRefusedByName:
     from kanibako.settings.settings_resolve import SettingsError
 
     ws = tmp_path / "workset.yaml"
-    ws.write_text('workset:\n  masks:\n    - "/w/m"\n')
+    ws.write_text(convert_legacy_doc_text('workset:\n  masks:\n    - "/w/m"\n'))
     ctx = _ctx()
     # ⚑ BOTH CALLS ARE INSIDE THE ``raises``, as in the box case above: the refusal
     # fires while the file is PARSED, which is what lets it name the file to edit.
@@ -1333,7 +1337,7 @@ class TestAScalarWhereACategorysMapGoesIsRefusedInTheAgentFile:
     from kanibako.settings.settings_resolve import SettingsError
 
     agent = tmp_path / "agent.yaml"
-    agent.write_text(body)
+    agent.write_text(convert_legacy_doc_text(body))
     with pytest.raises(SettingsError) as excinfo:
       build_launch_snapshot(
         agent_name="claude",
@@ -1380,7 +1384,7 @@ class TestAScalarWhereACategorysMapGoesIsRefusedInTheAgentFile:
     from kanibako.settings.settings_resolve import SettingsError
 
     agent = tmp_path / "agent.yaml"
-    agent.write_text(body)
+    agent.write_text(convert_legacy_doc_text(body))
     try:
       build_launch_snapshot(
         agent_name="claude",
@@ -1425,7 +1429,8 @@ def test_agent_info_warns_and_still_exits_zero_over_a_broken_agent_file(
       # Without it the CLI falls back to a fresh /tmp runtime dir and prints a
       # warning over the very output these assertions read.
       "XDG_RUNTIME_DIR": str(dirs["runtime"]),
-      "PYTHONPATH": str(repo_src),
+      "PYTHONPATH": os.pathsep.join((str(repo_src), os.environ.get("PYTHONPATH", str(repo_src)))),
+      "KANI_WT": str(repo_src.parent),
     }
   )
   # ⚑ THE SETUP BELOW RUNS IN THIS PROCESS, so it must see the SAME tree the child
@@ -1450,7 +1455,7 @@ def test_agent_info_warns_and_still_exits_zero_over_a_broken_agent_file(
   std = load_std_paths(load_config(dirs["config"] / "kanibako.cfg"))
   agent = agent_settings_path(agents_dir(std.data_path), "claude")
   agent.parent.mkdir(parents=True, exist_ok=True)
-  agent.write_text("self:\n  model: opus\n  caches: 5\n")
+  agent.write_text(convert_legacy_doc_text("self:\n  model: opus\n  caches: 5\n"))
 
   result = subprocess.run(
     [sys.executable, "-m", "kanibako", "agent", "info", "claude"],
@@ -2491,7 +2496,7 @@ def test_R147_a_bare_relative_in_the_SITE_base_file_is_refused(tmp_path, monkeyp
   from kanibako.settings.settings_resolve import SettingsError
 
   base = tmp_path / SITE_SETTINGS_FILENAME
-  base.write_text("workset:\n  auth:\n    path: auth\n", encoding="utf-8")
+  base.write_text(convert_legacy_doc_text("workset:\n  auth:\n    path: auth\n"), encoding="utf-8")
   monkeypatch.setattr(_launch, "settings_base_path", lambda: base)
   with pytest.raises(SettingsError) as exc:
     _auth_snapshot("primary", tmp_path=tmp_path)
@@ -3827,7 +3832,7 @@ def test_routed_bind_equivalence_vs_literal_injection():
 # --------------------------------------------------------------------------- #
 # box.agent.* mirror (block B5 — spec §2b, §0 directional)               #
 # --------------------------------------------------------------------------- #
-from kanibako.settings.config_io import dump_doc, parse_doc_text  # noqa: E402
+from kanibako.settings.config_io import convert_legacy_doc_text, dump_doc, parse_doc_text  # noqa: E402
 
 
 def _yaml(path: Path, data: dict) -> Path:
@@ -4243,7 +4248,9 @@ def test_a_users_agent_default_values_reach_the_shell_launch_but_its_fence_rows(
   )
 
   system_file = tmp_path / "settings.yaml"
-  system_file.write_text("agent:\n  default:\n    model: mine\n    env:\n      FOO: bar\n")
+  system_file.write_text(
+    convert_legacy_doc_text("agent:\n  default:\n    model: mine\n    env:\n      FOO: bar\n")
+  )
   snap = _snap(
     agent_name="shell",
     system_path=system_file,
@@ -6397,7 +6404,7 @@ from kanibako.settings import settings_keyspace_probe as _probe  # noqa: E402
 
 def _box_yaml(tmp_path: Path, text: str) -> Path:
   path = tmp_path / "box.yaml"
-  path.write_text(text, encoding="utf-8")
+  path.write_text(convert_legacy_doc_text(text), encoding="utf-8")
   return path
 
 
@@ -6658,7 +6665,7 @@ def test_a_config_table_in_the_site_base_file_refuses_too(tmp_path, monkeypatch)
   from kanibako.settings import settings_launch as _launch
 
   base = tmp_path / SITE_SETTINGS_FILENAME
-  base.write_text("config:\n  data: /elsewhere\n", encoding="utf-8")
+  base.write_text(convert_legacy_doc_text("config:\n  data: /elsewhere\n"), encoding="utf-8")
   monkeypatch.setattr(_assemble, "settings_base_path", lambda: base)
   monkeypatch.setattr(_launch, "settings_base_path", lambda: base)
   with pytest.raises(_SettingsError) as e:
@@ -6875,9 +6882,9 @@ def test_the_refusal_files_each_entry_under_the_file_that_carries_it(tmp_path, m
   from kanibako.settings import settings_launch as _launch
 
   system = tmp_path / "settings.yaml"
-  system.write_text("system:\n  bogus_sys: 1\n", encoding="utf-8")
+  system.write_text(convert_legacy_doc_text("system:\n  bogus_sys: 1\n"), encoding="utf-8")
   base = tmp_path / SITE_SETTINGS_FILENAME
-  base.write_text("system:\n  bogus_base: 1\n", encoding="utf-8")
+  base.write_text(convert_legacy_doc_text("system:\n  bogus_base: 1\n"), encoding="utf-8")
   monkeypatch.setattr(_launch, "settings_base_path", lambda: base)
   box_path = _box_yaml(tmp_path, "box:\n  image: x\n")
   with pytest.raises(_SettingsError) as e:
@@ -6922,7 +6929,7 @@ def test_a_base_file_entry_at_a_floor_held_path_is_filed_under_the_base_file(
   from kanibako.settings import settings_launch as _launch
 
   base = tmp_path / SITE_SETTINGS_FILENAME
-  base.write_text("system:\n  helpers: 5\n", encoding="utf-8")
+  base.write_text(convert_legacy_doc_text("system:\n  helpers: 5\n"), encoding="utf-8")
   monkeypatch.setattr(_launch, "settings_base_path", lambda: base)
   with pytest.raises(_SettingsError) as e:
     _snapshot(None)
@@ -6941,7 +6948,7 @@ def test_a_floor_only_entry_is_never_filed_under_the_base_file(tmp_path, monkeyp
   from kanibako.settings import settings_launch as _launch
 
   base = tmp_path / SITE_SETTINGS_FILENAME
-  base.write_text("system:\n  setup_completed: 1.8.0\n", encoding="utf-8")
+  base.write_text(convert_legacy_doc_text("system:\n  setup_completed: 1.8.0\n"), encoding="utf-8")
   monkeypatch.setattr(_launch, "settings_base_path", lambda: base)
   with pytest.raises(_SettingsError) as e:
     _snapshot(None, behavior_floor={"zippity": "x"})
@@ -6964,9 +6971,11 @@ def test_an_entry_the_merge_hides_in_the_base_file_names_that_file(tmp_path, mon
   from kanibako.settings import settings_launch as _launch
 
   system = tmp_path / "settings.yaml"
-  system.write_text("system:\n  bindings:\n    ro:\n      /x: [/tmp]\n", encoding="utf-8")
+  system.write_text(
+    convert_legacy_doc_text("system:\n  bindings:\n    ro:\n      /x: [/tmp]\n"), encoding="utf-8"
+  )
   base = tmp_path / SITE_SETTINGS_FILENAME
-  base.write_text("system:\n  bindings: 5\n", encoding="utf-8")
+  base.write_text(convert_legacy_doc_text("system:\n  bindings: 5\n"), encoding="utf-8")
   monkeypatch.setattr(_launch, "settings_base_path", lambda: base)
   with pytest.raises(_SettingsError) as e:
     _snapshot(None, system_path=system)
@@ -6983,7 +6992,9 @@ def test_a_table_at_a_node_scalar_leaf_in_the_system_file_refuses(tmp_path, node
   silently. Mutation: skip the shape check in ``fold_agent_nodes`` → red.
   """
   system = tmp_path / "settings.yaml"
-  system.write_text(f"agent:\n  {node}:\n    model:\n      x: 1\n", encoding="utf-8")
+  system.write_text(
+    convert_legacy_doc_text(f"agent:\n  {node}:\n    model:\n      x: 1\n"), encoding="utf-8"
+  )
   with pytest.raises(_SettingsError) as e:
     _snapshot(None, system_path=system)
   msg = str(e.value)
@@ -6995,7 +7006,9 @@ def test_a_category_table_in_a_node_still_resolves(tmp_path):
   """A category IS a table in every node; only a scalar leaf refuses one."""
   system = tmp_path / "settings.yaml"
   system.write_text(
-    "agent:\n  default:\n    env:\n      FOO: bar\n  claude:\n    model: opus\n",
+    convert_legacy_doc_text(
+      "agent:\n  default:\n    env:\n      FOO: bar\n  claude:\n    model: opus\n"
+    ),
     encoding="utf-8",
   )
   snap = _snapshot(None, system_path=system)
@@ -7117,7 +7130,7 @@ def test_an_agent_tier_for_an_uninstalled_agent_is_not_refused(tmp_path):
   """
   system_path = tmp_path / "settings.yaml"
   system_path.write_text(
-    "agent:\n  zzznotinstalled:\n    model: opus\n",
+    convert_legacy_doc_text("agent:\n  zzznotinstalled:\n    model: opus\n"),
     encoding="utf-8",
   )
   snap = _snapshot(system_path=system_path)
@@ -7140,7 +7153,7 @@ def test_an_uninstalled_agents_leaf_is_conceded_with_its_name(tmp_path):
   """
   system_path = tmp_path / "settings.yaml"
   system_path.write_text(
-    "agent:\n  zzznotinstalled:\n    zippity: wibble\n",
+    convert_legacy_doc_text("agent:\n  zzznotinstalled:\n    zippity: wibble\n"),
     encoding="utf-8",
   )
   snap = _snapshot(system_path=system_path)
@@ -7176,7 +7189,7 @@ def test_an_installed_agents_undeclared_leaf_still_refuses(tmp_path):
   """
   system_path = tmp_path / "settings.yaml"
   system_path.write_text(
-    "agent:\n  claude:\n    zippity: wibble\n",
+    convert_legacy_doc_text("agent:\n  claude:\n    zippity: wibble\n"),
     encoding="utf-8",
   )
   with pytest.raises(_SettingsError) as e:
@@ -7198,7 +7211,7 @@ def test_the_all_agents_tier_stays_judged(tmp_path):
   """
   system_path = tmp_path / "settings.yaml"
   system_path.write_text(
-    "agent:\n  default:\n    zippity: wibble\n",
+    convert_legacy_doc_text("agent:\n  default:\n    zippity: wibble\n"),
     encoding="utf-8",
   )
   with pytest.raises(_SettingsError) as e:
@@ -7305,7 +7318,7 @@ def test_a_retired_spelling_still_gets_its_own_refusal(tmp_path, parts, key):
   """
   tier = _RETIRED_ROOT_TIER[parts[0]]
   path = tmp_path / ("box.yaml" if tier == "box_path" else "settings.yaml")
-  path.write_text(_nested_yaml(parts, "claude"), encoding="utf-8")
+  path.write_text(convert_legacy_doc_text(_nested_yaml(parts, "claude")), encoding="utf-8")
   with pytest.raises(_SettingsError) as e:
     _snapshot(**{tier: path})
   msg = str(e.value)
@@ -7353,7 +7366,7 @@ def test_the_retired_behavior_key_gets_its_own_refusal(tmp_path):
   """
   system_path = tmp_path / "settings.yaml"
   system_path.write_text(
-    "agent:\n  claude:\n    auto_approve: true\n",
+    convert_legacy_doc_text("agent:\n  claude:\n    auto_approve: true\n"),
     encoding="utf-8",
   )
   with pytest.raises(_SettingsError) as e:
@@ -7423,7 +7436,7 @@ def test_the_retirement_scan_runs_only_on_a_resolve_that_refuses(
   box_path = _box_yaml(tmp_path, "box:\n  image: myrig\n")
   _snapshot(box_path)
   assert seen == [], "a conforming resolve re-read its settings files for nothing"
-  box_path.write_text("box:\n  zippity: wibble\n", encoding="utf-8")
+  box_path.write_text(convert_legacy_doc_text("box:\n  zippity: wibble\n"), encoding="utf-8")
   with pytest.raises(_SettingsError):
     _snapshot(box_path)
   assert seen == [box_path], "the refusing resolve skipped the retirement table"
@@ -7476,7 +7489,7 @@ def test_a_dropped_table_cannot_produce_a_cure(tmp_path, tier, filename, text):
   right; the code was wrong.
   """
   path = tmp_path / filename
-  path.write_text(text, encoding="utf-8")
+  path.write_text(convert_legacy_doc_text(text), encoding="utf-8")
   with pytest.raises(_SettingsError) as e:
     _snapshot(**{tier: path})
   msg = str(e.value)
@@ -7494,7 +7507,7 @@ def test_a_table_the_cascade_reads_still_produces_its_cure(tmp_path):
   """
   path = tmp_path / "settings.yaml"
   path.write_text(
-    "agent:\n  claude:\n    auto_approve: true\n",
+    convert_legacy_doc_text("agent:\n  claude:\n    auto_approve: true\n"),
     encoding="utf-8",
   )
   with pytest.raises(_SettingsError) as e:
@@ -7521,7 +7534,7 @@ def test_the_base_tier_is_scanned_too(tmp_path, monkeypatch):
   from kanibako.settings import settings_launch as _launch
 
   base = tmp_path / SITE_SETTINGS_FILENAME
-  base.write_text("box:\n  agent_name: claude\n", encoding="utf-8")
+  base.write_text(convert_legacy_doc_text("box:\n  agent_name: claude\n"), encoding="utf-8")
   monkeypatch.setattr(_assemble, "settings_base_path", lambda: base)
   monkeypatch.setattr(_launch, "settings_base_path", lambda: base)
   with pytest.raises(_SettingsError) as e:
@@ -7555,7 +7568,7 @@ def test_the_generic_message_names_the_base_file_the_scan_reads(
   from kanibako.settings import settings_launch as _launch
 
   base = tmp_path / SITE_SETTINGS_FILENAME
-  base.write_text("box:\n  zippity: wibble\n", encoding="utf-8")
+  base.write_text(convert_legacy_doc_text("box:\n  zippity: wibble\n"), encoding="utf-8")
   monkeypatch.setattr(_assemble, "settings_base_path", lambda: base)
   monkeypatch.setattr(_launch, "settings_base_path", lambda: base)
   box_path = _box_yaml(tmp_path, "box:\n  image: myrig\n")
@@ -7642,7 +7655,9 @@ def test_where_an_undiscriminated_agent_relic_stops_the_resolve(
   from kanibako.settings import settings_launch as _launch
 
   path = tmp_path / filename
-  path.write_text("agent:\n  common:\n    plugins: /tmp/x\n", encoding="utf-8")
+  path.write_text(
+    convert_legacy_doc_text("agent:\n  common:\n    plugins: /tmp/x\n"), encoding="utf-8"
+  )
   # ⚑ base is patched in EVERY case, so a real ``/etc/kanibako/settings_base.yaml``
   # on the machine running this cannot decide the outcome either way.
   base = path if tier == "base" else tmp_path / "no-base.yaml"

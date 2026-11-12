@@ -47,6 +47,7 @@ import pytest
 
 from kanibako.settings import agent_file
 from kanibako.settings.agent_config import agent_settings_path
+from kanibako.settings.config_io import convert_legacy_doc_text
 from kanibako.settings.settings_assemble import (
   retired_behavior_cure,
   refuse_retired_keys,
@@ -90,7 +91,7 @@ class _Tree:
 
   def write_system(self, text: str) -> Path:
     self.system_path.parent.mkdir(parents=True, exist_ok=True)
-    self.system_path.write_text(text)
+    self.system_path.write_text(convert_legacy_doc_text(text))
     return self.system_path
 
   def cli(self, *argv, cwd=None):
@@ -133,7 +134,8 @@ def tree(tmp_path, monkeypatch):
     "XDG_STATE_HOME": str(dirs["state"]),
     "XDG_CACHE_HOME": str(dirs["cache"]),
     "XDG_RUNTIME_DIR": str(dirs["runtime"]),
-    "PYTHONPATH": REPO_SRC,
+    "PYTHONPATH": os.pathsep.join((REPO_SRC, os.environ.get("PYTHONPATH", REPO_SRC))),
+    "KANI_WT": str(Path(REPO_SRC).parent),
     "PATH": os.environ.get("PATH", ""),
   }
   for name, value in env.items():
@@ -205,7 +207,7 @@ def _agent_store(root: Path, node: str) -> Path:
   file that exists (``set`` refuses an agent with none)."""
   path = agent_settings_path(root, node)
   path.parent.mkdir(parents=True, exist_ok=True)
-  path.write_text("self:\n  model: opus\n")
+  path.write_text(convert_legacy_doc_text("self:\n  model: opus\n"))
   return path
 
 
@@ -427,8 +429,10 @@ def test_the_nested_set_arm_cures_itself_end_to_end(tree) -> None:
   """A ``self.<node>.env`` table in a real agent file: the printed ``agent set``
   lands the value and the door that refused the file now reads it."""
   stale_file = tree.agent_file("shell")
-  stale_file.write_text('self:\n  claude:\n    env:\n      KANI_PROBE: "yes"\n')
-  tree.agent_file("claude").write_text("self:\n  model: opus\n")
+  stale_file.write_text(
+    convert_legacy_doc_text('self:\n  claude:\n    env:\n      KANI_PROBE: "yes"\n')
+  )
+  tree.agent_file("claude").write_text(convert_legacy_doc_text("self:\n  model: opus\n"))
 
   first = tree.cli("agent", "show", "shell")
   refusal = first.stdout + first.stderr
@@ -458,7 +462,7 @@ def test_the_nested_hand_edit_arm_cures_itself_end_to_end(tree) -> None:
   from kanibako.settings.config_io import dump_doc, parse_doc_text
 
   stale_file = tree.agent_file("shell")
-  stale_file.write_text("self:\n  shell:\n    model: opus\n")
+  stale_file.write_text(convert_legacy_doc_text("self:\n  shell:\n    model: opus\n"))
 
   first = tree.cli("agent", "show", "shell")
   refusal = first.stdout + first.stderr
@@ -544,7 +548,10 @@ def test_the_nested_set_arm_prints_one_set_per_entry(tmp_path) -> None:
     "kanibako agent set goose env.BAZ=qux",
     "kanibako agent set goose env.FOO=bar",
   ]
-  assert "        BAZ: qux\n        FOO: bar" in msg, "the by-hand table drops an entry"
+  assert '        BAZ: "qux"\n        FOO: "bar"' in msg, "the by-hand table drops an entry"
+  assert _yaml_of_block(_HAND_BLOCK.search(msg + "\n").group(1)) == {
+    "self": {"env": {"BAZ": "qux", "FOO": "bar"}}
+  }
 
 
 def test_the_hand_edit_arm_lists_every_entry(tmp_path) -> None:
@@ -554,7 +561,10 @@ def test_the_hand_edit_arm_lists_every_entry(tmp_path) -> None:
     path=agent_settings_path(tmp_path, "claude"),
   )
   assert "kanibako agent set" not in msg, msg
-  assert "        a: /x\n        b: /y" in msg
+  assert '        a: "/x"\n        b: "/y"' in msg
+  assert _yaml_of_block(_HAND_BLOCK.search(msg + "\n").group(1)) == {
+    "self": {"caches": {"a": "/x", "b": "/y"}}
+  }
 
 
 def test_the_default_arm_lists_every_entry(tmp_path) -> None:
@@ -562,7 +572,9 @@ def test_the_default_arm_lists_every_entry(tmp_path) -> None:
     {"default": {"env": {"X": "1", "Y": "2"}}},
     path=tmp_path / "agent.yaml",
   )
-  assert "          X: '1'\n          Y: '2'" in msg, "a string printed bare reads back an int"
+  assert '          X: "1"\n          "Y": "2"' in msg, "a string printed bare reads back an int"
+  block = re.search(r"\n((?:    [^\n]*\n)+)", msg + "\n").group(1)
+  assert _yaml_of_block(block) == {"agent": {"default": {"env": {"X": "1", "Y": "2"}}}}
 
 
 def test_entries_beside_the_category_are_named_and_never_deleted_first(tmp_path) -> None:
@@ -583,9 +595,9 @@ def test_a_two_entry_nested_set_arm_cures_itself_end_to_end(tree) -> None:
   entries read back — nothing the sub-table held is lost."""
   stale_file = tree.agent_file("shell")
   stale_file.write_text(
-    'self:\n  claude:\n    env:\n      FOO: "bar"\n      BAZ: "qux"\n',
+    convert_legacy_doc_text('self:\n  claude:\n    env:\n      FOO: "bar"\n      BAZ: "qux"\n'),
   )
-  tree.agent_file("claude").write_text("self:\n  model: opus\n")
+  tree.agent_file("claude").write_text(convert_legacy_doc_text("self:\n  model: opus\n"))
 
   first = tree.cli("agent", "show", "shell")
   refusal = first.stdout + first.stderr
@@ -623,9 +635,9 @@ _HAND_DELETE = re.compile(r"then delete the `self\.(\S+)` table from (\S+)\.$", 
 def _yaml_of_block(block: str):
   import textwrap
 
-  import yaml
+  from yapyon import loads
 
-  return yaml.safe_load(textwrap.dedent(block))
+  return loads(textwrap.dedent(block))
 
 
 def test_the_printed_set_lines_quote_every_value_for_the_shell(tmp_path) -> None:
@@ -645,7 +657,7 @@ def test_the_printed_set_lines_quote_every_value_for_the_shell(tmp_path) -> None
 
 
 def test_the_printed_yaml_quotes_every_value(tmp_path) -> None:
-  """The by-hand table, read as YAML, IS the stored table — for every arm."""
+  """The by-hand table, read as Yapyon, IS the stored table — every arm."""
   _agent_store(tmp_path, "claude")
   for root_tbl, outer in (
     ({"claude": {"env": dict(_HARD_VALUES), "model": "x"}}, ["self"]),
@@ -665,7 +677,7 @@ def test_the_set_cure_lands_hard_values_on_the_right_agent(tree) -> None:
   from kanibako.settings.config_io import dump_doc
 
   dump_doc(stale_file, {"self": {"claude": {"env": dict(_HARD_VALUES)}}})
-  tree.agent_file("claude").write_text("self:\n  model: opus\n")
+  tree.agent_file("claude").write_text(convert_legacy_doc_text("self:\n  model: opus\n"))
 
   first = tree.cli("agent", "show", "shell")
   refusal = first.stdout + first.stderr
@@ -697,7 +709,7 @@ def test_the_hand_cure_lands_every_entry_on_the_right_agent(tree) -> None:
     {"self": {"model": "opus", "claude": {"env": dict(_HARD_VALUES), "model": "sonnet"}}},
   )
   claude_file = tree.agent_file("claude")
-  claude_file.write_text("self:\n  model: opus\n")
+  claude_file.write_text(convert_legacy_doc_text("self:\n  model: opus\n"))
 
   first = tree.cli("agent", "show", "shell")
   refusal = first.stdout + first.stderr
@@ -757,7 +769,9 @@ def test_a_bool_value_cures_itself_end_to_end(tree) -> None:
   from kanibako.settings.config_io import dump_doc, parse_doc_text
 
   claude_file = tree.agent_file("claude")
-  claude_file.write_text("self:\n  model: opus\n  claude:\n    env:\n      B: true\n")
+  claude_file.write_text(
+    convert_legacy_doc_text("self:\n  model: opus\n  claude:\n    env:\n      B: true\n")
+  )
   first = tree.cli("agent", "show", "claude")
   refusal = first.stdout + first.stderr
   assert first.returncode != 0, refusal
@@ -776,7 +790,9 @@ def test_a_mixed_case_sub_key_names_the_canonical_agent(tmp_path) -> None:
   """``Claude`` reaches the node ``claude`` (Q87): the cure names ``agents/claude/``, the
   store the launch reads — never ``agents/Claude/``, which nothing reads."""
   (tmp_path / "claude").mkdir()
-  agent_settings_path(tmp_path, "claude").write_text("self:\n  model: opus\n")
+  agent_settings_path(tmp_path, "claude").write_text(
+    convert_legacy_doc_text("self:\n  model: opus\n")
+  )
   for root_tbl in (
     {"Claude": {"env": {"W": "x"}}},
     {"Claude": {"env": {"W": "x"}, "model": "y"}},
@@ -792,8 +808,10 @@ def test_a_mixed_case_sub_key_names_the_canonical_agent(tmp_path) -> None:
 def test_a_mixed_case_sub_key_cures_itself_end_to_end(tree) -> None:
   """Followed as printed, the entry lands on ``claude`` and no ``Claude`` store appears."""
   stale_file = tree.agent_file("shell")
-  stale_file.write_text("self:\n  model: x\n  Claude:\n    env:\n      W: x\n")
-  tree.agent_file("claude").write_text("self:\n  model: opus\n")
+  stale_file.write_text(
+    convert_legacy_doc_text("self:\n  model: x\n  Claude:\n    env:\n      W: x\n")
+  )
+  tree.agent_file("claude").write_text(convert_legacy_doc_text("self:\n  model: opus\n"))
 
   first = tree.cli("agent", "show", "shell")
   refusal = first.stdout + first.stderr
@@ -826,7 +844,9 @@ def test_a_target_with_no_file_cures_itself_end_to_end(tree) -> None:
   from kanibako.settings.config_io import dump_doc, parse_doc_text
 
   claude_file = tree.agent_file("claude")
-  claude_file.write_text("self:\n  model: opus\n  shell:\n    env:\n      W: x\n")
+  claude_file.write_text(
+    convert_legacy_doc_text("self:\n  model: opus\n  shell:\n    env:\n      W: x\n")
+  )
   shell_file = agent_settings_path(tree.agents_root, "shell")
   assert not shell_file.exists()
 
@@ -858,7 +878,7 @@ def test_a_sub_key_no_agent_answers_to_gets_no_move(tmp_path) -> None:
 
 def test_a_sub_key_no_agent_answers_to_refuses_through_the_cli(tree) -> None:
   tree.agent_file("claude").write_text(
-    "self:\n  model: opus\n  secrets:\n    env:\n      W: x\n",
+    convert_legacy_doc_text("self:\n  model: opus\n  secrets:\n    env:\n      W: x\n"),
   )
   first = tree.cli("agent", "show", "claude")
   refusal = first.stdout + first.stderr
@@ -877,12 +897,22 @@ def test_a_non_string_sub_key_is_refused_by_name(key, spelled, tmp_path) -> None
 
 
 def test_a_non_string_sub_key_refuses_through_the_cli(tree) -> None:
-  tree.agent_file("claude").write_text("self:\n  model: opus\n  1:\n    env:\n      W: x\n")
+  from kanibako.migration.yaml_to_yapyon import ConversionError
+
+  with pytest.raises(ConversionError, match="a key must be a string"):
+    convert_legacy_doc_text("self:\n  model: opus\n  1:\n    env:\n      W: x\n")
+  stale = tree.agent_file("claude")
+  stale.write_text('self:\n  model: "opus"\n  1:\n    env:\n      W: "x"\n')
   first = tree.cli("agent", "show", "claude")
   refusal = first.stdout + first.stderr
   assert first.returncode != 0, refusal
-  assert "has a key at 'self' that YAML reads as 1, not a name. Quote that key" in refusal, refusal
+  assert f"{stale}:3:2: expected a key, found an integer" in refusal, refusal
   assert "Traceback" not in refusal and "TypeError" not in refusal, refusal
+  stale.write_text('self:\n  model: "opus"\n  "1":\n    env:\n      W: "x"\n')
+  quoted = tree.cli("agent", "show", "claude")
+  refusal = quoted.stdout + quoted.stderr
+  assert quoted.returncode != 0 and "`1` names no agent" in refusal, refusal
+  assert "not valid Yapyon" not in refusal and "Traceback" not in refusal, refusal
 
 
 # --------------------------------------------------------------------------- #

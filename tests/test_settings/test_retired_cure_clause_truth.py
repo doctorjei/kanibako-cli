@@ -32,7 +32,7 @@ import pytest
 
 from kanibako.settings.agent_config import agent_settings_path
 from kanibako.settings.agent_file import _refuse_nested_tables
-from kanibako.settings.config_io import dump_doc, parse_doc_text
+from kanibako.settings.config_io import convert_legacy_doc_text, dump_doc, parse_doc_text
 from kanibako.settings.settings_assemble import (
   behavior_cure_checks_file,
   file_spelled_parents,
@@ -250,7 +250,8 @@ def tree(tmp_path, monkeypatch):
     "XDG_STATE_HOME": str(dirs["state"]),
     "XDG_CACHE_HOME": str(dirs["cache"]),
     "XDG_RUNTIME_DIR": str(dirs["runtime"]),
-    "PYTHONPATH": REPO_SRC,
+    "PYTHONPATH": os.pathsep.join((REPO_SRC, os.environ.get("PYTHONPATH", REPO_SRC))),
+    "KANI_WT": str(Path(REPO_SRC).parent),
     "PATH": os.environ.get("PATH", ""),
   }
   for name, value in env.items():
@@ -306,10 +307,10 @@ def test_the_system_file_cure_runs_end_to_end(tree, tmp_path) -> None:
   the entry, remove every table the deletion leaves empty, then run the printed
   ``set``. An ``agent: {}`` left behind is what refused the ``set`` before every
   enclosing table was named — the file here must end clean, not half-emptied."""
-  tree.agent_file("claude").write_text("self:\n  model: opus\n")
+  tree.agent_file("claude").write_text(convert_legacy_doc_text("self:\n  model: opus\n"))
   stale = tree.system_path
   stale.parent.mkdir(parents=True, exist_ok=True)
-  stale.write_text("agent:\n  default:\n    default_agent: goose\n")
+  stale.write_text(convert_legacy_doc_text("agent:\n  default:\n    default_agent: goose\n"))
   proj = tmp_path / "proj"
   proj.mkdir()
 
@@ -327,7 +328,7 @@ def test_the_system_file_cure_runs_end_to_end(tree, tmp_path) -> None:
   printed = tree.printed_cure(refusal)
   cure = tree.cli(*printed.split()[1:])
   assert cure.returncode == 0, f"{printed!r} failed:\n{cure.stdout}{cure.stderr}"
-  assert stale.read_text().strip() == "system:\n  agent: goose", stale.read_text()
+  assert stale.read_text().strip() == 'system:\n  agent: "goose"', stale.read_text()
 
   again = tree.cli("agent", "reauth", str(proj))
   assert "is RETIRED" not in again.stdout + again.stderr, "the refusal survived its cure"
@@ -338,8 +339,8 @@ def test_the_agent_file_cure_runs_end_to_end(tree) -> None:
   ``system set``, so it writes another file, succeeds, and promises nothing. Following
   the printed steps literally must still work — which is the whole bar."""
   stale = tree.agent_file("goose")
-  stale.write_text("agent:\n  default:\n    auto_approve: true\n")
-  tree.agent_file("claude").write_text("self:\n  model: opus\n")
+  stale.write_text(convert_legacy_doc_text("agent:\n  default:\n    auto_approve: true\n"))
+  tree.agent_file("claude").write_text(convert_legacy_doc_text("self:\n  model: opus\n"))
 
   first = tree.cli("agent", "show", "goose")
   refusal = first.stdout + first.stderr
@@ -369,8 +370,8 @@ def test_the_agent_file_cure_for_another_persona_runs_end_to_end(tree) -> None:
   The cure writes that other persona's file, so it succeeds and promises nothing —
   yet the door that printed it is the one that must be re-run afterwards."""
   stale = tree.agent_file("goose")
-  stale.write_text("agent:\n  claude:\n    auto_approve: true\n")
-  tree.agent_file("claude").write_text("self:\n  model: opus\n")
+  stale.write_text(convert_legacy_doc_text("agent:\n  claude:\n    auto_approve: true\n"))
+  tree.agent_file("claude").write_text(convert_legacy_doc_text("self:\n  model: opus\n"))
 
   first = tree.cli("agent", "show", "goose")
   refusal = first.stdout + first.stderr
@@ -393,8 +394,8 @@ def test_the_same_file_cure_promises_its_refusal_and_runs_end_to_end(tree) -> No
   """The arm whose file the cure DOES write: the refusal promised here is real, and
   the promise is only worth making because the sequence still completes."""
   stale = tree.agent_file("claude")
-  stale.write_text("self:\n  auto_approve: true\n")
-  tree.agent_file("goose").write_text("self:\n  model: opus\n")
+  stale.write_text(convert_legacy_doc_text("self:\n  auto_approve: true\n"))
+  tree.agent_file("goose").write_text(convert_legacy_doc_text("self:\n  model: opus\n"))
 
   first = tree.cli("agent", "show", "claude")
   refusal = first.stdout + first.stderr
@@ -419,8 +420,10 @@ def test_the_nested_table_arm_runs_end_to_end(tree) -> None:
   """``agent_file`` shares this helper, so its arm takes the same measured sentence.
   Following its printed steps must still work, and the value must be the one printed."""
   stale = tree.agent_file("shell")
-  stale.write_text('self:\n  claude:\n    env:\n      KANI_PROBE: "yes"\n')
-  tree.agent_file("claude").write_text("self:\n  model: opus\n")
+  stale.write_text(
+    convert_legacy_doc_text('self:\n  claude:\n    env:\n      KANI_PROBE: "yes"\n')
+  )
+  tree.agent_file("claude").write_text(convert_legacy_doc_text("self:\n  model: opus\n"))
 
   first = tree.cli("agent", "show", "shell")
   refusal = first.stdout + first.stderr
@@ -460,7 +463,9 @@ def test_the_nested_table_arm_promises_a_refusal_only_in_its_own_file(
   stores ``self.claude``, rc 0 when shell's does. Case folds as the node does.
   claude's file EXISTS: a ``set`` is printed only into one that does."""
   (tmp_path / "claude").mkdir()
-  agent_settings_path(tmp_path, "claude").write_text("self:\n  model: opus\n")
+  agent_settings_path(tmp_path, "claude").write_text(
+    convert_legacy_doc_text("self:\n  model: opus\n")
+  )
   with pytest.raises(SettingsError) as exc:
     _refuse_nested_tables(
       {"claude": {"env": {"KANI_PROBE": "yes"}}},
@@ -492,7 +497,7 @@ def test_an_empty_root_table_is_ACCEPTED_so_no_wording_may_call_it_refused(tree)
   workset tier an empty root table is written straight through."""
   assert tree.cli("workset", "create", "ws1").returncode == 0
   stale = tree.home / "ws1" / "workset.yaml"
-  stale.write_text("pref: {}\n")
+  stale.write_text(convert_legacy_doc_text("pref: {}\n"))
   cure = tree.cli("workset", "set", "ws1", "pref.agent.default.access=full")
   assert cure.returncode == 0, (
     "this tier now refuses a stranded empty root table — the wording may be "
@@ -505,7 +510,7 @@ def test_a_stranded_null_root_is_refused_so_the_wording_stops_short_of_claiming(
   the same file, the same cure — a null ``pref:`` is refused where ``pref: {}`` is not."""
   assert tree.cli("workset", "create", "ws1").returncode == 0
   stale = tree.home / "ws1" / "workset.yaml"
-  stale.write_text("pref:\n")
+  stale.write_text(convert_legacy_doc_text("pref:\n"))
   cure = tree.cli("workset", "set", "ws1", "pref.agent.default.access=full")
   assert cure.returncode == 1, (
     "a stranded null is no longer refused here — re-measure before changing the wording"
@@ -523,7 +528,7 @@ def test_the_system_tier_cure_really_refuses_while_the_entry_is_there(tree) -> N
   assert tree.cli("workset", "create", "ws1").returncode == 0
   stale = tree.system_path
   stale.parent.mkdir(parents=True, exist_ok=True)
-  stale.write_text("agent:\n  default:\n    default_agent: goose\n")
+  stale.write_text(convert_legacy_doc_text("agent:\n  default:\n    default_agent: goose\n"))
   assert tree.cli("system", "set", "system.agent=goose").returncode == 1, (
     "the system `set` no longer refuses a retired entry in its own file — "
     "the clause promising a refusal is now false"
@@ -535,7 +540,9 @@ def test_the_workset_tier_cure_really_refuses_while_the_entry_is_there(tree) -> 
   preview runs the same ``build_launch_snapshot`` the launch does."""
   assert tree.cli("workset", "create", "ws1").returncode == 0
   stale = tree.home / "ws1" / "workset.yaml"
-  stale.write_text("pref:\n  agent:\n    default:\n      auto_approve: true\n")
+  stale.write_text(
+    convert_legacy_doc_text("pref:\n  agent:\n    default:\n      auto_approve: true\n")
+  )
   cure = tree.cli("workset", "set", "ws1", "pref.agent.default.access=full")
   assert cure.returncode == 1, (
     "the workset `set` no longer refuses a retired entry in its own file — "
@@ -548,13 +555,17 @@ def test_the_agent_tier_cure_refuses_only_for_the_persona_holding_the_entry(tree
   another persona's file -> rc 0 and the clause promises nothing; the holder's own
   file -> rc 1 and the clause promises the refusal."""
   # stored under ANOTHER persona: the cure writes that persona's file
-  tree.agent_file("claude").write_text("self:\n  model: opus\n")
-  tree.agent_file("goose").write_text("agent:\n  claude:\n    auto_approve: true\n")
+  tree.agent_file("claude").write_text(convert_legacy_doc_text("self:\n  model: opus\n"))
+  tree.agent_file("goose").write_text(
+    convert_legacy_doc_text("agent:\n  claude:\n    auto_approve: true\n")
+  )
   assert tree.cli("agent", "set", "claude", "access=full").returncode == 0, (
     "this arm now refuses — the clause would be true and the measured arm wrong"
   )
   # stored under the persona whose own file the cure writes
-  tree.agent_file("claude").write_text("agent:\n  claude:\n    auto_approve: true\n")
+  tree.agent_file("claude").write_text(
+    convert_legacy_doc_text("agent:\n  claude:\n    auto_approve: true\n")
+  )
   assert tree.cli("agent", "set", "claude", "access=full").returncode == 1, (
     "this arm no longer refuses — the promise the clause makes is now false"
   )
@@ -563,8 +574,10 @@ def test_the_agent_tier_cure_refuses_only_for_the_persona_holding_the_entry(tree
 def test_the_reserved_default_arm_cure_writes_the_system_file_and_succeeds(tree) -> None:
   """The arm whose clause was false at its own level: the entry sits in the persona's
   file, the cure is a ``system set``, and the write succeeds with the entry present."""
-  tree.agent_file("goose").write_text("agent:\n  default:\n    auto_approve: true\n")
-  tree.agent_file("claude").write_text("self:\n  model: opus\n")
+  tree.agent_file("goose").write_text(
+    convert_legacy_doc_text("agent:\n  default:\n    auto_approve: true\n")
+  )
+  tree.agent_file("claude").write_text(convert_legacy_doc_text("self:\n  model: opus\n"))
   assert tree.cli("system", "set", "access=full").returncode == 0, (
     "this arm now refuses — re-measure before changing the wording"
   )

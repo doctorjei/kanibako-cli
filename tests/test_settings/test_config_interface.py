@@ -6,12 +6,12 @@ import io
 import re
 
 import pytest
-import yaml
+from yapyon import loads, yamlplus
 
 from kanibako.project.workset import Workset
 from kanibako.settings.agent_config import agent_settings_path
 from kanibako.settings.config import BOX_META_FILE, WORKSET_META_FILE
-from kanibako.settings.config_io import dump_doc, load_doc, parse_doc_text
+from kanibako.settings.config_io import convert_legacy_doc_text, dump_doc, load_doc, parse_doc_text
 from kanibako.settings.config_keys import ConfigLevel, is_known_key
 from kanibako.settings.config_interface import (
   ConfigAction,
@@ -485,7 +485,7 @@ class TestWorksetKuidKeys:
     from kanibako.settings import config
 
     f = tmp_path / WORKSET_META_FILE
-    f.write_text("workset: /x\n")
+    f.write_text(convert_legacy_doc_text("workset: /x\n"))
     with pytest.raises(ConfigError, match="where a table of keys belongs"):
       getattr(config, reader)(f)
 
@@ -2374,7 +2374,7 @@ class TestH2BoolCoercion:
     # ⚑ THE ``true`` FLOOR: ``False`` is ALSO this key's declared default, so
     # the read below would pass with this file ignored outright.
     workset_toml = tmp_path / WORKSET_META_FILE
-    workset_toml.write_text("box:\n  share_images: true\n")
+    workset_toml.write_text(convert_legacy_doc_text("box:\n  share_images: true\n"))
     assert (
       load_merged_config(
         workset_path=workset_toml,
@@ -6368,7 +6368,7 @@ class TestSetTimeResolutionProbe:
 
   def test_a_resolvable_ref_is_accepted(self, tmp_path):
     cfg = tmp_path / BOX_META_FILE
-    cfg.write_text("workset:\n  template: /ws/template\n")
+    cfg.write_text(convert_legacy_doc_text("workset:\n  template: /ws/template\n"))
     msg = set_config_value(
       "workset.auth.path",
       "{workset.template}/auth",
@@ -6386,7 +6386,7 @@ class TestSetTimeResolutionProbe:
     from kanibako.settings.config_interface import effective_value
 
     cfg = tmp_path / BOX_META_FILE
-    cfg.write_text("workset:\n  template: null\n")
+    cfg.write_text(convert_legacy_doc_text("workset:\n  template: null\n"))
     msg = set_config_value(
       "workset.auth.path",
       "{workset.template}/auth",
@@ -7541,7 +7541,7 @@ class TestNullSpelling:
       config_path=f,
       command_scope=ConfigLevel.box,
     )
-    assert yaml.safe_load(f.read_text())["pref"]["agent"]["claude"]["model"] == "null"
+    assert loads(f.read_text())["pref"]["agent"]["claude"]["model"] == "null"
 
   def test_the_string_null_at_a_PATH_target_is_refused(self, tmp_path):
     """The INVERSION of this class's old ``template`` case (keyspec §2a "A path key's
@@ -7573,7 +7573,7 @@ class TestNullSpelling:
       command_scope=ConfigLevel.box,
     )
     assert msg == "Set pref.agent.claude.common=null"
-    doc = yaml.safe_load(f.read_text())
+    doc = loads(f.read_text())
     assert doc["pref"]["agent"]["claude"]["common"] is None
 
   # ⚑ ``None`` IS NOT A SPELLING OF THE SURFACE. Four of the nine confirmation sites
@@ -7673,7 +7673,7 @@ class TestNullSpelling:
     gets the RETIREMENT (not a null-mechanism lecture), and a live nested target
     actually stores a null."""
     f = tmp_path / BOX_META_FILE
-    f.write_text(yaml.safe_dump({"box": {"common": {"plugins": ["/a", "~/b"]}}}))
+    f.write_text(yamlplus.dumps({"box": {"common": {"plugins": ["/a", "~/b"]}}}))
     msg = set_config_value(
       "box.common.plugins",
       None,
@@ -7683,7 +7683,7 @@ class TestNullSpelling:
     assert "RETIRED" in msg, msg
     assert "not yet supported" not in msg, msg
     # ⚑ And the stored tuple is untouched: refused before any write.
-    assert yaml.safe_load(f.read_text())["box"]["common"]["plugins"] == [
+    assert loads(f.read_text())["box"]["common"]["plugins"] == [
       "/a",
       "~/b",
     ]
@@ -7814,7 +7814,7 @@ class TestPrefGetRendersAllThreeEmptyIdioms:
     # at a key with no destination in its tail.
     f = tmp_path / BOX_META_FILE
     f.write_text(
-      yaml.safe_dump(
+      yamlplus.dumps(
         {
           "pref": {
             "agent": {
@@ -8691,7 +8691,7 @@ class TestStoredViewMarksUndeclaredEntries:
     global_cfg = tmp_path / CONFIG_FILENAME
     global_cfg.write_text("")
     project_toml = tmp_path / BOX_META_FILE
-    project_toml.write_text(text)
+    project_toml.write_text(convert_legacy_doc_text(text))
     show_config(
       global_config_path=global_cfg,
       config_path=project_toml,
@@ -8770,7 +8770,7 @@ class TestStoredViewMarksUndeclaredEntries:
     global_cfg = tmp_path / CONFIG_FILENAME
     global_cfg.write_text("")
     ssp = tmp_path / "settings.yaml"
-    ssp.write_text("system:\n  agent: claude\n  frobnicate: 1\n")
+    ssp.write_text(convert_legacy_doc_text("system:\n  agent: claude\n  frobnicate: 1\n"))
     show_config(
       command_scope=ConfigLevel.system,
       global_config_path=global_cfg,
@@ -9027,7 +9027,7 @@ def test_effective_value_reads_an_agent_file_root_scalar(tmp_path):
   from kanibako.settings.config_interface import effective_value
 
   agent = tmp_path / "agent.yaml"
-  agent.write_text("self:\n  model: opus\n")
+  agent.write_text(convert_legacy_doc_text("self:\n  model: opus\n"))
   assert effective_value(
     "agent.claude.model",
     ("agent", "claude"),
