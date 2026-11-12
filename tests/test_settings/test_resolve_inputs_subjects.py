@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import pytest
 
+from kanibako.settings.config_io import convert_legacy_doc_text
+
 from kanibako.agent_ref import GENERAL_SLOT
 from kanibako.channels import channels
 from kanibako.project.workset import add_project, create_workset, default_workset
@@ -252,7 +254,9 @@ class TestTheSubjectNamesItsTarget:
     reason="the undeclared key IS the input the refusal names.",
   )
   def test_the_workset_refusal_speaks_for_the_working_set(self, std, named_ws):
-    (named_ws.root / WORKSET_META_FILE).write_text("workset:\n  nosuchleaf: 1\n")
+    (named_ws.root / WORKSET_META_FILE).write_text(
+      convert_legacy_doc_text("workset:\n  nosuchleaf: 1\n")
+    )
     with pytest.raises(SettingsError) as exc:
       _snapshot(_workset(std, named_ws))
     assert f"resolved for {ResolveSubject.WORKSET.what} carry" in str(exc.value)
@@ -264,7 +268,7 @@ class TestTheSubjectNamesItsTarget:
   )
   def test_the_system_refusal_speaks_for_the_system_scope(self, std):
     std.settings.parent.mkdir(parents=True, exist_ok=True)
-    std.settings.write_text("box:\n  nosuchleaf: 1\n")
+    std.settings.write_text(convert_legacy_doc_text("box:\n  nosuchleaf: 1\n"))
     with pytest.raises(SettingsError) as exc:
       _snapshot(_system(std))
     assert f"resolved for {ResolveSubject.SYSTEM.what} carry" in str(exc.value)
@@ -296,8 +300,10 @@ def _refer_to(std, refs: dict[str, str]) -> None:
   """Write system binds whose SOURCES are the ``{key}``-refs in *refs* (guest dest → ref)."""
   std.settings.parent.mkdir(parents=True, exist_ok=True)
   std.settings.write_text(
-    "system:\n  bindings:\n    ro:\n"
-    + "".join(f"      {dest}: ['{ref}']\n" for dest, ref in refs.items())
+    convert_legacy_doc_text(
+      "system:\n  bindings:\n    ro:\n"
+      + "".join(f"      {dest}: ['{ref}']\n" for dest, ref in refs.items())
+    )
   )
 
 

@@ -20,7 +20,7 @@ from kanibako.settings.keystore import KeyStore
 from kanibako.settings.settings_configset import Error, scan_tokens, validate_config_set
 from kanibako.settings.settings_expand import expand
 from kanibako.settings.agent_config import is_self_resolving, is_unambiguous_path_value
-from kanibako.settings.config_io import dump_doc, load_doc
+from kanibako.settings.config_io import dump_doc, load_doc, convert_legacy_doc_text
 from kanibako.settings.paths import BoxMode
 from kanibako.settings.settings_launch import _persona_partial, resolve_box_dest
 from kanibako.settings.settings_resolve import (
@@ -206,7 +206,11 @@ def cli(tmp_path):
   home = tmp_path / "home"
   home.mkdir()
   env = {k: v for k, v in os.environ.items() if not k.startswith(("XDG_", "KANIBAKO"))}
-  env.update(HOME=str(home), XDG_RUNTIME_DIR=str(tmp_path), PYTHONPATH=str(REPO_SRC))
+  env.update(
+    HOME=str(home),
+    XDG_RUNTIME_DIR=str(tmp_path),
+    PYTHONPATH=os.pathsep.join((str(REPO_SRC), env.get("PYTHONPATH", ""))),
+  )
 
   def run(*args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
@@ -251,7 +255,7 @@ def test_set_refuses_the_old_spelling_naming_the_key(cli) -> None:
 )
 def test_a_stored_old_spelling_is_named_at_load(cli, stored, entry) -> None:
   path = _system_file(cli)
-  path.write_text(stored)
+  path.write_text(convert_legacy_doc_text(stored))
   proc = cli("system", "show", "--effective")
   assert proc.returncode == 1, proc.stdout + proc.stderr
   assert entry in proc.stderr and "write '{system.agent}'" in proc.stderr, proc.stderr
@@ -271,7 +275,7 @@ def test_a_stored_old_spelling_is_named_at_load(cli, stored, entry) -> None:
 )
 def test_a_stored_old_spelling_in_the_path_tier_names_key_and_file(cli, rel, text, key) -> None:
   path = cli.home / rel
-  path.write_text(text)
+  path.write_text(convert_legacy_doc_text(text))
   proc = cli("system", "show", "--effective")
   assert proc.returncode == 1, proc.stdout + proc.stderr
   assert f"'{key}': Old reference spelling" in proc.stderr, proc.stderr
@@ -280,7 +284,7 @@ def test_a_stored_old_spelling_in_the_path_tier_names_key_and_file(cli, rel, tex
 
 def test_setting_the_guarded_key_is_the_repair(cli) -> None:
   path = _system_file(cli)
-  path.write_text(_STORED)
+  path.write_text(convert_legacy_doc_text(_STORED))
   proc = cli("system", "set", "system.env.E=/x/{system.agent}")
   assert proc.returncode == 0, proc.stderr
   assert "@system.agent" not in path.read_text()
@@ -289,7 +293,7 @@ def test_setting_the_guarded_key_is_the_repair(cli) -> None:
 
 def test_resetting_the_guarded_key_is_the_repair(cli) -> None:
   path = _system_file(cli)
-  path.write_text(_STORED)
+  path.write_text(convert_legacy_doc_text(_STORED))
   proc = cli("system", "reset", "system.env.E")
   assert proc.returncode == 0, proc.stderr
   assert "@system.agent" not in path.read_text()

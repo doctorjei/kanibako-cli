@@ -26,6 +26,8 @@ from pathlib import Path
 
 import pytest
 
+from kanibako.settings.config_io import convert_legacy_doc_text
+
 from kanibako.settings.settings_launch import (
   build_launch_snapshot,
   meta_agent_path_floor,
@@ -67,7 +69,7 @@ def _sources(tmp_path: Path, active: str = AGENT, **files: str) -> dict[str, str
   """Write the named settings files, resolve, and return ``{box_dest: host_src}``.
 
   *files* keys are ``system`` / ``agent`` / ``workset`` / ``box``; each value is the file's
-  whole YAML text. ENV entries are dropped — every category under test is a MOUNT or a COPY.
+  owned text. ENV entries are dropped — every category under test is a MOUNT or a COPY.
   """
   paths: dict[str, Path | None] = {}
   for level in ("system", "agent", "workset", "box"):
@@ -76,7 +78,7 @@ def _sources(tmp_path: Path, active: str = AGENT, **files: str) -> dict[str, str
       paths[level] = None
       continue
     p = tmp_path / f"{level}.yaml"
-    p.write_text(text)
+    p.write_text(convert_legacy_doc_text(text))
     paths[level] = p
   ctx = _ctx(active)
   snap = build_launch_snapshot(

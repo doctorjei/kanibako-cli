@@ -231,7 +231,7 @@ def test_malformed_file_error_still_propagates(std, identity, vocabulary):
   inputs = _inputs(std, identity)
   std.settings.parent.mkdir(parents=True, exist_ok=True)
   std.settings.write_text("box: [unterminated\n")
-  with pytest.raises(ConfigError, match="not valid YAML") as error:
+  with pytest.raises(ConfigError, match="not valid Yapyon") as error:
     _effective(std, identity.node, "box.image", inputs=inputs)
   assert str(std.settings) in str(error.value)
 

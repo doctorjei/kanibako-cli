@@ -44,6 +44,8 @@ from pathlib import Path
 
 import pytest
 
+from kanibako.settings.config_io import convert_legacy_doc_text
+
 from kanibako.project.workset import create_workset
 from kanibako.settings.bootstrap import BOXES_PATH
 from kanibako.settings.config import (
@@ -671,7 +673,7 @@ class TestTheRefusalNamesTheReallyBrokenRef:
 
   def test_a_stored_chain_names_the_undeclared_ref(self, tmp_path, std):
     files = _files(tmp_path)
-    files["system"].write_text(self._STORED_BOTH)
+    files["system"].write_text(convert_legacy_doc_text(self._STORED_BOTH))
     message = self._refused(files, "/x/{box.shell}", std)
     assert "'{box.nope}'" in message, message
     assert "'{meta.workset.path}'" not in message, message
@@ -689,7 +691,7 @@ class TestTheRefusalNamesTheReallyBrokenRef:
 
   def test_a_stored_chain_with_only_the_blind_ref_is_accepted(self, tmp_path, std):
     files = _files(tmp_path)
-    files["system"].write_text(self._STORED_BLIND)
+    files["system"].write_text(convert_legacy_doc_text(self._STORED_BLIND))
     message = _set("box.canon", self._CHAIN, files, ConfigLevel.system, std=std)
     assert not message.startswith("Error:"), message
     assert self._CHAIN in files["system"].read_text()
@@ -722,7 +724,7 @@ class TestTheRefusalNamesTheReallyBrokenRef:
     phrase,
   ):
     files = _files(tmp_path)
-    files["system"].write_text(stored)
+    files["system"].write_text(convert_legacy_doc_text(stored))
     message = self._refused(files, self._CHAIN, std)
     assert phrase in message, message
     assert "'{meta.workset.path}'" not in message, message
@@ -749,7 +751,7 @@ class TestTheRefusalNamesTheReallyBrokenRef:
   ):
     files = _files(tmp_path)
     if stored:
-      files["system"].write_text(stored)
+      files["system"].write_text(convert_legacy_doc_text(stored))
     message = self._refused(files, f"/x/{{meta.workset.path}}/{{meta.box.name}}/{ref}", std)
     assert phrase in message, message
     assert "'{meta.workset.path}'" not in message, message
@@ -763,7 +765,7 @@ class TestADefectInATableReferentIsTheReferrersDefect:
   _VALUE = "{agent.default.env}"
 
   def _stored(self, files, extra=""):
-    files["system"].write_text(self._TABLE + extra)
+    files["system"].write_text(convert_legacy_doc_text(self._TABLE + extra))
     return files["system"].read_text()
 
   @pytest.mark.parametrize(
@@ -789,7 +791,7 @@ class TestADefectInATableReferentIsTheReferrersDefect:
 
   def test_a_table_holding_its_referrer_is_a_cycle_not_a_crash(self, tmp_path, std):
     files = _files(tmp_path)
-    files["system"].write_text("box:\n  env:\n    A: a\n")
+    files["system"].write_text(convert_legacy_doc_text("box:\n  env:\n    A: a\n"))
     message = _set("box.env.B", "{box.env}", files, ConfigLevel.system, std=std)
     assert message.startswith("Error:") and "cyclic reference" in message, message
     assert "B:" not in files["system"].read_text()
@@ -797,9 +799,11 @@ class TestADefectInATableReferentIsTheReferrersDefect:
   def test_the_trail_into_the_table_lends_its_leaves_no_depth(self, tmp_path, std):
     files = _files(tmp_path)
     files["system"].write_text(
-      "box:\n  env:\n    B: '{agent.default.env}'\nagent:\n  default:\n    env:\n"
-      + "".join(f"      V{i}: /{{agent.default.env.V{i + 1}}}\n" for i in range(2, 63))
-      + "      V63: /end\n"
+      convert_legacy_doc_text(
+        "box:\n  env:\n    B: '{agent.default.env}'\nagent:\n  default:\n    env:\n"
+        + "".join(f"      V{i}: /{{agent.default.env.V{i + 1}}}\n" for i in range(2, 63))
+        + "      V63: /end\n"
+      )
     )
     value = "/{agent.default.env.V2}"
     message = _set("agent.default.env.V1", value, files, ConfigLevel.system, std=std)
