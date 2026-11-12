@@ -128,7 +128,7 @@ def test_owned_emitter_preserves_legacy_scalar_consumer_text(tmp_path, source):
 
   path = tmp_path / "settings.yaml"
   path.write_text(source)
-  original = config_io.load_doc(path)
+  original = config_io.parse_template_yaml(source)
   value = original["box"]["shell"]
   before = _box_scalar_config({"box.shell": value}).box_shell
   config_io.dump_doc(path, original)
@@ -516,7 +516,7 @@ def test_native_yaml_does_not_inherit_kanibako_document_guards():
   assert data == 1
 
 
-@pytest.mark.parametrize("read", [config_io.parse_doc_text, config_io.parse_template_yaml])
+@pytest.mark.parametrize("read", [config_io.parse_template_yaml])
 @pytest.mark.parametrize(
   ("text", "expected"),
   [
@@ -535,7 +535,7 @@ def test_guarded_yaml_facades_keep_native_values(read, text, expected):
   assert read(text) == expected
 
 
-@pytest.mark.parametrize("read", [config_io.parse_doc_text, config_io.parse_template_yaml])
+@pytest.mark.parametrize("read", [config_io.parse_template_yaml])
 @pytest.mark.parametrize(
   ("text", "error"),
   [
@@ -544,7 +544,6 @@ def test_guarded_yaml_facades_keep_native_values(read, text, expected):
     ("a: 1\na: 2\n", config_io.DuplicateKeyError),
     ("value: &loop [*loop]\n", config_io.CyclicAnchorError),
     ("value: " + "[" * 70 + "1" + "]" * 70, config_io.DocumentTooDeepError),
-    ("[" * 2000 + "1" + "]" * 2000, config_io.DocumentTooDeepError),
   ],
 )
 def test_guarded_yaml_facades_keep_refusals(read, text, error):
@@ -552,7 +551,7 @@ def test_guarded_yaml_facades_keep_refusals(read, text, error):
     read(text)
 
 
-@pytest.mark.parametrize("read", [config_io.parse_doc_text, config_io.parse_template_yaml])
+@pytest.mark.parametrize("read", [config_io.parse_template_yaml])
 def test_guarded_yaml_facades_keep_nonfinite_values(read):
   import math
 
@@ -1164,3 +1163,154 @@ class TestReadDocTextCapped:
     path.write_bytes(b"\xff\xfe\x00bad")
     with pytest.raises(UnicodeDecodeError):
       config_io.read_doc_text_capped(path, cap=8, encoding="utf-8")
+
+
+def test_owned_reader_uses_public_yapyon_and_detaches_containers(monkeypatch):
+  import yapyon
+  from yapyon import yamlplus
+
+  text = 'base: 6\nresult: (base)\nrows: [{value: "{meta.box.home}"}, "{$HOME}"]\n'
+  real_loads = yapyon.loads
+  parsed = []
+
+  def capture(document, **kwargs):
+    assert document == text and kwargs == {"source": "settings.yaml"}
+    value = real_loads(document, **kwargs)
+    parsed.append(value)
+    return value
+
+  def forbidden(*args, **kwargs):
+    pytest.fail("owned reader used a legacy or YamlPlus parser")
+
+  monkeypatch.setattr(yapyon, "loads", capture)
+  monkeypatch.setattr(yamlplus, "loads", forbidden)
+  monkeypatch.setattr(yaml, "load", forbidden)
+  actual = config_io.parse_doc_text(text, source="settings.yaml")
+  assert actual == {"base": 6, "result": 6, "rows": [{"value": "{meta.box.home}"}, "{$HOME}"]}
+  assert type(actual) is dict and type(actual["rows"]) is list
+  assert type(actual["rows"][0]) is dict
+  assert actual is not parsed[0] and actual["rows"] is not parsed[0]["rows"]
+  actual["rows"][0]["value"] = "changed"
+  assert parsed[0]["rows"][0]["value"] == "{meta.box.home}"
+
+
+@pytest.mark.parametrize("text", ["", " \n\t\n", "# comment\n  # more\n"])
+def test_owned_reader_empty_text_is_not_a_parse_failure(text):
+  assert config_io.parse_doc_text(text) is None
+
+
+@pytest.mark.parametrize("text", ["[broken", "a: 1\na: 2\n", '8080: "value"', "name: bare"])
+def test_owned_reader_keeps_public_failure_without_fallback(monkeypatch, text):
+  from yapyon import AkanError
+
+  def forbidden(*args, **kwargs):
+    pytest.fail("owned parse failure fell back to YAML")
+
+  monkeypatch.setattr(yaml, "load", forbidden)
+  with pytest.raises(AkanError) as caught:
+    config_io.parse_doc_text(text, source="owned.cfg")
+  assert "owned.cfg:" in str(caught.value)
+
+
+@pytest.mark.parametrize("text", [b'"__STANDALONE__"', b'("__STANDALONE__")'])
+def test_marker_reads_full_public_yapyon(monkeypatch, text):
+  from yapyon import yamlplus
+
+  def forbidden(*args, **kwargs):
+    pytest.fail("marker used the output-profile reader")
+
+  monkeypatch.setattr(yamlplus, "loads", forbidden)
+  assert config_io.parse_standalone_marker(text) == "__STANDALONE__"
+
+
+@pytest.mark.parametrize(
+  "raw",
+  [b"\xff", b"[broken", b"{}", b"False", b"0", b"None", b"", b"[" * 132 + b"1" + b"]" * 132],
+)
+def test_marker_invalid_or_nonstring_is_not_a_marker(raw):
+  assert config_io.parse_standalone_marker(raw) is None
+
+
+@pytest.mark.parametrize(
+  "text,key",
+  [
+    ("box: {a: 1}\nbox: {b: 2}\n", "box"),
+    ("box:\n  env:\n    A: '1'\n    A: '2'\n", "box.env.A"),
+    ("self:\n  model: opus\n  model: sonnet\n", "self.model"),
+    ("list:\n  - {k: 1}\n  - k: 1\n    k: 2\n", "list[1].k"),
+    ("=: x\n=: y\n", "="),
+    ("x:\n  <<:\n    a: 1\n    a: 2\n", "x.<<.a"),
+    ("x:\n  <<:\n    - {b: 1}\n    - a: 1\n      a: 2\n", "x.<<[1].a"),
+  ],
+)
+def test_native_templates_keep_duplicate_paths(text, key):
+  with pytest.raises(config_io.DuplicateKeyError) as caught:
+    config_io.parse_template_yaml(text)
+  assert caught.value.dotted == key
+  assert "line" in caught.value.first and "line" in caught.value.second
+
+
+@pytest.mark.parametrize(
+  "text,path",
+  [
+    ("box: &a {image: ok:1, x: *a}\n", "box.x"),
+    ("box: &a {items: [*a]}\n", "box.items[0]"),
+    ("c: &c\n  x: &d\n    y: *c\ne: &e\n  z: *d\n", "e.z.y.x"),
+  ],
+)
+def test_native_templates_keep_cycle_paths(text, path):
+  with pytest.raises(config_io.CyclicAnchorError) as caught:
+    config_io.parse_template_yaml(text)
+  assert caught.value.dotted == path
+
+
+def test_native_templates_keep_shared_nodes_and_merge_overrides():
+  value = config_io.parse_template_yaml("c: &c\n  x: &d\n    y: 1\ne: &e\n  z: *d\n")
+  assert value["c"]["x"] is value["e"]["z"]
+  assert config_io.parse_template_yaml("a:\n  =: x\n") == {"a": {"=": "x"}}
+  assert config_io.parse_template_yaml("base: &b {a: 1}\nbox:\n  <<: *b\n  a: 2\n") == {
+    "base": {"a": 1},
+    "box": {"a": 2},
+  }
+
+
+def test_native_template_depth_boundary_and_parser_stack_failure(monkeypatch):
+  def nested(depth):
+    return (
+      "\n".join("  " * i + f"k{i}:" for i in range(depth - 1))
+      + "\n"
+      + "  " * (depth - 1)
+      + "leaf: 1\n"
+    )
+
+  value = config_io.parse_template_yaml(nested(config_io.MAX_DOC_DEPTH))
+  for i in range(config_io.MAX_DOC_DEPTH - 1):
+    value = value[f"k{i}"]
+  assert value == {"leaf": 1}
+  with pytest.raises(config_io.DocumentTooDeepError):
+    config_io.parse_template_yaml(nested(config_io.MAX_DOC_DEPTH + 1))
+
+  def exhausted(*args, **kwargs):
+    raise RecursionError("simulated parser stack exhaustion")
+
+  monkeypatch.setattr(yaml, "load", exhausted)
+  with pytest.raises(config_io.DocumentTooDeepError) as caught:
+    config_io.parse_template_yaml("{}")
+  assert isinstance(caught.value.__cause__, RecursionError)
+
+
+def test_native_shared_graph_guard_visits_distinct_containers():
+  class CountingList(list):
+    visits = 0
+
+    def __iter__(self):
+      self.visits += 1
+      return super().__iter__()
+
+  fanout, levels = 2, 3
+  nodes = [CountingList(["seed"])]
+  for _ in range(levels):
+    nodes.append(CountingList([nodes[-1]] * fanout))
+  config_io._guard_document({"top": nodes[-1]})
+  assert len({id(node) for node in nodes if node.visits}) == levels + 1
+  assert sum(node.visits for node in nodes) <= 1 + fanout * (len(nodes) - 1)

@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 import os
-import time
 from pathlib import Path
 
 import pytest
 
-from kanibako.settings.config_io import MAX_DOC_DEPTH, dump_doc, load_doc
+from kanibako.settings.config_io import dump_doc, load_doc
 from kanibako.errors import ConfigError
 from kanibako.settings.config import (
   user_config_file,
@@ -148,22 +147,19 @@ class TestLoadConfig:
     from kanibako.settings.settings_resolve import SettingsError
 
     box_file = tmp_path / BOX_META_FILE
-    box_file.write_text("box:\n  image: null\n")
+    box_file.write_text("box:\n  image: None\n")
     with pytest.raises(SettingsError) as excinfo:
       load_merged_config(box_file)
     assert "box.image" in str(excinfo.value)
     assert str(box_file) in str(excinfo.value)
 
-  def test_an_empty_value_is_the_same_present_null(self, tmp_path):
-    """An empty ``image:`` parses to the same ``None`` an explicit ``null`` does, so
-    it answers the same way — it is the SAME present ``None``, not a third idiom."""
-    from kanibako.settings.settings_resolve import SettingsError
-
+  def test_an_omitted_value_keeps_the_public_parse_error(self, tmp_path):
+    """An omitted value is a syntax error, never a fabricated null or default."""
     box_file = tmp_path / BOX_META_FILE
     box_file.write_text("box:\n  image:\n")
-    with pytest.raises(SettingsError) as excinfo:
+    with pytest.raises(ConfigError, match="has no value") as excinfo:
       load_merged_config(box_file)
-    assert "box.image" in str(excinfo.value)
+    assert str(box_file) in str(excinfo.value)
 
   def test_config_table_populates_config_paths(self, tmp_path):
     """[config] keys land in cfg.config_paths (full dotted names)."""
@@ -193,7 +189,7 @@ class TestLayer1FileCannotHaveSettings:
     """The planted table stops the read, naming the file and BOTH keys."""
     cf = user_config_file()
     cf.parent.mkdir(parents=True, exist_ok=True)
-    cf.write_text('box:\n  image: "layer1:planted"\n  share_images: true\n')
+    cf.write_text('box:\n  image: "layer1:planted"\n  share_images: True\n')
     with pytest.raises(ConfigError) as exc:
       load_merged_config()
     assert str(cf) in str(exc.value)
@@ -215,20 +211,13 @@ class TestLayer1FileCannotHaveSettings:
   @pytest.mark.parametrize(
     "text",
     [
-      "box:\n",  # YAML parses this to None, NOT {}
+      "box: None\n",  # explicit null, not {}
       "box: {}\n",  # the explicit empty mapping
       "box:\n  sub: {}\n",  # a table whose only leaf flattens away
     ],
   )
   def test_every_empty_table_spelling_refuses_alike(self, tmp_path, text):
-    """🛑 THE THREE EMPTY SPELLINGS AGREE, and two of them used not to.
-
-    A user reads all three as "an empty ``box:`` table". ``box:`` alone was refused as a
-    bare ``box``; the other two were silently ACCEPTED — two forms meaning one thing
-    giving opposite answers (Convention 0), and the accepting arm was the only thing in
-    this rule that behaved like a carve-out. An empty table is still a settings table in
-    a file that may not carry one, so all three refuse, named by the table.
-    """
+    """Null and empty settings tables refuse by name in the bootstrap-only file."""
     cf = tmp_path / CONFIG_FILENAME
     cf.write_text(text)
     with pytest.raises(ConfigError) as exc:
@@ -285,21 +274,15 @@ class TestLayer1FileCannotHaveSettings:
 
 
 class TestLayer1ExoticKeyTypes:
-  """A YAML key need not be a STRING, and the refusal must survive one that is not.
-
-  🛑 ``sorted`` and ``"\\n  ".join`` both assume ``str``, so ``1: x`` / ``true: x`` /
-  ``~: x`` raised a ``TypeError`` TRACEBACK instead of the named refusal — in the one
-  file whose whole point is that a hand-editing user finds out. The population that
-  reaches this is exactly the population the refusal exists to help.
-  """
+  """Invalid Yapyon keys refuse cleanly; a name like ``true`` reaches Layer-1 validation."""
 
   @pytest.mark.parametrize(
     "text,named",
     [
-      ("1: x\n", "reads as 1,"),
-      ("true: x\n", "reads as true,"),
-      ("~: x\n", "reads as null,"),
-      ("1: x\nbox: y\n", "reads as 1,"),  # the SORT arm: a str and an int in one document
+      ('1: "x"\n', "numeric keys"),
+      ('true: "x"\n', "carries settings"),
+      ('~: "x"\n', "not a valid key"),
+      ('1: "x"\nbox: "y"\n', "numeric keys"),
     ],
   )
   def test_a_non_string_top_level_key_refuses_by_name(self, tmp_path, text, named):
@@ -322,8 +305,8 @@ class TestLayer1UndeclaredConfigKeys:
   @pytest.mark.parametrize(
     "text,named",
     [
-      ("config:\n  nonsense: /x\n", "config.nonsense"),
-      ("config:\n  box:\n    image: SMUGGLE\n", "config.box.image"),
+      ('config:\n  nonsense: "/x"\n', "config.nonsense"),
+      ('config:\n  box:\n    image: "SMUGGLE"\n', "config.box.image"),
     ],
   )
   def test_an_undeclared_leaf_inside_config_refuses_by_name(self, tmp_path, text, named):
@@ -336,7 +319,7 @@ class TestLayer1UndeclaredConfigKeys:
   def test_both_spellings_of_one_typo_now_agree(self, tmp_path):
     """The finding itself: inside and outside ``config:``, one rule, one answer."""
     cf = tmp_path / CONFIG_FILENAME
-    for text in ("nonsense: /x\n", "config:\n  nonsense: /x\n"):
+    for text in ('nonsense: "/x"\n', 'config:\n  nonsense: "/x"\n'):
       cf.write_text(text)
       with pytest.raises(ConfigError):
         bootstrap_config_paths(cf)
@@ -345,7 +328,7 @@ class TestLayer1UndeclaredConfigKeys:
     """⚑ DERIVED (P13): the message enumerates :data:`CONFIG_PATH_DEFAULTS`, so a key
     joining §1 joins the message rather than outdating a list."""
     cf = tmp_path / CONFIG_FILENAME
-    cf.write_text("config:\n  nonsense: /x\n")
+    cf.write_text('config:\n  nonsense: "/x"\n')
     with pytest.raises(ConfigError) as exc:
       bootstrap_config_paths(cf)
     for key in CONFIG_PATH_DEFAULTS:
@@ -375,7 +358,7 @@ class TestLayer1UndeclaredConfigKeys:
     """``config: /x`` used to yield ``{}`` in SILENCE — the whole store back at its
     default location for a user whose one line meant to move it."""
     cf = tmp_path / CONFIG_FILENAME
-    cf.write_text("config: /x\n")
+    cf.write_text('config: "/x"\n')
     with pytest.raises(ConfigError) as exc:
       bootstrap_config_paths(cf)
     assert "/x" in str(exc.value)
@@ -389,13 +372,13 @@ class TestLayer1UndeclaredConfigKeys:
     this returns ``{key: "None"}``.
     """
     cf = tmp_path / CONFIG_FILENAME
-    cf.write_text(f"config:\n  {key.split('.', 1)[1]}: null\n")
+    cf.write_text(f"config:\n  {key.split('.', 1)[1]}: None\n")
     with pytest.raises(ConfigError) as exc:
       bootstrap_config_paths(cf)
     assert str(cf) in str(exc.value)
     assert key in str(exc.value)
 
-  @pytest.mark.parametrize("text", ["", "config:\n", "config: {}\n"])
+  @pytest.mark.parametrize("text", ["", "config: None\n", "config: {}\n"])
   def test_the_empty_spellings_all_read_as_an_empty_foundation(self, tmp_path, text):
     """🛑 THE COUNTERWEIGHT to the refusal above: ``write_global_config`` writes ZERO
     bytes, so absent, null and ``{}`` must agree — a ``config:`` carrying nothing is
@@ -754,7 +737,7 @@ class TestReadSetupCompleted:
 
   def test_absent_key_returns_none(self, tmp_path):
     ssp = tmp_path / "settings.yaml"
-    ssp.write_text("system:\n  agent: claude\n")  # a [system] table, no marker
+    ssp.write_text('system:\n  agent: "claude"\n')  # a [system] table, no marker
     assert read_setup_completed(ssp) is None
 
   def test_missing_file_returns_none(self, tmp_path):
@@ -906,7 +889,7 @@ class TestSetupCompatGate:
   # --- absent / unparseable ---------------------------------------------
   def test_absent_marker_nudges_setup(self, tmp_path):
     ssp = tmp_path / "settings.yaml"
-    ssp.write_text("system:\n  agent: claude\n")  # a system table, no marker
+    ssp.write_text('system:\n  agent: "claude"\n')  # a system table, no marker
     assert self._gate()(ssp) == ("kanibako isn't set up yet. Run 'kanibako setup' to get started.")
 
   def test_missing_file_nudges_setup(self, tmp_path):
@@ -1194,15 +1177,15 @@ class TestScalarOverlayPrecedence:
 
   def test_a_settings_tier_beats_builtin_defaults(self, tmp_path):
     workset_path = tmp_path / "ws-config.yaml"
-    workset_path.write_text("box:\n  image: user-image:v2\n")
+    workset_path.write_text('box:\n  image: "user-image:v2"\n')
     merged = load_merged_config(workset_path=workset_path)
     assert merged.box_image == "user-image:v2"
 
   def test_full_precedence_workset_project(self, tmp_path):
     workset_path = tmp_path / "ws-config.yaml"
-    workset_path.write_text("box:\n  image: ws:3\n  shell: bash\n")
+    workset_path.write_text('box:\n  image: "ws:3"\n  shell: "bash"\n')
     project_path = tmp_path / BOX_META_FILE
-    project_path.write_text("box:\n  image: proj:4\n")
+    project_path.write_text('box:\n  image: "proj:4"\n')
     merged = load_merged_config(project_path, workset_path=workset_path)
     # project wins for image; shell only set at the workset tier so it survives.
     # (⮕ P7: this used ``agent_name``, a key that no longer exists — the agent
@@ -1218,12 +1201,12 @@ class TestScalarOverlayPrecedence:
 
   def test_higher_layer_overrides_lower(self, tmp_path):
     workset_path = tmp_path / "ws-config.yaml"
-    workset_path.write_text("box:\n  image: img:workset\n")
+    workset_path.write_text('box:\n  image: "img:workset"\n')
     merged = load_merged_config(workset_path=workset_path)
     assert merged.box_image == "img:workset"
     # A box layer overrides the workset value (presence-based).
     project_path = tmp_path / BOX_META_FILE
-    project_path.write_text("box:\n  image: img:box\n")
+    project_path.write_text('box:\n  image: "img:box"\n')
     merged2 = load_merged_config(project_path, workset_path=workset_path)
     assert merged2.box_image == "img:box"
 
@@ -1232,10 +1215,10 @@ class TestScalarOverlayPrecedence:
     layer's non-default (presence beats the old ``!= default`` guard)."""
     default_img = "ghcr.io/doctorjei/kanibako-oci:latest"
     workset_path = tmp_path / "ws-config.yaml"
-    workset_path.write_text("box:\n  image: img:custom\n")
+    workset_path.write_text('box:\n  image: "img:custom"\n')
     project_path = tmp_path / BOX_META_FILE
     # Explicitly set the built-in default — must win.
-    project_path.write_text(f"box:\n  image: {default_img}\n")
+    project_path.write_text(f'box:\n  image: "{default_img}"\n')
     merged = load_merged_config(project_path, workset_path=workset_path)
     assert merged.box_image == default_img
 
@@ -1250,9 +1233,9 @@ class TestScalarOverlayPrecedence:
     from kanibako.settings.settings_resolve import SettingsError
 
     workset_path = tmp_path / "ws-config.yaml"
-    workset_path.write_text("box:\n  image: img:custom\n")
+    workset_path.write_text('box:\n  image: "img:custom"\n')
     project_path = tmp_path / BOX_META_FILE
-    project_path.write_text("box:\n  image: null\n")
+    project_path.write_text("box:\n  image: None\n")
     with pytest.raises(SettingsError) as excinfo:
       load_merged_config(project_path, workset_path=workset_path)
     assert "box.image" in str(excinfo.value)
@@ -1263,9 +1246,9 @@ class TestScalarOverlayPrecedence:
     from kanibako.settings.settings_resolve import SettingsError
 
     workset_path = tmp_path / "ws-config.yaml"
-    workset_path.write_text("box:\n  image: img:custom\n")
+    workset_path.write_text('box:\n  image: "img:custom"\n')
     project_path = tmp_path / BOX_META_FILE
-    project_path.write_text("box:\n  image:\n")
+    project_path.write_text("box:\n  image: None\n")
     with pytest.raises(SettingsError) as excinfo:
       load_merged_config(project_path, workset_path=workset_path)
     assert "box.image" in str(excinfo.value)
@@ -1278,7 +1261,7 @@ class TestScalarOverlayPrecedence:
     (⮕ P7: was written against ``box_agent_name``, retired with spec §2b; the
     SHAPE under test is the presence-based scalar overlay, not that key.)"""
     workset_path = tmp_path / "ws-config.yaml"
-    workset_path.write_text("box:\n  shell: foo\n")
+    workset_path.write_text('box:\n  shell: "foo"\n')
     project_path = tmp_path / BOX_META_FILE
     # Quoted empty string is a real value, not null.
     project_path.write_text('box:\n  shell: ""\n')
@@ -1296,7 +1279,7 @@ class TestScalarOverlayPrecedence:
     # refusal judges the resolved value, so an overridden null is never refused.
     """
     workset_path = tmp_path / "ws-config.yaml"
-    workset_path.write_text("box:\n  image: null\n")
+    workset_path.write_text("box:\n  image: None\n")
     merged = load_merged_config(
       workset_path=workset_path,
       cli_overrides={"box_image": "img:cli"},
@@ -1307,9 +1290,9 @@ class TestScalarOverlayPrecedence:
     """The box tier is more authoritative than the workset tier, so its value wins
     over a workset ``null`` and nothing is refused."""
     workset_path = tmp_path / "ws-config.yaml"
-    workset_path.write_text("box:\n  image: null\n")
+    workset_path.write_text("box:\n  image: None\n")
     project_path = tmp_path / BOX_META_FILE
-    project_path.write_text("box:\n  image: img:box\n")
+    project_path.write_text('box:\n  image: "img:box"\n')
     merged = load_merged_config(project_path, workset_path=workset_path)
     assert merged.box_image == "img:box"
 
@@ -1342,13 +1325,13 @@ class TestPresentScalarFields:
 
   def test_a_present_none_is_the_reset_sentinel(self, tmp_path):
     path = tmp_path / BOX_META_FILE
-    path.write_text("box:\n  image:\n")
+    path.write_text("box:\n  image: None\n")
     assert _present_scalar_fields(path) == {"box_image": None}
 
   def test_a_bool_stays_a_bool(self, tmp_path):
     """``str(False)`` is the truthy ``"False"`` — the coercion must not stringify."""
     path = tmp_path / BOX_META_FILE
-    path.write_text("box:\n  enable_vault: false\n")
+    path.write_text("box:\n  enable_vault: False\n")
     assert _present_scalar_fields(path) == {"box_enable_vault": False}
 
 
@@ -1386,7 +1369,7 @@ class TestBoxEnableVault:
     from kanibako.settings.config import load_doc
 
     p = tmp_path / BOX_META_FILE
-    p.write_text("box:\n  enable_vault: false\n")
+    p.write_text("box:\n  enable_vault: False\n")
     write_box_enable_vault(p)  # default True
     data = load_doc(p)
     assert "enable_vault" not in data.get("box", {})
@@ -1410,7 +1393,7 @@ class TestBoxEnableVault:
     the ``False`` param reds with the ``TypeError``, the ``True`` param reds by not raising.
     """
     p = tmp_path / BOX_META_FILE
-    p.write_text("box: /x\n")
+    p.write_text('box: "/x"\n')
 
     with pytest.raises(ConfigError) as exc:
       write_box_enable_vault(p, enable_vault=enable_vault)
@@ -1419,21 +1402,21 @@ class TestBoxEnableVault:
       f"so 'box.' keys cannot be written under it. "
       f"Fix or delete 'box' in that file by hand, then retry."
     )
-    assert p.read_text() == "box: /x\n"
+    assert p.read_text() == 'box: "/x"\n'
 
   #: A ``box`` SECTION that is not a table, one per YAML shape and per truth value.
   #: The corpus carries the falsy/non-falsy split deliberately: ``or {}`` used to swallow
   #: the falsy rows into a silent default while the non-falsy ones reached ``in``.
   _SCALAR_BOX_BODIES = [
-    pytest.param("box:\n", id="null"),
+    pytest.param("box: None\n", id="null"),
     pytest.param("box: ''\n", id="empty-string"),
     pytest.param("box: 0\n", id="zero"),
-    pytest.param("box: false\n", id="false"),
+    pytest.param("box: False\n", id="false"),
     pytest.param("box: []\n", id="empty-list"),
-    pytest.param("box: /x\n", id="path-string"),
+    pytest.param('box: "/x"\n', id="path-string"),
     pytest.param("box: 42\n", id="nonzero-int"),
-    pytest.param("box: true\n", id="true"),
-    pytest.param("box: [enable_vault]\n", id="list-holding-the-key"),
+    pytest.param("box: True\n", id="true"),
+    pytest.param('box: ["enable_vault"]\n', id="list-holding-the-key"),
     pytest.param("box: 'enable_vault: false'\n", id="string-holding-the-key"),
   ]
 
@@ -1498,16 +1481,16 @@ class TestBoxEnableVault:
     :func:`~kanibako.settings.config_io.render_stored_scalar` the writer's is.
     """
     p = tmp_path / BOX_META_FILE
-    p.write_text("box: /x\n")
+    p.write_text('box: "/x"\n')
 
     with pytest.raises(ConfigError) as from_reader:
       read_box_enable_vault(p)
     with pytest.raises(ConfigError) as from_writer:
       write_box_enable_vault(p, enable_vault=False)
     assert str(from_reader.value) == str(from_writer.value)
-    assert p.read_text() == "box: /x\n"
+    assert p.read_text() == 'box: "/x"\n'
 
-  @pytest.mark.parametrize("body", ["", "image: custom:v1\n"])
+  @pytest.mark.parametrize("body", ["", 'image: "custom:v1"\n'])
   def test_a_box_tier_without_a_box_section_still_reads_the_default(
     self,
     tmp_path,
@@ -1526,7 +1509,7 @@ class TestBoxEnableVault:
   def test_a_table_box_keeps_reading_its_leaf(self, tmp_path):
     """The named refusal must not reach a ``box`` that IS a table."""
     p = tmp_path / BOX_META_FILE
-    p.write_text('box:\n  image: custom:v1\n  enable_vault: "false"\n')
+    p.write_text('box:\n  image: "custom:v1"\n  enable_vault: "false"\n')
     assert read_box_enable_vault(p) is False
 
   def test_a_hand_quoted_false_is_not_the_truthy_string(self, tmp_path):
@@ -1668,7 +1651,7 @@ class TestConfigFilePath:
 
   def test_returns_new_path_when_new_exists(self, tmp_path):
     new = tmp_path / CONFIG_FILENAME
-    new.write_text("paths:\n")
+    new.write_text("paths: None\n")
     result = config_file_path(tmp_path)
     assert result == new
 
@@ -1677,7 +1660,7 @@ class TestConfigFilePath:
     # to the current top-level location.
     old = tmp_path / "kanibako" / CONFIG_FILENAME
     old.parent.mkdir()
-    old.write_text("paths:\n")
+    old.write_text("paths: None\n")
     result = config_file_path(tmp_path)
     assert result == tmp_path / CONFIG_FILENAME
 
@@ -1846,7 +1829,7 @@ class TestPersistCreationFlags:
     from kanibako.settings.config import persist_creation_flags
 
     p = tmp_path / BOX_META_FILE
-    p.write_text("box: /x\n")
+    p.write_text('box: "/x"\n')
 
     with pytest.raises(ConfigError) as exc:
       persist_creation_flags(p, materializing=True, image="custom:v1")
@@ -1855,7 +1838,7 @@ class TestPersistCreationFlags:
       f"so 'box.' keys cannot be written under it. "
       f"Fix or delete 'box' in that file by hand, then retry."
     )
-    assert p.read_text() == "box: /x\n"
+    assert p.read_text() == 'box: "/x"\n'
 
 
 class TestMergedConfigKeyspaceResolve:
@@ -1883,16 +1866,16 @@ class TestMergedConfigKeyspaceResolve:
     merged = load_merged_config(None)
     assert merged.box_image == KanibakoConfig().box_image
 
-    gp.write_text("box:\n  image: layer1:planted\n")
+    gp.write_text('box:\n  image: "layer1:planted"\n')
     with pytest.raises(ConfigError) as exc:
       load_merged_config(None)
     assert "box.image" in str(exc.value)
 
   def test_box_tier_beats_workset_beats_global(self, tmp_path, config_file):
     ws = tmp_path / "wconfig.yaml"
-    ws.write_text("box:\n  image: ws-img:2\n")
+    ws.write_text('box:\n  image: "ws-img:2"\n')
     bt = tmp_path / BOX_META_FILE
-    bt.write_text("box:\n  image: box-img:3\n  shell: zsh\n")
+    bt.write_text('box:\n  image: "box-img:3"\n  shell: "zsh"\n')
     assert load_merged_config(None, workset_path=ws).box_image == "ws-img:2"
     merged = load_merged_config(bt, workset_path=ws)
     assert merged.box_image == "box-img:3"
@@ -1903,16 +1886,16 @@ class TestMergedConfigKeyspaceResolve:
     ``box:`` table of global/settings.yaml — stranded before B6, live now."""
     ssp = tmp_path / "data" / "kanibako" / "global" / "settings.yaml"
     ssp.parent.mkdir(parents=True)
-    ssp.write_text("box:\n  image: sys-img:4\n")
+    ssp.write_text('box:\n  image: "sys-img:4"\n')
     assert load_merged_config(None).box_image == "sys-img:4"
     # ...but every settings-file tier above it still wins.
     bt = tmp_path / BOX_META_FILE
-    bt.write_text("box:\n  image: box-img:3\n")
+    bt.write_text('box:\n  image: "box-img:3"\n')
     assert load_merged_config(bt).box_image == "box-img:3"
 
   def test_cli_level_outranks_every_file(self, tmp_path, config_file):
     bt = tmp_path / BOX_META_FILE
-    bt.write_text("box:\n  image: box-img:3\n")
+    bt.write_text('box:\n  image: "box-img:3"\n')
     merged = load_merged_config(
       bt,
       cli_overrides={"box_image": "cli-img:9", "box_share_images": True},
@@ -1922,7 +1905,7 @@ class TestMergedConfigKeyspaceResolve:
 
   def test_share_images_resolves_as_a_bool_from_files(self, tmp_path, config_file):
     bt = tmp_path / BOX_META_FILE
-    bt.write_text("box:\n  share_images: true\n")
+    bt.write_text("box:\n  share_images: True\n")
     assert load_merged_config(bt).box_share_images is True
 
   def test_agentless_resolve_without_any_agent(self, config_file, tmp_path):
@@ -1961,15 +1944,15 @@ class TestMalformedSettingsFileIsNamed:
     assert isinstance(exc.value, KanibakoError)  # → cli's clean rc1 band
     msg = str(exc.value)
     assert str(bad) in msg  # the FILE
-    assert "not valid YAML" in msg  # the CLASS of failure
-    assert "line " in msg and "column " in msg  # the parse problem, located
+    assert "not valid Yapyon" in msg  # the CLASS of failure
+    assert f"{bad}:" in msg  # the parse problem, located
 
   @pytest.mark.parametrize(
     "text, shape",
     [
-      ("hello\n", "a single value"),
+      ('"hello"\n', "a single value"),
       ("42\n", "a single value"),
-      ("- box\n- image\n", "a list"),
+      ('- "box"\n- "image"\n', "a list"),
     ],
   )
   def test_load_doc_refuses_a_document_that_is_not_a_mapping(self, tmp_path, text, shape):
@@ -2004,7 +1987,7 @@ class TestMalformedSettingsFileIsNamed:
     from kanibako.settings.config_io import load_doc
 
     good = tmp_path / BOX_META_FILE
-    good.write_text("box:\n  image: ok:1\n")
+    good.write_text('box:\n  image: "ok:1"\n')
     assert load_doc(good) == {"box": {"image": "ok:1"}}
 
   def test_boxless_merged_resolve_raises_the_named_error(
@@ -2051,7 +2034,7 @@ class TestMalformedSettingsFileIsNamed:
     err = capsys.readouterr().err
     assert err.startswith("Error: ")
     assert str(ssp) in err
-    assert "not valid YAML" in err
+    assert "not valid Yapyon" in err
 
   def test_unreadable_file_raises_config_error(self, tmp_path):
     """A chmod 000 file raises ConfigError with OSError as cause."""
@@ -2088,285 +2071,117 @@ class TestMalformedSettingsFileIsNamed:
 
 
 class TestRepeatedKeyIsRefused:
-  """Q103 / S4 I17: a settings file that writes one key twice is refused, naming both lines.
-
-  PyYAML keeps the LAST of a repeated key without a word (``box: {a: 1}`` then ``box: {b: 2}``
-  loads as ``{'box': {'b': 2}}``), so the refusal lives in ``load_doc``'s loader.
-  MUTATION: load with ``yaml.safe_load`` again and every refusal case reds.
-  """
+  """Owned duplicates retain public diagnostics and a path-naming ConfigError."""
 
   @pytest.mark.parametrize(
-    "text, dotted, first, second",
+    "text,key,first,second",
     [
       ("box: {a: 1}\nbox: {b: 2}\n", "box", 1, 2),
-      ("box:\n  env:\n    A: '1'\n    A: '2'\n", "box.env.A", 3, 4),
-      ("self:\n  model: opus\n  model: sonnet\n", "self.model", 2, 3),
-      ("list:\n  - {k: 1}\n  - k: 1\n    k: 2\n", "list[1].k", 3, 4),
-      ("=: x\n=: y\n", "=", 1, 2),
-      ("x:\n  <<:\n    a: 1\n    a: 2\n", "x.<<.a", 3, 4),
-      ("x:\n  <<:\n    - {b: 1}\n    - a: 1\n      a: 2\n", "x.<<[1].a", 4, 5),
+      ("box:\n  env:\n    A: '1'\n    A: '2'\n", "A", 3, 4),
+      ('self:\n  model: "opus"\n  model: "sonnet"\n', "model", 2, 3),
+      ("rows:\n  - {k: 1}\n  - k: 1\n    k: 2\n", "k", 3, 4),
     ],
   )
-  def test_repeated_key_names_file_path_and_both_lines(
-    self,
-    tmp_path,
-    text,
-    dotted,
-    first,
-    second,
-  ):
-    """Top level, nested, inside ``self:``, and inside a list item: file + dotted path + lines."""
+  def test_repeated_key_names_file_and_both_lines(self, tmp_path, text, key, first, second):
+    from yapyon import AkanError
+
     bad = tmp_path / "settings.yaml"
     bad.write_text(text)
-
-    with pytest.raises(ConfigError) as exc:
+    with pytest.raises(ConfigError) as caught:
       load_doc(bad)
-    assert str(exc.value) == (
-      f"the config file {bad} sets '{dotted}' twice (line {first} and line {second}). "
-      "Remove one of the two, then retry."
-    )
+    assert str(bad) in str(caught.value)
+    assert f"duplicate key '{key}'" in str(caught.value)
+    assert f"first defined on line {first}" in str(caught.value)
+    assert f":{second}:" in str(caught.value)
+    assert isinstance(caught.value.__cause__, AkanError)
 
-  def test_clean_file_loads_unchanged(self, tmp_path):
-    """The control: the same keys once each load exactly as ``yaml.safe_load`` reads them."""
-    import yaml
-
-    text = (
-      "box:\n  image: ok:1\n  env: {A: '1', B: '2'}\n"
-      "self:\n  model: opus\nagent:\n  claude: {model: sonnet}\n"
-    )
-    good = tmp_path / "settings.yaml"
-    good.write_text(text)
-    assert load_doc(good) == yaml.safe_load(text)
-
-  def test_a_repeat_on_one_line_names_the_columns(self, tmp_path):
-    """A flow map repeating a key on one line: the lines alone cannot tell them apart."""
+  def test_a_repeat_on_one_line_names_its_column(self, tmp_path):
     bad = tmp_path / "settings.yaml"
     bad.write_text("box: {a: 1, a: 2}\n")
-
-    with pytest.raises(ConfigError) as exc:
+    with pytest.raises(ConfigError) as caught:
       load_doc(bad)
-    assert "sets 'box.a' twice (line 1, column 7 and line 1, column 13)" in str(exc.value)
+    assert f"{bad}:1:12:" in str(caught.value)
+    assert "duplicate key 'a'" in str(caught.value)
 
-  def test_a_bare_equals_key_loads_as_the_string(self, tmp_path):
-    """``=`` is YAML's ``value`` tag; ``yaml.safe_load`` reads it as ``"="`` and so must this."""
+  def test_clean_file_keeps_quoted_references(self, tmp_path):
     good = tmp_path / "settings.yaml"
-    good.write_text("a:\n  =: x\n")
-    assert load_doc(good) == {"a": {"=": "x"}}
-
-  def test_merge_key_override_is_not_a_repeat(self, tmp_path):
-    """A key beside ``<<:`` overrides the merged one by YAML's own rule; that is not a repeat."""
-    good = tmp_path / "settings.yaml"
-    good.write_text("base: &b {a: 1}\nbox:\n  <<: *b\n  a: 2\n")
-    assert load_doc(good) == {"base": {"a": 1}, "box": {"a": 2}}
+    good.write_text('box: {shell: "{meta.box.home}", env: {LABEL: "{$HOME}"}}\n')
+    assert load_doc(good) == {
+      "box": {"shell": "{meta.box.home}", "env": {"LABEL": "{$HOME}"}},
+    }
 
   def test_boxless_verb_exits_rc1_naming_the_repeat(self, tmp_path, config_file, capsys):
-    """Through ``main(["rig", "list"])``: a repeated key in the system settings file is rc1."""
     from unittest.mock import patch
 
     from kanibako.cli import main
 
-    ssp = tmp_path / "data" / "kanibako" / "global" / "settings.yaml"
-    ssp.parent.mkdir(parents=True)
-    ssp.write_text("box:\n  image: a\nbox:\n  image: b\n")
-
+    path = tmp_path / "data" / "kanibako" / "global" / "settings.yaml"
+    path.parent.mkdir(parents=True)
+    path.write_text('box:\n  image: "a"\nbox:\n  image: "b"\n')
     with patch("kanibako.cli._ensure_initialized"):
-      with pytest.raises(SystemExit) as exc:
+      with pytest.raises(SystemExit) as caught:
         main(["rig", "list", "-q"])
-    assert exc.value.code == 1
+    assert caught.value.code == 1
     err = capsys.readouterr().err
-    assert err.startswith("Error: ")
-    assert f"{ssp} sets 'box' twice (line 1 and line 3)" in err
+    assert err.startswith("Error: ") and str(path) in err
+    assert "duplicate key 'box'" in err and "Traceback" not in err
 
 
-def _nested_tables(depth: int) -> str:
-  """A block document of *depth* nested tables, the outermost at depth 1.
+class TestOwnedDocumentFailures:
+  @pytest.mark.parametrize(
+    "text,problem",
+    [
+      ("box: {items: [(box)]}\n", "contains this copy"),
+      ("box: &a {items: [*a]}\n", "unexpected character '&'"),
+      ('box: {env: {8080: "value"}}\n', "numeric keys"),
+      ("box:\n  image:\n", "has no value"),
+    ],
+  )
+  def test_public_refusals_name_path_and_keep_cause(self, tmp_path, text, problem):
+    from yapyon import AkanError
 
-  ⚑ DERIVED, NOT LITERAL: the boundary is ``MAX_DOC_DEPTH``, so the numbers come from
-  the constant under test and a change to it moves the pair with it.
-  """
-  lines = ["  " * i + f"k{i}:" for i in range(depth - 1)]
-  lines.append("  " * (depth - 1) + "leaf: 1")
-  return "\n".join(lines) + "\n"
+    path = tmp_path / "box.yaml"
+    path.write_text(text)
+    with pytest.raises(ConfigError) as caught:
+      load_doc(path)
+    assert str(path) in str(caught.value) and problem in str(caught.value)
+    assert isinstance(caught.value.__cause__, AkanError)
 
+  def test_bounded_nesting_failure_is_a_clean_config_error(self, tmp_path):
+    path = tmp_path / "box.yaml"
+    path.write_text("box: " + "[" * 132 + "1" + "]" * 132)
+    with pytest.raises(ConfigError) as caught:
+      load_doc(path)
+    assert str(path) in str(caught.value)
+    from yapyon import AkanError
 
-def _aliased_levels(levels: int, fanout: int = 9) -> str:
-  """The BILLION-LAUGHS shape: *levels* nested lists, each *fanout* aliases to the one below.
+    assert isinstance(caught.value.__cause__, (AkanError, RecursionError))
 
-  ``fanout`` defaults to 9 because that is the published shape; the document stays a few
-  hundred bytes at any *levels*, which is the point of the test that uses it.
-  """
-  lines = ["seed: &a ['x']"]
-  previous = "a"
-  for i in range(1, levels):
-    name = chr(ord("a") + i)
-    aliases = ",".join(["*" + previous] * fanout)
-    lines.append(f"{name}: &{name} [{aliases}]")
-    previous = name
-  lines.append(f"top: *{previous}")
-  return "\n".join(lines) + "\n"
+  def test_nonstring_adapted_key_is_still_refused(self, tmp_path, monkeypatch):
+    from kanibako.settings import config_io
 
+    path = tmp_path / "box.yaml"
+    path.write_text("{}")
+    monkeypatch.setattr(config_io, "parse_doc_text", lambda *args, **kwargs: {"box": {1: "x"}})
+    with pytest.raises(ConfigError, match="not a name") as caught:
+      load_doc(path)
+    assert str(path) in str(caught.value)
 
-class TestSelfReferentialDocumentIsRefused:
-  """A document that contains ITSELF, or nests past ``MAX_DOC_DEPTH``, is refused by name.
-
-  ⚑ THE REFUSAL BELONGS WHERE A DOCUMENT ENTERS: a guard in one reader would leave the
-  same trap open in the next one, and the crash would land later as a raw
-  ``RecursionError`` traceback out of whatever walked it next.
-
-  MUTATION: drop the ``_guard_document`` call in ``parse_doc_text`` and every refusal
-  here reds (the cycle becomes a ``RecursionError``, the deep one loads).
-  """
-
-  def test_a_cycle_names_the_file_and_the_path(self, tmp_path):
-    """``box.x`` is the same table as ``box``: named as a self-reference, not a crash."""
-    bad = tmp_path / "box.yaml"
-    bad.write_text("box: &a {image: ok:1, x: *a}\n")
-
-    with pytest.raises(ConfigError) as exc:
-      load_doc(bad)
-    assert str(exc.value) == (
-      f"the config file {bad} refers to itself at 'box.x' "
-      "(a YAML alias inside its own anchor). Fix or remove the file, then retry."
-    )
-
-  def test_a_cycle_through_a_list_is_refused_too(self, tmp_path):
-    """A list is a container like any other: ``box.items[0]`` closes the same loop."""
-    bad = tmp_path / "box.yaml"
-    bad.write_text("box: &a {items: [*a]}\n")
-
-    with pytest.raises(ConfigError) as exc:
-      load_doc(bad)
-    assert "refers to itself at 'box.items[0]'" in str(exc.value)
-
-  def test_a_shared_sibling_alias_still_loads(self, tmp_path):
-    """⚑ THE CONTROL: two keys may NAME one table. Only a path back into itself is a cycle."""
-    good = tmp_path / "box.yaml"
-    good.write_text("a: &x {k: 1}\nb: *x\n")
-
-    data = load_doc(good)
-    assert data == {"a": {"k": 1}, "b": {"k": 1}}
-    # They really are ONE object — sharing is what the guard must NOT read as a cycle.
-    assert data["a"] is data["b"]
-
-  def test_a_merge_key_still_loads(self, tmp_path):
-    """``<<`` shares by name; YAML's own override rule is untouched by the guard."""
-    good = tmp_path / "box.yaml"
-    good.write_text("base: &b {a: 1}\nbox:\n  <<: *b\n  a: 2\n")
-    assert load_doc(good) == {"base": {"a": 1}, "box": {"a": 2}}
-
-  def test_shared_aliases_walk_in_time_proportional_to_containers(self, tmp_path):
-    """⚑ BILLION-LAUGHS IS A HOST-SAFETY PROBLEM, NOT A SLOW TEST.
-
-    ``rig.yaml`` and a baseline overlay arrive inside image bundles, so a crafted
-    document reaches this walk before any user sees it. Eight levels of nine aliases
-    is a few hundred bytes and nine-to-the-eighth distinct PATHS to the same handful of
-    tables: a guard that walks each path is exponential in a number the attacker picks.
-    The bound is generous (1 s for a walk that must finish in microseconds) so the test
-    cannot flake on a loaded box while still failing by four orders of magnitude.
-    """
-    good = tmp_path / "laugh.yaml"
-    good.write_text(_aliased_levels(8))
-
-    start = time.perf_counter()
-    data = load_doc(good)
-    elapsed = time.perf_counter() - start
-
-    assert "top" in data
-    assert elapsed < 1.0, (
-      f"the guard took {elapsed:.1f}s on a {len(good.read_text())}-byte document of shared aliases"
-    )
-
-  def test_a_cycle_reachable_only_through_a_shared_alias_is_still_refused(self, tmp_path):
-    """⚑ THE MEMO MUST NOT BLIND THE CYCLE CHECK.
-
-    ``c`` holds ``d``, ``d`` points back at ``c``, and ``e.z`` is a SECOND, shallower
-    sighting of the very table ``d`` — the sharing the guard is required to tolerate
-    and the loop it is required to refuse, in one document. The memo may only ever
-    decide how many times a container is walked, never whether it is checked, so this
-    document refuses on the first sighting of the loop.
-
-    ⚑ THE CONTROL IS THE SAME SHAPE WITHOUT THE LOOP (``y: *d`` instead of ``y: *c``):
-    one table named twice is legal, so what is refused below is the loop, not the
-    sharing.
-    """
-    bad = tmp_path / "box.yaml"
-    bad.write_text("c: &c\n  x: &d\n    y: *c\ne: &e\n  z: *d\n")
-
-    with pytest.raises(ConfigError) as exc:
-      load_doc(bad)
-    assert str(exc.value) == (
-      f"the config file {bad} refers to itself at 'e.z.y.x' "
-      "(a YAML alias inside its own anchor). Fix or remove the file, then retry."
-    )
-
-  def test_the_same_shape_without_the_loop_still_loads(self, tmp_path):
-    """⚑ THE CONTROL for the test above: one table, two names, no loop — it loads."""
-    good = tmp_path / "box.yaml"
-    good.write_text("c: &c\n  x: &d\n    y: 1\ne: &e\n  z: *d\n")
-
-    data = load_doc(good)
-    assert data["c"]["x"] is data["e"]["z"]
-
-  def test_depth_at_the_limit_loads_and_one_past_it_is_refused(self, tmp_path):
-    """``MAX_DOC_DEPTH`` tables load; ``MAX_DOC_DEPTH + 1`` is refused, naming the path."""
-    ok = tmp_path / "ok.yaml"
-    ok.write_text(_nested_tables(MAX_DOC_DEPTH))
-    node = load_doc(ok)
-    for i in range(MAX_DOC_DEPTH - 1):  # walk to the INNERMOST table, not just the root
-      node = node[f"k{i}"]
-    assert node == {"leaf": 1}
-
-    bad = tmp_path / "bad.yaml"
-    bad.write_text(_nested_tables(MAX_DOC_DEPTH + 1))
-    with pytest.raises(ConfigError) as exc:
-      load_doc(bad)
-    assert str(exc.value) == (
-      f"the config file {bad} nests deeper than {MAX_DOC_DEPTH} levels at "
-      f"{'.'.join(f'k{i}' for i in range(MAX_DOC_DEPTH))!r}. "
-      "Fix or remove the file, then retry."
-    )
-
-  def test_a_flow_collection_too_deep_for_the_loader_is_the_same_refusal(self, tmp_path):
-    """⚑ The loader composes a huge flow collection in the Python stack: ``RecursionError``
-    out of ``yaml.load`` is the SAME document hazard the depth guard measures, so it is
-    reported as that refusal — still a ConfigError naming the file, never a traceback."""
-    bad = tmp_path / "box.yaml"
-    bad.write_text("k: " + "[" * 4000 + "]" * 4000 + "\n")
-
-    with pytest.raises(ConfigError) as exc:
-      load_doc(bad)
-    assert str(exc.value) == (
-      f"the config file {bad} nests deeper than {MAX_DOC_DEPTH} levels. "
-      "Fix or remove the file, then retry."
-    )
-
-  def test_boxless_verb_exits_rc1_naming_the_cycle(self, tmp_path, monkeypatch, capsys):
-    """Through ``main(["rig", "list"])``: a cyclic settings file is rc1 with no traceback."""
+  def test_boxless_verb_exits_rc1_naming_the_cycle(self, tmp_path, config_file, capsys):
     from unittest.mock import patch
 
     from kanibako.cli import main
 
-    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
-    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
-    # ⚑ HERMETIC, unlike the neighbor above: with XDG_RUNTIME_DIR unset and no
-    # /run/user/<uid> (a container), kanibako.paths warns on stderr FIRST and this
-    # test's subject — that the USER's error is the only thing on stderr — goes untested.
-    (tmp_path / "run").mkdir()
-    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path / "run"))
-    (tmp_path / "config").mkdir(exist_ok=True)
-    write_global_config(tmp_path / "config" / CONFIG_FILENAME)
-    ssp = tmp_path / "data" / "kanibako" / "global" / "settings.yaml"
-    ssp.parent.mkdir(parents=True)
-    ssp.write_text("box: &a {image: a, x: *a}\n")
-
+    path = tmp_path / "data" / "kanibako" / "global" / "settings.yaml"
+    path.parent.mkdir(parents=True)
+    path.write_text("box: {items: [(box)]}\n")
     with patch("kanibako.cli._ensure_initialized"):
-      with pytest.raises(SystemExit) as exc:
+      with pytest.raises(SystemExit) as caught:
         main(["rig", "list", "-q"])
-    assert exc.value.code == 1
+    assert caught.value.code == 1
     err = capsys.readouterr().err
-    assert err.startswith("Error: ")
-    assert f"{ssp} refers to itself at 'box.x'" in err
-    assert "Traceback" not in err
+    assert err.startswith("Error: ") and str(path) in err
+    assert "contains this copy" in err and "Traceback" not in err
 
 
 class TestNestedWriteRefusesANonTableSection:
@@ -2380,10 +2195,10 @@ class TestNestedWriteRefusesANonTableSection:
   @pytest.mark.parametrize(
     "text, sections, dotted, found",
     [
-      ("system: /x\n", ("system",), "system", "/x"),
+      ('system: "/x"\n', ("system",), "system", "/x"),
       ("box: 7\n", ("box",), "box", "7"),
-      ("box:\n  env: [a, b]\n", ("box", "env"), "box.env", "['a', 'b']"),
-      ("system:\n", ("system",), "system", "null"),
+      ('box:\n  env: ["a", "b"]\n', ("box", "env"), "box.env", "['a', 'b']"),
+      ("system: None\n", ("system",), "system", "null"),
     ],
   )
   def test_non_table_section_is_refused_and_kept(
@@ -2414,17 +2229,17 @@ class TestNestedWriteRefusesANonTableSection:
     from kanibako.settings.config_io import write_nested_key
 
     path = tmp_path / "settings.yaml"
-    path.write_text("box:\n  image: ok:1\n")
+    path.write_text('box:\n  image: "ok:1"\n')
     write_nested_key(path, ("box", "env"), "FOO", "bar")
     assert load_doc(path) == {"box": {"image": "ok:1", "env": {"FOO": "bar"}}}
 
   @pytest.mark.parametrize(
     "text, sections, dotted, found",
     [
-      ("workset: /x\n", ("workset",), "workset", "/x"),
+      ('workset: "/x"\n', ("workset",), "workset", "/x"),
       ("box: 7\n", ("box",), "box", "7"),
-      ("box:\n  env: [a, b]\n", ("box", "env"), "box.env", "['a', 'b']"),
-      ("system:\n", ("system",), "system", "null"),
+      ('box:\n  env: ["a", "b"]\n', ("box", "env"), "box.env", "['a', 'b']"),
+      ("system: None\n", ("system",), "system", "null"),
     ],
   )
   def test_reader_asks_the_same_refusal_as_the_writer(
@@ -2459,10 +2274,10 @@ class TestNestedWriteRefusesANonTableSection:
     refuse_scalar_sections(tmp_path / "absent.yaml", ("workset",))
 
     path = tmp_path / "settings.yaml"
-    path.write_text("box:\n  enable_vault: false\n")
+    path.write_text("box:\n  enable_vault: False\n")
     refuse_scalar_sections(path, ("workset",))
     refuse_scalar_sections(path, ("workset", "kuid"))
-    assert path.read_text() == "box:\n  enable_vault: false\n"
+    assert path.read_text() == "box:\n  enable_vault: False\n"
 
   # The verb resolves the cascade before writing, so the census sees the fixture's ``box.env: 7``.
   @pytest.mark.writes_undeclared("box.env")
@@ -2520,7 +2335,7 @@ class TestAnAgentNodeIsStoredAsAUserWritesIt:
     from kanibako.settings.config_io import write_nested_key
 
     path = tmp_path / "box.yaml"
-    path.write_text("pref:\n  agent:\n    navigator℘claude:\n      access: editing\n")
+    path.write_text('pref:\n  agent:\n    navigator℘claude:\n      access: "editing"\n')
     write_nested_key(
       path,
       ("pref", "agent", "navigator℘claude"),

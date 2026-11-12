@@ -59,12 +59,12 @@ MAX_DOC_DEPTH = 64
 
 
 def parse_standalone_marker(raw: bytes) -> str | None:
-  """Read a YamlPlus string marker; invalid documents and other shapes are not markers."""
-  from yapyon import AkanError, yamlplus  # type: ignore[import-untyped]
+  """Read a Yapyon string marker; invalid documents and other shapes are not markers."""
+  from yapyon import AkanError, loads  # type: ignore[import-untyped]
 
   try:
-    value = yamlplus.loads(raw.decode("utf-8"))
-  except (UnicodeDecodeError, AkanError):
+    value = loads(raw.decode("utf-8"))
+  except (UnicodeDecodeError, AkanError, RecursionError):
     return None
   return value if isinstance(value, str) else None
 
@@ -194,13 +194,7 @@ def _plain_containers(value: Any, memo: dict[int, Any] | None = None) -> Any:
 
 
 def yaml_problem(exc: yaml.YAMLError) -> str:
-  """One-line rendering of a YAML parse failure (the problem + where).
-
-  ⚑ THE ONE RENDERER, AND IT IS PUBLIC BECAUSE IT HAS A SECOND READER: a file's own
-  loader (``rig.yaml``'s, an overlay's) wraps the failure in its own error type, and a
-  private helper would leave that reader re-spelling the same failure in different words —
-  one rule, one place that knows it.
-  """
+  """Render a native YAML failure on one line, including its location and brace hint."""
   if isinstance(exc, yaml.MarkedYAMLError) and exc.problem:
     mark = exc.problem_mark
     where = f" (line {mark.line + 1}, column {mark.column + 1})" if mark is not None else ""
@@ -375,9 +369,14 @@ def _guard_document(data: object) -> None:
       stack.append((child, child_path, depth + 1, chain))
 
 
-def parse_doc_text(text: str) -> object:
-  """Parse owned configuration text with the same guards as :func:`load_doc`."""
-  return _parse_guarded_yaml(text)
+def parse_doc_text(text: str, *, source: str | None = None) -> object:
+  """Read owned Yapyon into plain containers; empty text returns None."""
+  from yapyon import loads  # type: ignore[import-untyped]
+
+  # Empty bootstraps and comment-only files carry no value to parse.
+  if all(not line.strip() or line.lstrip().startswith("#") for line in text.splitlines()):
+    return None
+  return _plain_containers(loads(text, source=source))
 
 
 def parse_template_yaml(text: str) -> object:
@@ -567,26 +566,16 @@ def load_doc(path: Path | None) -> dict:
     raise ConfigError(
       f"the config file {path} is not valid UTF-8 text. Fix or remove the file, then retry."
     ) from exc
-  # ⚑ HOST-SAFETY GUARD, not a type nicety: a non-str fed to the yaml loader can OOM the box.
+  # ⚑ Keep non-text mocks out of parsers: an under-mocked read once exhausted host memory.
   if not isinstance(text, str):
     return {}
-  # ⚑ THE PARSE-FAILURE NORMALIZATION BELONGS HERE — this is the one seam that knows the FILE.
+  from yapyon import AkanError  # type: ignore[import-untyped]
+
   try:
-    data = parse_doc_text(text)
-  except DuplicateKeyError as dup:
-    # ⚑ Spec §0: never a silent accept — PyYAML would keep the second and drop the first.
+    data = parse_doc_text(text, source=str(path))
+  except (AkanError, RecursionError) as exc:
     raise ConfigError(
-      f"the config file {path} sets '{dup.dotted}' twice ({dup.first} and "
-      f"{dup.second}). Remove one of the two, then retry."
-    ) from None
-  except (CyclicAnchorError, DocumentTooDeepError) as exc:
-    raise ConfigError(
-      f"the config file {path} {exc}. Fix or remove the file, then retry."
-    ) from None
-  except yaml.YAMLError as exc:
-    raise ConfigError(
-      f"the config file {path} is not valid YAML: {yaml_problem(exc)}. "
-      "Fix or remove the file, then retry."
+      f"the config file {path} is not valid Yapyon: {exc}. Fix or remove the file, then retry."
     ) from exc
   if data is None:
     return {}
@@ -601,7 +590,7 @@ def load_doc(path: Path | None) -> dict:
   where = _unnamed_key(data)
   if where is not None:
     raise ConfigError(
-      f"the config file {path} has a key at '{where[0]}' that YAML reads as "
+      f"the config file {path} has a key at '{where[0]}' that reads as "
       f"{render_stored_scalar(where[1])}, not a name. Quote that key, then retry."
     )
   return data
@@ -610,8 +599,8 @@ def load_doc(path: Path | None) -> dict:
 def _unnamed_key(data: dict) -> tuple[str, object] | None:
   """``(table path, key)`` of a mapping key in *data* that is not a ``str``, else None.
 
-  ⚑ Config documents only (:func:`load_doc`), never :func:`parse_doc_text`: a template
-  file kanibako merely compares may hold ``on:`` or ``8080:`` keys legitimately.
+  Config documents only (:func:`load_doc`); native template comparisons may hold
+  ``on:`` or ``8080:`` keys legitimately.
   Iterative, and each container is walked once, so a shared alias costs nothing.
   """
   stack: list[tuple[object, str]] = [(data, "")]

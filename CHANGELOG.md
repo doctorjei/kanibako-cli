@@ -34,8 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Owned writes use YamlPlus; packaged mappings read Yapyon. Defaults and baseline retain
-  declarations; malformed resources raise PackagingError.
+- Owned documents read Yapyon, write YamlPlus. Native codecs remain; errors name sources.
+  Packaged failures raise PackagingError.
 - New standalone markers use quoted YamlPlus; legacy markers stay unchanged. See
   MIGRATION.md's standalone-registry section before downgrading to a raw-only 1.8.x reader.
 - **A blank `-e VAR=` now suppresses the credential instead of being ignored.** On

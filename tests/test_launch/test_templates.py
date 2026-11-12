@@ -8,9 +8,8 @@ import shutil
 import time
 
 import pytest
-import yaml
 
-from kanibako.settings.config_io import dump_doc, parse_doc_text
+from kanibako.settings.config_io import dump_doc, load_doc, parse_doc_text
 
 from kanibako.settings.agent_config import agent_settings_path
 from tests.support.agent_selection import agent_selection
@@ -414,12 +413,12 @@ class _FakeTarget:
 
 def _write_system_settings(std, doc):
   """Merge *doc*'s tables into the SYSTEM settings file (``std.settings``)."""
-  cur = (yaml.safe_load(std.settings.read_text()) if std.settings.exists() else {}) or {}
+  cur = load_doc(std.settings)
   for scope, table in doc.items():
     for tier, keys in table.items():
       cur.setdefault(scope, {}).setdefault(tier, {}).update(keys)
   std.settings.parent.mkdir(parents=True, exist_ok=True)
-  std.settings.write_text(yaml.safe_dump(cur))
+  dump_doc(std.settings, cur)
 
 
 def _cli_set_agent_key(std, verb, node, key, value):
@@ -666,7 +665,7 @@ class TestLayeredHomeSeed:
 
     wsf = std.primary_workset / "workset.yaml"
     wsf.parent.mkdir(parents=True, exist_ok=True)
-    wsf.write_text("workset:\n  workspaces: /srv/pods\n")
+    wsf.write_text('workset:\n  workspaces: "/srv/pods"\n')
     snapshot, _deliveries = _resolve_launch_snapshot(
       std=std,
       proj=primary_proj,
@@ -1109,9 +1108,9 @@ class TestLayeredHomeSeed:
 
     self._populate(std, primary_proj)
     wsf = std.primary_workset / "workset.yaml"
-    doc = (yaml.safe_load(wsf.read_text()) if wsf.exists() else {}) or {}
+    doc = load_doc(wsf)
     doc.setdefault("workset", {})["template"] = None
-    wsf.write_text(yaml.safe_dump(doc))
+    dump_doc(wsf, doc)
 
     snapshot = _seed(std, primary_proj)
     srcs = [seed.src for seed in _launch_seed_list(snapshot)]
@@ -2279,7 +2278,7 @@ class TestInstallWorksetTemplate:
     install_packaged_templates(std, ["claude"])
     ws = tmp_path / "ws"
     ws.mkdir()
-    (ws / "workset.yaml").write_text("workset:\n  canon: null\n")
+    (ws / "workset.yaml").write_text("workset:\n  canon: None\n")
 
     check_workset_template(std, ws, workset_name=ws.name)  # PRE-FLIGHT: must not raise
     install_workset_template(std, ws, workset_name=ws.name)
@@ -2298,7 +2297,7 @@ class TestInstallWorksetTemplate:
     install_packaged_templates(std, ["claude"])
     ws = tmp_path / "ws"
     ws.mkdir()
-    (ws / "workset.yaml").write_text("workset:\n  canon: null\n")
+    (ws / "workset.yaml").write_text("workset:\n  canon: None\n")
 
     check_workset_template(std, ws, workset_name=WS_TOKEN_STANDALONE, canon_only=True)
     install_workset_template(std, ws, workset_name=WS_TOKEN_STANDALONE, canon_only=True)

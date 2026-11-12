@@ -1,9 +1,9 @@
 # Configuration I/O
 
-YAML: `load_doc`/`dump_doc`; routing: `config_keys`/`config_dest`. PG: `AkanError`→`ConfigError`
+Yapyon: `load_doc`; YamlPlus: `dump_doc`. Routing: `config_keys`/`config_dest`. PG: `AkanError`→`ConfigError`
 (source/cause), private CLI fetches. Excludes `pyproject.toml`.
 
-Standalone markers: `parse_standalone_marker` uses public `yapyon.yamlplus.loads` on strict
+Standalone markers: `parse_standalone_marker` uses public `yapyon.loads` on strict
 UTF-8 bytes; invalid/non-string → `None`. `render_standalone_marker` uses `yamlplus.dumps`.
 Token recognition and legacy acceptance stay in `config`; box transport stays unchanged.
 
@@ -37,115 +37,50 @@ copies nested dicts/lists to plain containers, preserving keys/order/scalars. Em
 resources raise `PackagingError`; parse failures name the resource and retain their cause.
 I/O/decoding propagate. No selector/fallback. Callers: `core_defaults`, `keyspace_manifest`, `agent_defaults`.
 
-## The parse-failure seam
+## Owned reads and native guards
 
-```python
-def yaml_problem(exc: yaml.YAMLError) -> str
-```
-`yaml`'s multi-line `str()` cites `"<unicode string>"` because the loader receives text, not a file.
-The caller names the file; `yaml_problem` supplies the problem and line/column. It is public so
-rig metadata and overlays can share the renderer while retaining their own exception types.
+`parse_doc_text(text, *, source=None)` uses public `yapyon.loads`, then
+`_plain_containers`: detached plain dictionaries/lists, preserving keys, order,
+and scalar values. Whitespace/comment-only text returns `None` before parsing;
+explicit `None` also returns `None`. Quoted `{key}` and `{$NAME}` stay strings.
+Full Yapyon expressions are supported; no functions/hooks are provided.
+There is no legacy fallback, filename inference, or codec selector.
 
-A `yaml.MarkedYAMLError` (a `ScannerError`, a `ParserError`) carries a populated `.problem` and
-`.problem_mark`, which is what the `isinstance` arm keys on. The `" ".join(str(exc).split())`
-fallback exists for the unmarked case.
+`load_doc(path)` returns `{}` for missing/empty documents. Only `ENOENT`/`ENOTDIR`
+mean missing. Unreachable paths (`EACCES`, `EPERM`, `ELOOP`) use
+`utils.unreadable_path_error`; other filesystem and UTF-8 failures become
+path-naming `ConfigError`s with their causes. Non-text read results return `{}`:
+an under-mocked read once exhausted host memory in a parser.
 
-`parse_doc_text(text: str) -> object` reads owned configuration; `load_doc` uses it too.
-`parse_template_yaml(text: str) -> object` independently reads native template YAML for
-`launch/templates.py`'s `_equivalent`, never through the evolving owned-codec entrypoint.
-Both delegate to `_parse_guarded_yaml`: the existing `_UniqueKeyLoader` and result guard.
-`DuplicateKeyError`, `CyclicAnchorError`, and `DocumentTooDeepError` remain `yaml.YAMLError`s.
-Python-stack exhaustion in a flow collection also becomes `DocumentTooDeepError`.
-Empty documents and plain `None` return `None`; quoted `None` remains a string.
+The path is supplied as Yapyon's diagnostic source. `AkanError` becomes
+`ConfigError` with its diagnostic and cause intact, including duplicate and
+numeric-key failures. Parser stack exhaustion is also wrapped, never exposed as
+a CLI traceback. Nonmapping values name their shape (list/single value); nested
+non-string keys refuse through `_unnamed_key`. Parsing does not validate the
+closed settings keyspace: callers own that step.
 
-`MAX_DOC_DEPTH` (64) bounds nesting: deeper than that is refused rather than reaching the user as a
-bare `RecursionError` traceback from whatever walks it next. No declared key path comes near it.
+`rig_meta.load_rig_meta` uses the same reader but retains `ValueError` and its
+cause; file errors propagate. `kinemata_artifacts` also reads owned text here.
+`parse_packaged` remains the explicit legacy YAML reader for `kinemata_views`'s
+source walkers; changing those tooling consumers needs its own bounded slice.
 
-```python
-def load_doc(path: Path | None) -> dict
-```
-Load a config document → dict. Missing/empty → `{}`; anything else that is not a mapping, a
-repeated key, a self-reference, unbounded nesting or an unreadable path raises.
+### Native template YAML
 
-Only `ENOENT` / `ENOTDIR` read as missing, never `Path.exists()`: a file kanibako cannot reach
-(EACCES or EPERM on it or a parent, a link loop — ELOOP) refuses through
-`utils.unreadable_path_error`, naming it, because the file may be fine and the cure is to make the
-path reachable. Text that is not UTF-8 refuses too. A file that is not parseable YAML raises
-`~kanibako.errors.ConfigError` naming the FILE and the parse problem. A file that parses to one
-value or a list raises `ConfigError` naming the FILE and which of the two it is (spec §0: never a
-silent accept) — it holds no keys to read, and reading it as empty would drop whatever the user
-meant by it without a word.
+`parse_template_yaml` independently delegates to `_parse_guarded_yaml`, never
+the owned reader. `launch/templates._equivalent` retains YAML error handling.
+`_UniqueKeyLoader` checks composed nodes before construction, where duplicate
+locations still exist. `DuplicateKeyError` carries the dotted key and both
+1-based lines, plus columns on one-line repeats. A bare `=` key uses YAML's
+`value`-tag spelling. A key beside `<<: *base` is an override, not a duplicate;
+repeats inside the merge value still refuse. Case is not folded.
 
-⚑ **THE NORMALIZATION BELONGS HERE and nowhere else:** this is the one seam that knows WHICH file is
-being read — `yaml` is handed a string, so its own mark says `"<unicode string>"` — and a raw
-`yaml.YAMLError` escaping to the CLI (which converts only `KanibakoError` into a clean rc1) is a
-traceback on any verb that touches the cascade, including the BOX-LESS ones (`rig list` / `setup` /
-`baseline`) that reach it through `load_merged_config`'s box-scalar resolve. `cli.py` catches
-`KanibakoError` (and `UserCanceled`) and nothing broader.
-
-⚑ **PyYAML behavior the `Missing/empty → {}` contract and the non-mapping refusal rest on** — keep,
-do not "simplify":
-
-| input | `yaml.safe_load` returns | `load_doc` returns |
-|---|---|---|
-| `""` (empty file) | `None` | `{}` |
-| `"\n\n  \n"` (whitespace only) | `None` | `{}` |
-| `"hello"` (bare scalar) | `'hello'` — a `str`, NOT a dict | `ConfigError` (a single value) |
-| `"- a\n"` (list) | `['a']` — a `list`, NOT a dict | `ConfigError` (a list) |
-| `"a: 1\na: 2\n"` (duplicate key) | `{'a': 2}` — **last wins, no error** | `ConfigError` (both lines) |
-| `"﻿a: 1\n"` (BOM) | `{'a': 1}` — BOM is stripped, no error | `{'a': 1}` |
-| a leading TAB | raises `ScannerError` | `ConfigError` |
-
-## The repeated-key refusal (`_UniqueKeyLoader`, Q103)
-
-`_parse_guarded_yaml` uses `_UniqueKeyLoader`, a `yaml.SafeLoader` subclass, not
-`yaml.safe_load`. Its `construct_document` walks the composed node tree before constructing anything
-and raises `DuplicateKeyError(yaml.YAMLError)` at the first mapping that repeats a key, carrying the
-key's dotted path (`box.env.A`, `list[1].k` inside a sequence) and both locations; `load_doc` turns
-that into a `ConfigError` naming the file. Spec §0: PyYAML's last-wins (table above) is a silent
-accept that drops the first spelling. Being a `yaml.YAMLError`, a reader that forgot this subclass
-still reads the document as unreadable rather than last-wins.
-
-⚑ **A plain `None` is null.** `_UniqueKeyLoader` and `_PackagedLoader` use
-`_read_none_as_null`; quoted `'None'` stays text. `load_doc`, unlike the template
-comparison reader, refuses a non-`str` mapping key.
-
-* **Why the node tree:** the constructed `dict` has already lost the first spelling, and only the
-  nodes carry lines and parentage.
-* **Deliberately NOT a repeat:** a key beside a merge key (`<<: *base`) — YAML's own override rule.
-  The merge VALUE is still checked: a repeat inside an inline map after `<<:`, or inside a map in a
-  merge list, is refused (path `x.<<.a`, `x.<<[1].a`). `1:` and `true:` in one mapping ARE a
-  repeat (Python hashes them equal, so PyYAML would collapse them into one key too).
-* **A bare `=` key** carries YAML's `value` tag, which `SafeConstructor` cannot construct alone;
-  `flatten_mapping` reads it as the string `"="`, so the pre-pass does the same without building it
-  (`=:` beside `"=":` is a repeat).
-* **Where:** both 1-based lines; the columns too when the two share a line (a flow map).
-* **Aliases:** each node is visited once (`id` set). A recursive alias (`a: &x [*x]`) — a table
-  reachable from inside itself — is REFUSED after the parse (`CyclicAnchorError`); sharing one
-  table under two keys (`<<`, or `b: *x`) is legal and loads.
-* **What it does not do:** fold case. `Claude:` beside `claude:` is two YAML keys; that collision is
-  the agent-node layer's refusal, not this loader's.
-
-### YAML reads that do NOT go through `load_doc`, and why
-
-Every settings-cascade, agent, workset, box and registry file is read by `load_doc` (so by this
-loader), and so is `runtime/baseline.py`'s image-baseline manifest. The other reads:
-
-* `settings/core_defaults.py`, `settings/keyspace_manifest.py`, `settings/agent_defaults.py` —
-  SHIPPED package data (and plugin declaration files), never user-edited: `load_packaged_mapping`.
-* `runtime/rig_meta.py` reads generated rig metadata text through `parse_doc_text`;
-  `launch/templates.py`'s `_equivalent` compares native files through `parse_template_yaml`.
-  Both retain the guarded parse without opening paths through `load_doc`.
-* `plugins/goose/credentials.py` (agent-goose package) — goose's OWN config/secrets, owned by the
-  agent, not kanibako: `yaml.safe_load`.
-* `src/kinemata_views.py` — the conformance tooling's own reader of shipped YAML, outside the
-  `kanibako` package: `parse_packaged`.
-
-⚑ **The `isinstance(text, str)` guard is a HOST-SAFETY guard, not a type nicety.** A non-`str`
-(e.g. a `MagicMock` from an under-mocked test path) fed to `yaml.safe_load` can balloon memory
-catastrophically — the project has one recorded incident of >10 GB RSS from exactly this, which is
-also why the pytest runner is memory-capped. Guard the host instead of trusting the input. The
-one-line `⚑` at that statement is deliberate: deleting the guard is silent until it OOMs the box.
+`_guard_document` refuses self-references and nesting past `MAX_DOC_DEPTH` (64).
+Its iterative walk memoizes deepest visits, permitting shared siblings while
+bounding work by distinct containers and depths. Native parser stack exhaustion
+becomes `DocumentTooDeepError`. These errors remain `yaml.YAMLError`s.
+`yaml_problem` renders marked problems with line/column and an unquoted-brace
+hint; unmarked errors use whitespace-flattened text. Native `None` normalization
+remains on `_UniqueKeyLoader` and `_PackagedLoader`, never on Goose's SafeLoader.
 
 ```python
 def dump_doc(path: Path, data: dict, *, header: str = "") -> None
@@ -160,7 +95,7 @@ temp file and leaves the original intact.
 `_dump_text` uses public `yamlplus.dumps`; string subclasses remain strings.
 `_plain_containers` memoizes container copies, preserving sharing and normalizing tuples to lists.
 A visited-container walk converts legacy YAML date/datetime/bytes leaves to string-consumer text;
-other scalars remain unchanged. Owned reads still use guarded PyYAML; native codecs stay native.
+other scalars remain unchanged. Native codecs stay native.
 `_SafeDumper` remains for `agent_defaults._build_setting_arg`'s invalid-`empty` diagnostic.
 
 ## Document mutators (load → mutate → dump)

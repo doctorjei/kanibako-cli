@@ -67,7 +67,7 @@ def test_recipe_round_trips():
 
 
 def test_load_accepts_raw_string():
-  text = "name: myhack\nkind: extended\nreproducible: false\n"
+  text = 'name: "myhack"\nkind: "extended"\nreproducible: False\n'
   meta = load_rig_meta(text)
   assert meta.name == "myhack"
   assert meta.kind == "extended"
@@ -92,7 +92,7 @@ def test_write_creates_parent_dirs(tmp_path):
 def test_a_string_path_remains_raw_yaml(tmp_path):
   path = tmp_path / "rig.yaml"
   write_rig_meta(RigMeta(name="from-file"), path)
-  with pytest.raises(ValueError, match="rig.yaml must be a non-empty YAML mapping"):
+  with pytest.raises(ValueError, match="rig.yaml"):
     load_rig_meta(str(path))
 
 
@@ -118,8 +118,8 @@ def test_unreadable_path_keeps_the_file_error(tmp_path, monkeypatch):
 
 
 def test_missing_name_raises():
-  with pytest.raises(ValueError):
-    load_rig_meta("kind: extended\nreproducible: false\n")
+  with pytest.raises(ValueError, match="missing the required 'name' field"):
+    load_rig_meta('kind: "extended"\nreproducible: False\n')
 
 
 def test_repeated_name_raises_naming_the_key_and_both_lines():
@@ -127,16 +127,20 @@ def test_repeated_name_raises_naming_the_key_and_both_lines():
   name vanished with no message. Spec §0: an undeclared reading is an ERROR that NAMES
   the offending key, never a silent accept of the second value over the first."""
   with pytest.raises(ValueError) as exc:
-    load_rig_meta("name: a\nname: b\n")
-  assert str(exc.value) == "rig.yaml sets 'name' twice (line 1 and line 2)"
+    load_rig_meta('name: "a"\nname: "b"\n')
+  assert "duplicate key 'name'" in str(exc.value)
+  assert "first defined on line 1" in str(exc.value)
+  assert ":2:0:" in str(exc.value)
+  from yapyon import AkanError
+
+  assert isinstance(exc.value.__cause__, AkanError)
 
 
 def test_repeated_key_nested_in_a_flow_map_raises():
   with pytest.raises(ValueError) as exc:
-    load_rig_meta("name: myhack\nparent: {a: 1, a: 2}\n")
-  assert str(exc.value) == (
-    "rig.yaml sets 'parent.a' twice (line 2, column 10 and line 2, column 16)"
-  )
+    load_rig_meta('name: "myhack"\nparent: {a: 1, a: 2}\n')
+  assert "duplicate key 'a'" in str(exc.value)
+  assert ":2:" in str(exc.value)
 
 
 def test_invalid_yaml_raises_value_error_naming_the_file():
@@ -145,25 +149,41 @@ def test_invalid_yaml_raises_value_error_naming_the_file():
   with pytest.raises(ValueError) as exc:
     load_rig_meta("name: [a\n")
   assert str(exc.value).startswith("rig.yaml ")
-  assert "expected" in str(exc.value)
+  from yapyon import AkanError
+
+  assert isinstance(exc.value.__cause__, AkanError)
 
 
-def test_a_self_referential_anchor_raises_value_error():
+def test_a_self_referential_copy_raises_value_error():
+  from yapyon import AkanError
+
   with pytest.raises(ValueError) as exc:
-    load_rig_meta("name: &a {x: *a}\n")
-  assert str(exc.value) == (
-    "rig.yaml refers to itself at 'name.x' (a YAML alias inside its own anchor)"
-  )
+    load_rig_meta('name: "rig"\nparent: {again: [(parent)]}\n')
+  assert "contains this copy" in str(exc.value)
+  assert isinstance(exc.value.__cause__, AkanError)
 
 
 def test_path_source_reports_rig_yaml_too(tmp_path):
   """The refusal names ``rig.yaml`` for a file source as well as a raw string."""
   path = tmp_path / "rig.yaml"
-  path.write_text("name: a\nname: b\n")
+  path.write_text('name: "a"\nname: "b"\n')
 
   with pytest.raises(ValueError) as exc:
     load_rig_meta(path)
-  assert str(exc.value) == "rig.yaml sets 'name' twice (line 1 and line 2)"
+  assert "duplicate key 'name'" in str(exc.value)
+  assert "first defined on line 1" in str(exc.value)
+  assert ":2:0:" in str(exc.value)
+  from yapyon import AkanError
+
+  assert isinstance(exc.value.__cause__, AkanError)
+
+
+def test_bounded_nesting_failure_keeps_value_error_api():
+  from yapyon import AkanError
+
+  with pytest.raises(ValueError, match="rig.yaml") as caught:
+    load_rig_meta("name: " + "[" * 132 + "1" + "]" * 132)
+  assert isinstance(caught.value.__cause__, (AkanError, RecursionError))
 
 
 def test_empty_document_raises():
@@ -172,12 +192,14 @@ def test_empty_document_raises():
 
 
 def test_non_mapping_document_raises():
-  with pytest.raises(ValueError):
-    load_rig_meta("- just\n- a\n- list\n")
+  with pytest.raises(ValueError, match="not|mapping"):
+    load_rig_meta('["just", "a", "list"]')
 
 
 def test_unknown_keys_ignored():
-  text = "name: myhack\nkind: extended\nreproducible: false\nbogus_field: 123\nanother: hello\n"
+  text = (
+    'name: "myhack"\nkind: "extended"\nreproducible: False\nbogus_field: 123\nanother: "hello"\n'
+  )
   meta = load_rig_meta(text)
   assert meta == RigMeta(name="myhack")
   assert not hasattr(meta, "bogus_field")

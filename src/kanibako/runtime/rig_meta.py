@@ -9,8 +9,8 @@ Because the metadata lives at a fixed path inside the rootfs, it rides
 ``podman save`` / ``load`` / ``push`` natively -- whoever ends up with the image
 also ends up with its ``rig.yaml``, no side-channel required.
 
-Write YamlPlus through :func:`kanibako.settings.config_io._dump_text`; read through
-:func:`kanibako.settings.config_io.parse_doc_text`, currently guarded PyYAML.
+Write YamlPlus through :func:`kanibako.settings.config_io._dump_text`; read Yapyon
+through :func:`kanibako.settings.config_io.parse_doc_text`.
 """
 
 from __future__ import annotations
@@ -18,14 +18,13 @@ from __future__ import annotations
 from dataclasses import dataclass, fields
 from pathlib import Path
 
-import yaml  # type: ignore[import-untyped]
+from yapyon import AkanError  # type: ignore[import-untyped]
 
 from kanibako.settings.config_io import (
   _dump_text,
   parse_doc_text,
   read_doc_text,
   write_doc_text,
-  yaml_problem,
 )
 
 
@@ -57,12 +56,10 @@ _ALWAYS: frozenset[str] = frozenset({"name", "kind", "reproducible"})
 
 
 def dump_rig_meta(meta: RigMeta) -> str:
-  """Serialize *meta* to a YAML string.
+  """Serialize *meta* to YamlPlus.
 
-  ``name``, ``kind`` and ``reproducible`` are always emitted. The remaining
-  fields are omitted when ``None`` so the file stays clean (in particular
-  ``recipe`` disappears entirely when unset). Field order is stable and
-  readable (``sort_keys=False``).
+  ``name``, ``kind`` and ``reproducible`` are always emitted. Remaining fields
+  are omitted when ``None``, including an unset ``recipe``. Field order is stable.
   """
   data: dict[str, object] = {}
   for field_name in _FIELD_NAMES:
@@ -79,23 +76,20 @@ def write_rig_meta(meta: RigMeta, path: Path) -> None:
 
 
 def load_rig_meta(source: str | Path) -> RigMeta:
-  """Load a :class:`RigMeta` from a file *path* or a raw YAML *string*.
+  """Load a :class:`RigMeta` from a file *path* or raw Yapyon *string*.
 
-  A :class:`~pathlib.Path` is read from disk; a ``str`` is parsed directly as YAML text.
-  Unknown keys are ignored defensively (only known fields reach the constructor). Raises
-  :class:`ValueError` if the document is empty/invalid or is missing ``name``.
-
-  ⚑ Read through :func:`parse_doc_text`, the one entry point for a YAML document, and
-  render through :func:`yaml_problem`: a repeated key is never silently kept LAST.
+  A :class:`~pathlib.Path` is read from disk; a ``str`` is parsed directly.
+  Unknown keys are ignored. Empty/invalid documents and missing ``name`` raise
+  :class:`ValueError`; file errors propagate. Parse failures retain their cause.
   """
   text = read_doc_text(source) if isinstance(source, Path) else source
 
   try:
-    data = parse_doc_text(text)
-  except yaml.YAMLError as exc:
-    raise ValueError(f"rig.yaml {yaml_problem(exc)}") from exc
+    data = parse_doc_text(text, source=str(source) if isinstance(source, Path) else "rig.yaml")
+  except (AkanError, RecursionError) as exc:
+    raise ValueError(f"rig.yaml {exc}") from exc
   if not isinstance(data, dict):
-    raise ValueError("rig.yaml must be a non-empty YAML mapping")
+    raise ValueError("rig.yaml must be a non-empty Yapyon mapping")
 
   kwargs = {k: v for k, v in data.items() if k in _FIELD_NAMES}
   if not kwargs.get("name"):
