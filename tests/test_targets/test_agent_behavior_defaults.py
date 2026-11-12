@@ -27,6 +27,7 @@ from pathlib import Path
 
 import pytest
 
+from kanibako.settings.config_io import convert_legacy_doc_text
 from kanibako.commands.start import _LaunchRealizer
 from kanibako.plugins.claude import ClaudeTarget
 from kanibako.plugins.codex import CodexTarget
@@ -277,7 +278,9 @@ def test_an_inherited_row_lets_a_users_agent_default_through(
   keys = _INHERITED[agent]
   assert keys, f"{agent} inherits nothing; the corpus is empty"
   system_file = tmp_path / "settings.yaml"
-  system_file.write_text("agent:\n  default:\n" + "".join(f"    {k}: mine\n" for k in keys))
+  system_file.write_text(
+    convert_legacy_doc_text("agent:\n  default:\n" + "".join(f"    {k}: mine\n" for k in keys))
+  )
   snap = _snapshot(agent, system_file)
   slot = snap.agent.get(agent, {})
   eff = effective_behavior(snap, active_agent=agent)
@@ -291,7 +294,7 @@ def test_a_users_agent_default_model_is_delivered(agent: str, tmp_path: Path) ->
   """A user's ``agent.default.model`` reaches the harness: claude/codex ``--model``,
   goose ``GOOSE_MODEL`` — the realization the plugin's descriptor declares."""
   system_file = tmp_path / "settings.yaml"
-  system_file.write_text("agent:\n  default:\n    model: m-default\n")
+  system_file.write_text(convert_legacy_doc_text("agent:\n  default:\n    model: m-default\n"))
   target = _TARGETS[agent]()
   realized = _LaunchRealizer(
     desc=target.descriptor,
@@ -315,7 +318,7 @@ def test_nothing_set_delivers_no_model(agent: str, tmp_path: Path) -> None:
   """With no model set anywhere, ``agent.default.model``'s ``<None>`` answers and the
   harness gets no model at all (its built-in default)."""
   system_file = tmp_path / "settings.yaml"
-  system_file.write_text("{}\n")
+  system_file.write_text(convert_legacy_doc_text("{}\n"))
   target = _TARGETS[agent]()
   realized = _LaunchRealizer(
     desc=target.descriptor,
@@ -341,7 +344,9 @@ def test_a_users_per_agent_setting_beats_their_agent_default(
   """A user's ``agent.<agent>.model`` wins over their ``agent.default.model``."""
   system_file = tmp_path / "settings.yaml"
   system_file.write_text(
-    f"agent:\n  default:\n    model: general\n  {agent}:\n    model: picked\n"
+    convert_legacy_doc_text(
+      f"agent:\n  default:\n    model: general\n  {agent}:\n    model: picked\n"
+    )
   )
   eff = effective_behavior(_snapshot(agent, system_file), active_agent=agent)
   assert eff["model"] == "picked"
@@ -371,7 +376,9 @@ def test_the_inherited_endpoint_keeps_suppress_and_delivery_in_step(
 
   node = "default" if scope == "default" else agent
   system_file = tmp_path / "settings.yaml"
-  system_file.write_text(f"agent:\n  {node}:\n    endpoint: https://elsewhere.example\n")
+  system_file.write_text(
+    convert_legacy_doc_text(f"agent:\n  {node}:\n    endpoint: https://elsewhere.example\n")
+  )
   proj = resolve_project(std, config, str(project_dir), initialize=True)
   target = _TARGETS[agent]()
   selection = agent_selection(node=agent, source="settings").selection_level
@@ -411,7 +418,7 @@ def test_a_python_row_with_no_default_inherits_agent_default(tmp_path: Path) -> 
   (Negative control: give the row ``default=""`` → RED on the ``not in slot``.)
   """
   system_file = tmp_path / "settings.yaml"
-  system_file.write_text("agent:\n  default:\n    model: m-default\n")
+  system_file.write_text(convert_legacy_doc_text("agent:\n  default:\n    model: m-default\n"))
   snap = _snapshot_over(
     "claude",
     system_file,
@@ -434,7 +441,7 @@ def test_the_python_and_yaml_declarations_of_a_row_resolve_alike(tmp_path: Path)
   assert descriptor_floor([py_row]) == descriptor_floor([yaml_row])
 
   system_file = tmp_path / "settings.yaml"
-  system_file.write_text("agent:\n  default:\n    model: m-default\n")
+  system_file.write_text(convert_legacy_doc_text("agent:\n  default:\n    model: m-default\n"))
   assert (
     effective_behavior(
       _snapshot_over("claude", system_file, [py_row]),

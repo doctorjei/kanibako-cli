@@ -17,6 +17,7 @@ import logging
 
 import pytest
 
+from kanibako.settings.config_io import convert_legacy_doc_text
 from kanibako.agent_ref import GENERAL_SLOT
 from kanibako.commands import start as start_cmd
 from kanibako.project.workset import add_project, create_workset
@@ -160,7 +161,9 @@ class TestTheCreateTimeSeedCarriesTheChain:
     """A user ``seeded`` row sourced at ``{workset.auth.path}/x`` names ``<ws>/auth/x``."""
     box_file, _workset_file = box_workset_settings_paths(primary_proj)
     box_file.parent.mkdir(parents=True, exist_ok=True)
-    box_file.write_text('box:\n  seeded:\n    "~/probe": ["{workset.auth.path}/x"]\n')
+    box_file.write_text(
+      convert_legacy_doc_text('box:\n  seeded:\n    "~/probe": ["{workset.auth.path}/x"]\n')
+    )
     snapshot = start_cmd._apply_init_seeds(
       std=std,
       proj=primary_proj,
@@ -237,7 +240,7 @@ class TestANoAgentLaunchRunsTheShell:
   def test_a_stored_agent_does_not_name_the_auth_dir(self, primary_proj, std, config):
     """With ``system.agent: claude`` stored, the no-agent box's auth dir is the shell's."""
     std.settings.parent.mkdir(parents=True, exist_ok=True)
-    std.settings.write_text(f"system:\n  agent: {NODE}\n")
+    std.settings.write_text(convert_legacy_doc_text(f"system:\n  agent: {NODE}\n"))
     snapshot, _deliveries = start_cmd._resolve_launch_snapshot(
       std=std,
       proj=primary_proj,

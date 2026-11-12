@@ -30,7 +30,7 @@ from __future__ import annotations
 import logging
 
 import pytest
-import yaml
+from yapyon import yamlplus
 
 from kanibako.settings.agent_representation import agent_env_for_node
 from kanibako.settings.settings_launch import (
@@ -222,7 +222,7 @@ def realized_entries(
 
 
 def write_yaml(path, doc):
-  path.write_text(yaml.safe_dump(doc))
+  path.write_text(yamlplus.dumps(doc))
   return path
 
 

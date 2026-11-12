@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+from kanibako.settings.config_io import convert_legacy_doc_text
 from kanibako.tweakcc import (
   TweakccConfig,
   build_merged_config,
@@ -264,7 +265,7 @@ self:
     config: "~/.tweakcc/config.json"
 """
     path = tmp_path / "agent.yaml"
-    path.write_text(yaml_content)
+    path.write_text(convert_legacy_doc_text(yaml_content))
     cfg = load_agent_config(path, node="claude", purpose=ReadPurpose.RESOLVE)
     assert cfg.transform_settings == {
       "enabled": True,
@@ -279,7 +280,7 @@ self:
   model: "opus"
 """
     path = tmp_path / "agent.yaml"
-    path.write_text(yaml_content)
+    path.write_text(convert_legacy_doc_text(yaml_content))
     cfg = load_agent_config(path, node="claude", purpose=ReadPurpose.RESOLVE)
     assert cfg.transform_settings == {}
 
@@ -335,7 +336,7 @@ class TestAgentConfigTransformKey:
     from kanibako.settings.settings_assemble import ReadPurpose, agent_record as load_agent_config
 
     path = tmp_path / "agent.yaml"
-    path.write_text("self:\n  transform: tweakcc\n")
+    path.write_text(convert_legacy_doc_text("self:\n  transform: tweakcc\n"))
     cfg = load_agent_config(path, node="claude", purpose=ReadPurpose.RESOLVE)
     assert cfg.state["transform"] == "tweakcc"
 

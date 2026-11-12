@@ -13,6 +13,7 @@ from unittest import mock
 
 import pytest
 
+from kanibako.settings.config_io import convert_legacy_doc_text, dump_doc, load_doc
 from kanibako.plugins.claude import ClaudeTarget
 from kanibako.commands.start import (
   _resolve_launch_snapshot as _REAL_FINAL_RESOLVE,
@@ -144,13 +145,17 @@ def _persona_files(tmp_path: Path) -> tuple[Path, Path]:
   token.write_text("t0k\n")
   system_file = tmp_path / "settings.yaml"
   system_file.write_text(
-    f"agent:\n  {NODE}:\n"
-    f"    endpoint: https://proxy.example\n"
-    f"    model: sonnet\n"
-    f"    secret_path:\n      ANTHROPIC_AUTH_TOKEN: {token}\n"
+    convert_legacy_doc_text(
+      f"agent:\n  {NODE}:\n"
+      f"    endpoint: https://proxy.example\n"
+      f"    model: sonnet\n"
+      f"    secret_path:\n      ANTHROPIC_AUTH_TOKEN: {token}\n"
+    )
   )
   agent_file = tmp_path / "agent.yaml"
-  agent_file.write_text(f"agent:\n  {NODE}:\n    env:\n      {VAR}: {MAPPED}\n")
+  agent_file.write_text(
+    convert_legacy_doc_text(f"agent:\n  {NODE}:\n    env:\n      {VAR}: {MAPPED}\n")
+  )
   return system_file, agent_file
 
 
@@ -384,14 +389,14 @@ def test_final_launch_eliminates_sources_before_credential_access(
   cli = (
     [f"{token_var}=literal"] if kind == "cli" else [f"{token_var}=  "] if kind == "blank" else None
   )
-  text = system_file.read_text()
-  if kind in ("null", "absent"):
-    text = text.replace(str(tmp_path / "token"), "null")
-    if kind == "absent":
-      text = text.replace(f"    secret_path:\n      {token_var}: null\n", "")
+  doc = load_doc(system_file)
+  if kind == "null":
+    doc["agent"][NODE]["secret_path"][token_var] = None
+  elif kind == "absent":
+    del doc["agent"][NODE]["secret_path"]
   elif kind == "mask":
-    text += f"box:\n  masks:\n    /run/kanibako/secrets/{token_var}: true\n"
-  system_file.write_text(text)
+    doc["box"] = {"masks": {f"/run/kanibako/secrets/{token_var}": True}}
+  dump_doc(system_file, doc)
   monkeypatch.setattr(
     start_cmd, "_secret_pointer_usable", mock.Mock(side_effect=AssertionError("eliminated source"))
   )
