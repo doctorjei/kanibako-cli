@@ -1,13 +1,8 @@
-"""A pre-1.8 workset registered under a reserved name is refused at load.
+"""Reserved legacy worksets: reachable cures and historical format refusals.
 
-The names split two ways and the split is what the cure is built from: a PARTITION
-TOKEN (``primary``) is unregistered by name, while an ALIAS VARIANT (``Default``) is
-not — the ``workset`` verbs resolve ``default``/``__default__`` to the synthesized
-default workset — so its cure renames the DIRECTORY instead.
-
-The CLI runs in a subprocess against an isolated HOME in a TemporaryDirectory.
-The cure test executes the refusal's own printed lines, in order, so the message
-is what is proven, not a paraphrase of it.
+Partition tokens are unregistered by name; alias variants move the directory.
+Dunder registry keys fail owned reading/conversion before a cure can run.
+The CLI uses isolated homes; cures execute the refusal's printed commands.
 """
 
 from __future__ import annotations
@@ -52,7 +47,9 @@ def env(monkeypatch: pytest.MonkeyPatch) -> Iterator[dict[str, str]]:
         "XDG_STATE_HOME": str(dirs["state"]),
         "XDG_CACHE_HOME": str(dirs["cache"]),
         "XDG_RUNTIME_DIR": str(dirs["runtime"]),
-        "PYTHONPATH": str(REPO_SRC),
+        "PYTHONPATH": os.pathsep.join(
+          path for path in (str(REPO_SRC), os.environ.get("PYTHONPATH")) if path
+        ),
       }
     )
     for key in (
@@ -174,7 +171,6 @@ def _run_cure(env: dict[str, str], stderr: str) -> None:
     # the only name a re-import can give the tree.
     ("Default", "Default", True),
     ("DEFAULT", "sa-root", True),
-    ("__Default__", "__Default__", False),
     ("default", "sa-root", False),
   ],
 )
@@ -270,24 +266,59 @@ def test_an_alias_key_on_the_primary_store_is_dropped_never_moved(env: dict[str,
   made = _cli(env, "box", "create", cwd=project)
   assert made.returncode == 0, made.stderr
   primary = load_std_paths(load_config(user_config_file())).primary_workset
-  register_name(_registry(), "__DEFAULT__", str(primary), section="worksets")
+  register_name(_registry(), "Default", str(primary), section="worksets")
   before = _tree(primary)
   assert before
 
   info = _cli(env, "box", "info", cwd=project)
   assert info.returncode == 0, info.stderr
-  assert f"Note: removed working set '__DEFAULT__' ({primary}) from the registry" in info.stderr
+  assert f"Note: removed working set 'Default' ({primary}) from the registry" in info.stderr
   assert "reserved name" not in info.stderr and "mv " not in info.stderr
   assert "kb-primary-proj" in info.stdout
   assert _worksets() == {}
   assert _tree(primary) == before
 
 
+@pytest.mark.parametrize("legacy", ["__Default__", "__DEFAULT__"])
+@pytest.mark.parametrize("quoted", [False, True])
+def test_historical_dunder_registry_is_refused_before_cure(
+  env: dict[str, str], legacy: str, quoted: bool
+) -> None:
+  from kanibako.errors import ConfigError
+  from kanibako.migration.yaml_to_yapyon import ConversionError
+  from kanibako.settings.config import load_config, user_config_file
+  from kanibako.settings.config_io import convert_legacy_doc_text, load_doc
+  from kanibako.settings.paths import load_std_paths
+
+  std = load_std_paths(load_config(user_config_file()))
+  root = std.primary_workset if legacy == "__DEFAULT__" else Path(env["HOME"]) / "ws" / legacy
+  key = repr(legacy) if quoted else legacy
+  historical = f"worksets:\n  {key}: {str(root)!r}\n"
+  registry = _registry()
+  registry.parent.mkdir(parents=True, exist_ok=True)
+  registry.write_text(historical)
+  before = registry.read_bytes()
+  with pytest.raises(ConfigError, match="dunder names are reserved for yapyon"):
+    load_doc(registry)
+  assert registry.read_bytes() == before
+  with pytest.raises(ConversionError, match="dunder names are reserved for yapyon"):
+    convert_legacy_doc_text(historical)
+  assert registry.read_bytes() == before
+
+
 def _write_worksets(entries: list[tuple[str, Path]]) -> None:
-  """Write the ``worksets`` section by hand, in *entries*' order (a save would sort it)."""
-  lines = "".join(f"  {name}: {root}\n" for name, root in entries)
-  _registry().write_text(
-    f"worksets:\n{lines}standalone: {{}}\nderegistered: {{}}\nrigs: {{}}\nimage_shells: {{}}\n"
+  """Preserve entry order; the registry save would sort it."""
+  from kanibako.settings.config_io import dump_doc
+
+  dump_doc(
+    _registry(),
+    {
+      "worksets": {name: str(root) for name, root in entries},
+      "standalone": {},
+      "deregistered": {},
+      "rigs": {},
+      "image_shells": {},
+    },
   )
 
 
