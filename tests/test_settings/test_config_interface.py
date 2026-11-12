@@ -11,7 +11,7 @@ import yaml
 from kanibako.project.workset import Workset
 from kanibako.settings.agent_config import agent_settings_path
 from kanibako.settings.config import BOX_META_FILE, WORKSET_META_FILE
-from kanibako.settings.config_io import dump_doc, load_doc
+from kanibako.settings.config_io import dump_doc, load_doc, parse_doc_text
 from kanibako.settings.config_keys import ConfigLevel, is_known_key
 from kanibako.settings.config_interface import (
   ConfigAction,
@@ -6683,30 +6683,28 @@ class TestEffectiveCategoryBlock:
     # flatten). Every category below is DEST-KEYED — the map key is the box
     # destination, the value is ``[src[, opts]]``.
     agent_file = tmp_path / "agent-settings.yaml"
-    agent_file.write_text(
-      yaml.safe_dump(
-        {
-          "self": {
-            "common": {
-              "~/.claude/plugins": ["/store/agents/claude/common/plugins"],
-            },
-            "seeded": {"~": ["/store/template"]},
-            "bindings": {"ro": {"~/ref": ["/store/ref"]}},
-          }
+    dump_doc(
+      agent_file,
+      {
+        "self": {
+          "common": {
+            "~/.claude/plugins": ["/store/agents/claude/common/plugins"],
+          },
+          "seeded": {"~": ["/store/template"]},
+          "bindings": {"ro": {"~/ref": ["/store/ref"]}},
         }
-      )
+      },
     )
     box_file = tmp_path / "box-settings.yaml"
-    box_file.write_text(
-      yaml.safe_dump(
-        {
-          "box": {
-            "bindings": {
-              "rw": {box_bind_dest: ["/boxes/mybox/home", "Z,U"]},
-            }
+    dump_doc(
+      box_file,
+      {
+        "box": {
+          "bindings": {
+            "rw": {box_bind_dest: ["/boxes/mybox/home", "Z,U"]},
           }
         }
-      )
+      },
     )
     ctx = ResolveCtx(
       agent_name="claude",
@@ -6907,7 +6905,7 @@ class TestPrefSetGetReset:
     )
     assert msg == "Set pref.system.agent=goose"
     # NESTED on disk, never a dotted literal (settings_prefs D5).
-    assert yaml.safe_load(f.read_text()) == {"pref": {"system": {"agent": "goose"}}}
+    assert parse_doc_text(f.read_text()) == {"pref": {"system": {"agent": "goose"}}}
     got = get_config_value(
       "pref.system.agent",
       global_config_path=tmp_path / "global.yaml",
@@ -6924,7 +6922,7 @@ class TestPrefSetGetReset:
       config_path=f,
       command_scope=ConfigLevel.workset,
     )
-    assert yaml.safe_load(f.read_text()) == {"pref": {"agent": {"claude": {"model": "opus"}}}}
+    assert parse_doc_text(f.read_text()) == {"pref": {"agent": {"claude": {"model": "opus"}}}}
     assert (
       get_config_value(
         "pref.agent.claude.model",
@@ -7109,7 +7107,7 @@ class TestPrefAccessEnumGuard:
       command_scope=ConfigLevel.box,
     )
     assert msg.startswith("Set"), (tier, msg)
-    assert yaml.safe_load(f.read_text()) == {"pref": {"agent": {"claude": {"access": tier}}}}
+    assert parse_doc_text(f.read_text()) == {"pref": {"agent": {"claude": {"access": tier}}}}
 
   def test_the_persona_node_spelling_is_guarded_too(self, tmp_path):
     """A ``+``/``℘`` persona node is still an ``access`` target."""
@@ -7175,22 +7173,21 @@ class TestPrefShow:
     green was not evidence the spelling existed.
     """
     f = tmp_path / BOX_META_FILE
-    f.write_text(
-      yaml.safe_dump(
-        {
-          "pref": {
-            "system": {"agent": "goose"},
-            "agent": {
-              "claude": {
-                "common": {
-                  "/home/agent/.claude/plugins": None,
-                },
-                "caches": {"~/c/": ["uv"]},
-              }
-            },
+    dump_doc(
+      f,
+      {
+        "pref": {
+          "system": {"agent": "goose"},
+          "agent": {
+            "claude": {
+              "common": {
+                "/home/agent/.claude/plugins": None,
+              },
+              "caches": {"~/c/": ["uv"]},
+            }
           },
-        }
-      )
+        },
+      },
     )
     show_config(
       command_scope=ConfigLevel.box,
@@ -7306,18 +7303,17 @@ class TestPrefShow:
     from kanibako.settings.settings_resolve import ResolveCtx
 
     box_file = tmp_path / "box-settings.yaml"
-    box_file.write_text(
-      yaml.safe_dump(
-        {
-          "pref": {
-            "agent": {
-              "claude": {
-                "caches": {"~/.cache/uv": ["/host/caches/uv"]},
-              }
+    dump_doc(
+      box_file,
+      {
+        "pref": {
+          "agent": {
+            "claude": {
+              "caches": {"~/.cache/uv": ["/host/caches/uv"]},
             }
           }
         }
-      )
+      },
     )
     snap = build_launch_snapshot(
       agent_name="claude",
