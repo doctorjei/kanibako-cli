@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from kanibako.settings import config_io, core_defaults
+import yapyon
+
+from kanibako.settings import core_defaults
 from kanibako.settings.settings_launch import load_merged_config
 from kanibako.settings.settings_resolve import GUEST_HOME
 
@@ -23,13 +25,13 @@ def test_repeated_resolves_parse_the_shipped_file_once(cold_parse, tmp_path, mon
   MUTATION: bypass the cache (``_parse_doc.__wrapped__()``) and the count is 3.
   """
   calls: list[str] = []
-  parse_packaged = config_io.parse_packaged
+  loads = yapyon.loads
 
-  def counting_parse(text: str) -> object:
+  def counting_parse(text: str, **kwargs) -> object:
     calls.append(text)
-    return parse_packaged(text)
+    return loads(text, **kwargs)
 
-  monkeypatch.setattr(config_io, "parse_packaged", counting_parse)
+  monkeypatch.setattr(yapyon, "loads", counting_parse)
   for _ in range(3):
     load_merged_config(None)
   assert len(calls) == 1

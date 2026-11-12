@@ -161,18 +161,28 @@ def parse_packaged(text: str) -> object:
 
 
 def load_packaged_mapping(ref: Traversable, filename: str) -> dict[str, Any]:
-  """The shipped YAML mapping at *ref*; an empty file or any other shape raises.
+  """Read packaged Yapyon into plain containers; malformed/empty/non-mapping data raises.
 
-  ⚑ Spec §0, no silent accept: a packaged file that is not a mapping is a broken install,
-  never an empty document.
+  I/O and decoding errors propagate; parse failures name the resource and retain their cause.
   """
-  raw = parse_packaged(Path(str(ref)).read_text())
+  from yapyon import AkanError, loads  # type: ignore[import-untyped]
+
+  text = Path(str(ref)).read_text()
+  try:
+    raw = loads(text, source=str(ref))
+  except AkanError as exc:
+    raise PackagingError(f"{filename} (read from {ref}) is invalid Yapyon: {exc}") from exc
   if not isinstance(raw, dict):
-    raise PackagingError(
-      f"{filename} is empty or is not a YAML mapping (read from {ref}) — it is "
-      f"packaged data, so this is a PACKAGING defect, not a configuration one"
-    )
-  return raw
+    raise PackagingError(f"{filename} (read from {ref}) is empty or is not a Yapyon mapping")
+  return _plain_containers(raw)  # type: ignore[no-any-return]
+
+
+def _plain_containers(value: Any) -> Any:
+  if isinstance(value, dict):
+    return {key: _plain_containers(child) for key, child in value.items()}
+  if isinstance(value, list):
+    return [_plain_containers(child) for child in value]
+  return value
 
 
 def yaml_problem(exc: yaml.YAMLError) -> str:

@@ -32,10 +32,10 @@ Regex limitations and caller shape/consent/strict-JSON rewrite policies remain.
 def parse_packaged(text: str) -> object
 def load_packaged_mapping(ref: Traversable, filename: str) -> dict[str, Any]
 ```
-`parse_packaged` uses the fastest safe loader (`_PackagedLoader`, over `CSafeLoader` when present)
-for YAML kanibako SHIPS, never user files. `load_packaged_mapping` reads *ref*, raising
-`PackagingError` for empty/non-mapping documents: broken installs, never empty documents (spec §0).
-`core_defaults`, `keyspace_manifest` and `agent_defaults` use it.
+`parse_packaged` retains legacy YAML. `load_packaged_mapping` uses public `yapyon.loads`, then
+copies nested dicts/lists to plain containers, preserving keys/order/scalars. Empty/nonmapping
+resources raise `PackagingError`; parse failures name the resource and retain their cause.
+I/O/decoding propagate. No selector/fallback. Callers: `core_defaults`, `keyspace_manifest`, `agent_defaults`.
 
 ## The parse-failure seam
 

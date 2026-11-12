@@ -8,7 +8,131 @@ from pathlib import Path
 import pytest
 import yaml
 
+from kanibako.errors import PackagingError
 from kanibako.settings import config_io
+
+
+def test_packaged_mapping_uses_public_yapyon_and_copies_plain_containers(tmp_path, monkeypatch):
+  import yapyon
+  from yapyon import yamlplus
+
+  path = tmp_path / "packaged.yaml"
+  text = """base: 6
+result: (base)
+"on": False
+"None": None
+"1": 0
+"null": ""
+rows: [{"first": [None, False, 0, "", {}, []], "last": {"雪": "literal"}}]
+"""
+  path.write_text(text)
+  real_loads = yapyon.loads
+  parsed = []
+
+  def capture(document, **kwargs):
+    assert document == text
+    assert kwargs == {"source": str(path)}
+    result = real_loads(document, **kwargs)
+    parsed.append(result)
+    return result
+
+  def forbidden(*args, **kwargs):
+    pytest.fail("packaged mapping used a legacy or YamlPlus reader")
+
+  monkeypatch.setattr(yapyon, "loads", capture)
+  monkeypatch.setattr(yamlplus, "loads", forbidden)
+  monkeypatch.setattr(config_io, "parse_packaged", forbidden)
+  actual = config_io.load_packaged_mapping(path, path.name)
+  assert len(parsed) == 1
+  assert list(actual) == ["base", "result", "on", "None", "1", "null", "rows"]
+  assert actual["result"] == 6
+  assert actual["on"] is False
+  assert actual["None"] is None
+  assert "absent" not in actual
+  assert type(actual["1"]) is int and actual["1"] == 0
+  assert actual["null"] == ""
+  assert list(actual["rows"][0]) == ["first", "last"]
+  assert actual["rows"][0]["first"] == [None, False, 0, "", {}, []]
+
+  def plain_and_detached(value, original):
+    if isinstance(original, dict):
+      assert type(value) is dict and value is not original
+      assert list(value) == list(original)
+      assert all(type(key) is str for key in value)
+      for key in original:
+        plain_and_detached(value[key], original[key])
+    elif isinstance(original, list):
+      assert type(value) is list and value is not original
+      for child, source in zip(value, original, strict=True):
+        plain_and_detached(child, source)
+    else:
+      assert type(value) is type(original) and value == original
+
+  plain_and_detached(actual, parsed[0])
+  actual["rows"][0]["last"]["雪"] = "changed"
+  actual["rows"][0]["first"].append("new")
+  assert parsed[0]["rows"][0]["last"]["雪"] == "literal"
+  fresh = config_io.load_packaged_mapping(path, path.name)
+  assert fresh == parsed[0]
+  assert fresh["rows"] is not actual["rows"]
+
+
+@pytest.mark.parametrize("text", ["[broken", "", "# empty\n", "name: bare\n"])
+def test_packaged_mapping_parse_failure_names_resource_and_cause(tmp_path, monkeypatch, text):
+  from yapyon import AkanError
+
+  path = tmp_path / "broken.yaml"
+  path.write_text(text)
+
+  def forbidden(*args, **kwargs):
+    pytest.fail("parse failure fell back to YAML")
+
+  monkeypatch.setattr(config_io, "parse_packaged", forbidden)
+  with pytest.raises(PackagingError) as raised:
+    config_io.load_packaged_mapping(path, "shipped-defaults.yaml")
+  assert "shipped-defaults.yaml" in str(raised.value)
+  assert str(path) in str(raised.value)
+  assert isinstance(raised.value.__cause__, AkanError)
+
+
+@pytest.mark.parametrize("text", ['"scalar"', "None", "False", "0", "[]", '[{"a": 1}]'])
+def test_packaged_mapping_refuses_nonmapping_values(tmp_path, text):
+  path = tmp_path / "shape.yaml"
+  path.write_text(text)
+  with pytest.raises(PackagingError, match="shape.yaml.*not a Yapyon mapping"):
+    config_io.load_packaged_mapping(path, path.name)
+
+
+def test_packaged_mapping_accepts_explicit_empty_mapping(tmp_path):
+  path = tmp_path / "empty-map.yaml"
+  path.write_text("{}")
+  actual = config_io.load_packaged_mapping(path, path.name)
+  assert type(actual) is dict and actual == {}
+
+
+def test_packaged_mapping_preserves_missing_and_decode_errors(tmp_path):
+  path = tmp_path / "absent.yaml"
+  with pytest.raises(FileNotFoundError):
+    config_io.load_packaged_mapping(path, path.name)
+  path.write_bytes(b"\xff")
+  with pytest.raises(UnicodeDecodeError):
+    config_io.load_packaged_mapping(path, path.name)
+
+
+def test_packaged_mapping_preserves_permission_error_and_default_encoding(tmp_path, monkeypatch):
+  path = tmp_path / "denied.yaml"
+  failure = PermissionError(13, "denied", str(path))
+  calls = []
+
+  def denied(source, *args, **kwargs):
+    calls.append((source, args, kwargs))
+    raise failure
+
+  monkeypatch.setattr(Path, "read_text", denied)
+  with pytest.raises(PermissionError) as raised:
+    config_io.load_packaged_mapping(path, path.name)
+  assert raised.value is failure
+  assert calls == [(path, (), {})]
 
 
 @pytest.mark.parametrize(
