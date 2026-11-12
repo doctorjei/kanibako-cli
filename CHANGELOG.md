@@ -34,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Convert the keyspace manifest to YamlPlus without changing declarations.
 - Convert core/plugin defaults and image baseline to YamlPlus.
 - New standalone markers use quoted YamlPlus; legacy markers stay unchanged. See
   MIGRATION.md's standalone-registry section before downgrading to a raw-only 1.8.x reader.

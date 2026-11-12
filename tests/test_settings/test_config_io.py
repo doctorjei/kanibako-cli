@@ -312,6 +312,48 @@ def test_yamlplus_mapping_preserves_exact_keys_order_and_literal_values():
     assert actual["1"] is False
 
 
+def test_whole_manifest_yamlplus_codec_contract():
+  from collections.abc import Mapping
+  from importlib.resources import files
+
+  from yapyon import yamlplus
+
+  text = files("kanibako").joinpath("data/rom/settings/keyspace-manifest.yaml").read_text()
+  yamlplus.check(text)
+
+  def typed(value):
+    if isinstance(value, Mapping):
+      return ("mapping", [(typed(key), typed(child)) for key, child in value.items()])
+    if isinstance(value, list):
+      return (list, [typed(child) for child in value])
+    return (type(value), value.hex() if type(value) is float else value)
+
+  loader = yaml.SafeLoader(text)
+  try:
+    root = loader.get_single_node()
+    assert isinstance(root, yaml.MappingNode) and root.value
+
+    def node_contract(node):
+      if isinstance(node, yaml.MappingNode):
+        return (
+          "mapping",
+          [(node_contract(key), node_contract(child)) for key, child in node.value],
+        )
+      if isinstance(node, yaml.SequenceNode):
+        return (list, [node_contract(child) for child in node.value])
+      # Owned documents read plain None as null; quoted None remains text.
+      value = (
+        None if node.style is None and node.value == "None" else loader.construct_object(node)
+      )
+      return typed(value)
+
+    expected = node_contract(root)
+  finally:
+    loader.dispose()
+  for read in (config_io.parse_packaged, config_io.parse_doc_text, yamlplus.loads):
+    assert typed(read(text)) == expected, read.__name__
+
+
 def test_packaged_byte_reader_preserves_a_traversable_resource(tmp_path):
   import zipfile
 
