@@ -1382,6 +1382,21 @@ kind = "code-patterns"
   ]
   note = "Native YAML uses config_io; load_doc and load_packaged_mapping refuse non-mappings"
 
+  [[registry.entry]]
+  id = "pyyaml-emitters"
+  antipatterns = ['\byaml\.(?:safe_)?dump\s*\(']
+  home = [
+    "src/kanibako/settings/config_io.py",
+    "src/kanibako/settings/agent_defaults.py",
+  ]
+  note = "Lexical PyYAML emitters; agent_defaults formats diagnostics, not persisted configuration"
+
+  [[registry.entry]]
+  id = "yamlplus-emitters"
+  antipatterns = ['\b(?:yapyon(?:\.yamlplus)?|yamlplus)\.dumps\s*\(']
+  home = ["src/kanibako/settings/config_io.py"]
+  note = "Lexical Yapyon/YamlPlus emitters belong in config_io"
+
   # A regex that spells the header: the `#\s*` prefix, or the token followed by
   # a group, a class, or `:\s`. All three regexes the one grammar replaced
   # match. Prose (`# kanibako-template[-check]:` in a docstring) is stripped
