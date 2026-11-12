@@ -1,5 +1,7 @@
 """Owned tooling consumers use the runtime reader, without running checker engines."""
 
+import re
+import tomllib
 from pathlib import Path
 from unittest.mock import patch
 
@@ -122,6 +124,98 @@ def test_owned_transport_and_empty_documents(tmp_path: Path, monkeypatch, consum
         views.owner_rows(source)
       else:
         views.AgentCredFiles()
+
+
+@pytest.fixture
+def cred_owner_oracle(tmp_path: Path, monkeypatch):
+  config = tomllib.loads(
+    (Path(__file__).resolve().parents[1] / "kinemata.toml").read_text(encoding="utf-8")
+  )
+  oracles = [row for row in config["parity"] if row["registry"] == "cred-entry-owners"]
+  assert len(oracles) == 1
+  oracle = oracles[0]
+  assert oracle["command"][:2] == ["{python}", "-c"]
+  monkeypatch.chdir(tmp_path)
+  monkeypatch.setattr(views, "plugin_descriptors", lambda: ["plugin.yaml", "other.yaml"])
+  monkeypatch.setattr(
+    views,
+    "synced_cells",
+    lambda: {
+      "~/.agent/token": {"owner": "agent"},
+      "~/.other/token": {"owner": "workset"},
+      "~/.unowned/token": {},
+      "~/.null/token": {"owner": None},
+      "~/.absent/token": {"owner": "box"},
+    },
+  )
+  (tmp_path / "other.yaml").write_text("descriptor: {}\n", encoding="utf-8")
+  with (
+    patch("kanibako.settings.config_io.parse_packaged", side_effect=AssertionError("legacy")),
+    patch("yaml.load", side_effect=AssertionError("native YAML")),
+    patch("yapyon.yamlplus.loads", side_effect=AssertionError("output profile")),
+    patch.object(views, "owner_rows", side_effect=AssertionError("declaration traversal")),
+    patch.object(views, "EntryOwners", side_effect=AssertionError("declaration view")),
+  ):
+    yield oracle
+
+
+def test_cred_owner_oracle_yapyon_and_manifest_authority(
+  tmp_path: Path, cred_owner_oracle, capsys
+):
+  (tmp_path / "plugin.yaml").write_text(
+    'credential: ".agent/token"\n'
+    "descriptor:\n"
+    "  cred_files:\n"
+    "    - home_rel: (credential)\n"
+    '      owner: "not-the-manifest-owner"\n'
+    '    - home_rel: ".unowned/token"\n'
+    '    - home_rel: ".null/token"\n'
+    '    - home_rel: ".unknown/token"\n',
+    encoding="utf-8",
+  )
+  (tmp_path / "other.yaml").write_text(
+    'descriptor:\n  cred_files:\n    - home_rel: ".other/token"\n', encoding="utf-8"
+  )
+  with (
+    patch("kanibako.settings.config_io.read_doc_text", wraps=read_doc_text) as reader,
+    patch("kanibako.settings.config_io.parse_doc_text", wraps=parse_doc_text) as parser,
+  ):
+    exec(compile(cred_owner_oracle["command"][-1], "cred-entry-owners-oracle", "exec"), {})
+  assert [call.args[0] for call in reader.call_args_list] == [
+    Path("plugin.yaml"),
+    Path("other.yaml"),
+  ]
+  assert [call.kwargs for call in parser.call_args_list] == [
+    {"source": "plugin.yaml"},
+    {"source": "other.yaml"},
+  ]
+  output = capsys.readouterr().out
+  assert output == (
+    "kanibako-entry-owner: ~/.agent/token=agent\nkanibako-entry-owner: ~/.other/token=workset\n"
+  )
+  assert re.findall(cred_owner_oracle["extract"], output) == [
+    ("~/.agent/token", "agent"),
+    ("~/.other/token", "workset"),
+  ]
+  assert cred_owner_oracle["field"] == "owner"
+  assert cred_owner_oracle["authority"] == "produced"
+
+
+@pytest.mark.parametrize("text", ["[broken", "owner: bare", "owner: 1\nowner: 2\n"])
+def test_cred_owner_oracle_failures_name_source(tmp_path: Path, cred_owner_oracle, text):
+  (tmp_path / "plugin.yaml").write_text(text, encoding="utf-8")
+  with pytest.raises(AkanError) as caught:
+    exec(compile(cred_owner_oracle["command"][-1], "cred-entry-owners-oracle", "exec"), {})
+  assert "plugin.yaml:" in str(caught.value)
+
+
+@pytest.mark.parametrize("content", [None, b"\xff"])
+def test_cred_owner_oracle_transport_failures(tmp_path: Path, cred_owner_oracle, content):
+  if content is not None:
+    (tmp_path / "plugin.yaml").write_bytes(content)
+  error = FileNotFoundError if content is None else UnicodeDecodeError
+  with pytest.raises(error):
+    exec(compile(cred_owner_oracle["command"][-1], "cred-entry-owners-oracle", "exec"), {})
 
 
 def test_native_yaml_keeps_workflow_scalar_semantics():

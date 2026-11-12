@@ -3993,11 +3993,11 @@ authority = "produced"
 registry = "cred-entry-owners"
 command = ["{python}", "-c", """
 import pathlib
-from kanibako.settings.config_io import parse_packaged
+from kanibako.settings.config_io import parse_doc_text, read_doc_text
 from kinemata_views import plugin_descriptors, synced_cells
 cells = synced_cells()
 for source in plugin_descriptors():
-    doc = parse_packaged(pathlib.Path(source).read_text())
+    doc = parse_doc_text(read_doc_text(pathlib.Path(source)), source=source)
     for cred in (doc.get("descriptor") or {}).get("cred_files") or []:
         dest = f"~/{cred['home_rel']}"
         owner = (cells.get(dest) or {}).get("owner")

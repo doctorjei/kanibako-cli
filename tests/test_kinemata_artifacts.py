@@ -180,19 +180,19 @@ def test_descriptor_oracle_uses_owned_codec(monkeypatch, capsys):
   config = tomllib.loads((ROOT / "kinemata.toml").read_text(encoding="utf-8"))
   commands = [row["command"] for row in config["parity"] if row["registry"] == "cred-entry-owners"]
   assert len(commands) == 1
-  texts = [(ROOT / path).read_text() for path in plugin_descriptors()]
+  texts = {path: (ROOT / path).read_text() for path in plugin_descriptors()}
   assert texts
   parsed = []
-  parser = config_io.parse_packaged
+  parser = config_io.parse_doc_text
 
-  def record(text):
-    parsed.append(text)
-    return parser(text)
+  def record(text, *, source=None):
+    parsed.append((text, source))
+    return parser(text, source=source)
 
-  monkeypatch.setattr(config_io, "parse_packaged", record)
+  monkeypatch.setattr(config_io, "parse_doc_text", record)
   monkeypatch.chdir(ROOT)
   exec(compile(commands[0][-1], "cred-entry-owners-oracle", "exec"), {})
-  assert all(text in parsed for text in texts)
+  assert all((text, source) in parsed for source, text in texts.items())
   lines = capsys.readouterr().out.splitlines()
   assert lines and all(line.startswith("kanibako-entry-owner: ") for line in lines)
 
