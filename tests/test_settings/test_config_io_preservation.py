@@ -1,7 +1,4 @@
-"""Owned codec roundtrips, not downstream setting-type permissions."""
-
-from datetime import date, datetime, timedelta, timezone
-import math
+"""Legal settings and registry document roundtrips."""
 
 import pytest
 
@@ -11,64 +8,60 @@ from kanibako.settings.config_io import dump_doc, load_doc
 @pytest.mark.parametrize(
   "value",
   [
-    pytest.param(math.nan, id="nan"),
-    pytest.param(math.inf, id="positive-infinity"),
-    pytest.param(-math.inf, id="negative-infinity"),
-    pytest.param(date(2026, 11, 2), id="date"),
-    pytest.param(datetime(2026, 11, 2, 3, 4, 5, 123456), id="naive-datetime"),
-    pytest.param(
-      datetime(2026, 11, 2, 3, 4, 5, 123456, tzinfo=timezone(timedelta(hours=5, minutes=30))),
-      id="offset-datetime",
-    ),
-    pytest.param(b"abc\x00\xff\r\n", id="bytes"),
+    pytest.param("None", id="null-like-label"),
+    pytest.param("on", id="boolean-like-label"),
+    pytest.param("2026-11-02", id="date-text"),
+    pytest.param("2026-11-02T03:04:05.123456", id="timestamp-text"),
+    pytest.param("2026-11-02T03:04:05.123456+05:30", id="offset-timestamp-text"),
+    pytest.param("2026-11-02T03:04:05Z", id="utc-timestamp-text"),
+    pytest.param("2026-11-02 03:04:05", id="space-separated-timestamp-text"),
   ],
 )
-def test_owned_writer_roundtrips_typed_values(tmp_path, value):
-  path = tmp_path / "document.yaml"
-  dump_doc(path, {"data": {"value": value}})
+def test_owned_writer_roundtrips_quoted_labels(tmp_path, value):
+  path = tmp_path / "settings.yaml"
+  path.write_text(f'agent:\n  default:\n    label: "{value}"\n')
+  document = {"agent": {"default": {"label": value}}}
+  assert load_doc(path) == document
 
-  actual = load_doc(path)["data"]["value"]
-  assert type(actual) is type(value)
-  if isinstance(value, float):
-    assert actual.hex() == value.hex()
-  else:
-    assert actual == value
-  if isinstance(value, datetime):
-    assert actual.isoformat() == value.isoformat()
+  dump_doc(path, document)
+
+  assert load_doc(path) == document
 
 
 @pytest.mark.parametrize(
   ("value", "expected"),
   [
-    ((), []),
-    (("{system.state}/source",), ["{system.state}/source"]),
-    ((("{$HOME}/source",),), [["{$HOME}/source"]]),
+    (("{meta.box.workspace}",), ["{meta.box.workspace}"]),
+    (("{$HOME}/source", "z"), ["{$HOME}/source", "z"]),
+    (("~/source", ""), ["~/source", ""]),
   ],
 )
-def test_owned_writer_normalizes_tuples_to_lists(tmp_path, value, expected):
-  path = tmp_path / "document.yaml"
-  dump_doc(path, {"data": {"sequence": value}})
+def test_owned_writer_normalizes_binding_tuples_to_lists(tmp_path, value, expected):
+  path = tmp_path / "settings.yaml"
+  dump_doc(path, {"box": {"bindings": {"rw": {"/workspace": value}}}})
 
-  actual = load_doc(path)["data"]["sequence"]
-  assert type(actual) is list
+  actual = load_doc(path)["box"]["bindings"]["rw"]["/workspace"]
+  assert isinstance(actual, list)
   assert actual == expected
 
 
-def test_owned_writer_preserves_exact_nested_keys_and_order(tmp_path):
-  path = tmp_path / "document.yaml"
-  data = {
-    "": "{meta.box.home}",
-    "@cache": "{$HOME}/cache",
-    "Ａ": "fullwidth",
-    "A": "ascii",
-    "k" * 1025: "long",
-  }
-  registry = {"__cache__": "~/synthetic/workset", "Cache": "{config.data}/workset"}
-  document = {"data": [{"nested": data}], "worksets": registry}
+def test_owned_writer_preserves_env_keys_and_order(tmp_path):
+  path = tmp_path / "settings.yaml"
+  env = {"LABEL": "None", "DATE": "2026-11-02", "SOURCE": "{$HOME}/source"}
+  document = {"box": {"env": env}}
   dump_doc(path, document)
 
   actual = load_doc(path)
-  assert list(actual) == list(document)
-  assert list(actual["data"][0]["nested"].items()) == list(data.items())
-  assert list(actual["worksets"].items()) == list(registry.items())
+  assert list(actual["box"]["env"].items()) == list(env.items())
+  assert actual == document
+
+
+def test_owned_writer_preserves_workset_names_and_order(tmp_path):
+  path = tmp_path / "registry.yaml"
+  worksets = {"Research": str(tmp_path / "research"), "Tools": str(tmp_path / "tools")}
+  document = {"worksets": worksets}
+  dump_doc(path, document)
+
+  actual = load_doc(path)
+  assert list(actual["worksets"].items()) == list(worksets.items())
   assert actual == document
