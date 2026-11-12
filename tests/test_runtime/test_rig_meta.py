@@ -5,7 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-import yaml
+
+from kanibako.settings.config_io import parse_doc_text
 
 from kanibako.runtime.rig_meta import (
   RigMeta,
@@ -46,7 +47,7 @@ def test_recipe_none_omitted_from_yaml():
 
 def test_optional_none_fields_omitted():
   meta = RigMeta(name="myhack")
-  data = yaml.safe_load(dump_rig_meta(meta))
+  data = parse_doc_text(dump_rig_meta(meta))
   assert "parent" not in data
   assert "foundation_source" not in data
   assert "created" not in data

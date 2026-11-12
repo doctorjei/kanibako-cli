@@ -287,12 +287,12 @@ class TestWorksetCreate:
     # created ONLY because something was actually set.  ⚑ It is the ONE file
     # under the root: no identity table anywhere, and no registry.yaml until
     # there is a member to record.
-    import yaml
+    from kanibako.settings.config_io import parse_doc_text
 
     settings_yaml = ws_root.resolve() / "workset.yaml"
     assert settings_yaml.exists()
     with open(settings_yaml) as f:
-      data = yaml.safe_load(f)
+      data = parse_doc_text(f.read())
     assert data == {"box": {"image": "custom:latest"}}
     assert not (ws_root.resolve() / "registry.yaml").exists()
     # The name is in the GLOBAL registry, and only there.
@@ -333,10 +333,10 @@ class TestWorksetCreate:
     )
     assert run_create(args) == 0
 
-    import yaml
+    from kanibako.settings.config_io import parse_doc_text
 
     settings_yaml = ws_root.resolve() / "workset.yaml"
-    data = yaml.safe_load(settings_yaml.read_text())
+    data = parse_doc_text(settings_yaml.read_text())
     # The explicit flag wins over the stamped value ...
     assert data["box"]["image"] == "custom:latest"
     # ... and every OTHER box.* key survives it.
@@ -363,10 +363,10 @@ class TestWorksetCreate:
     )
     assert run_create(args) == 0
 
-    import yaml
+    from kanibako.settings.config_io import parse_doc_text
 
     settings_yaml = ws_root.resolve() / "workset.yaml"
-    data = yaml.safe_load(settings_yaml.read_text())
+    data = parse_doc_text(settings_yaml.read_text())
     assert data == {"box": {"enable_vault": False}}
     _assert_every_key_declared(data)
     assert read_box_enable_vault(settings_yaml) is False
@@ -2948,10 +2948,10 @@ class TestDefaultWorksetCli:
     )
     rc = run_set(args)
     assert rc == 0
-    import yaml
+    from kanibako.settings.config_io import parse_doc_text
 
     with open(std.primary_workset / "workset.yaml") as f:
-      data = yaml.safe_load(f)
+      data = parse_doc_text(f.read())
     assert data["workset"]["vault_ro"] == "/ro"
     assert not (std.data_path / "config.yaml").exists()
     assert not (std.data_path / "workset.yaml").exists()
@@ -3038,7 +3038,7 @@ class TestPrimaryWorksetSpecConvergence:
 
   def test_set_default_writes_spec_file(self, config_file, tmp_home, capsys):
     """``workset set default <key>`` lands in the §2c spec file."""
-    import yaml
+    from kanibako.settings.config_io import parse_doc_text
 
     std = load_std_paths(load_config(config_file))
     rc = self._set_default("box.shell=/bin/zsh")
@@ -3046,7 +3046,7 @@ class TestPrimaryWorksetSpecConvergence:
     spec_file = std.primary_workset / "workset.yaml"
     assert spec_file.is_file()
     with open(spec_file) as f:
-      data = yaml.safe_load(f)
+      data = parse_doc_text(f.read())
     assert data["box"]["shell"] == "/bin/zsh"
 
   def test_set_default_no_longer_writes_legacy_file(
@@ -3130,7 +3130,7 @@ class TestPrimaryWorksetSpecConvergence:
     capsys,
   ):
     """A NAMED workset keeps its single ``<root>/workset.yaml`` file."""
-    import yaml
+    from kanibako.settings.config_io import parse_doc_text
     from kanibako.commands.workset_cmd import run_set
 
     std = load_std_paths(load_config(config_file))
@@ -3143,7 +3143,7 @@ class TestPrimaryWorksetSpecConvergence:
     rc = run_set(args)
     assert rc == 0
     with open(ws.root / "workset.yaml") as f:
-      data = yaml.safe_load(f)
+      data = parse_doc_text(f.read())
     assert data["workset"]["vault_ro"] == "/ro"
 
 

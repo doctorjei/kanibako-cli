@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from kanibako.settings.config_io import parse_doc_text
 from kanibako.runtime import rig_registry
 from kanibako.runtime.rig_registry import (
   RigRecord,
@@ -130,7 +131,7 @@ def test_names_with_slash_and_colon_survive_as_keys(reg_path: Path) -> None:
   rec = RigRecord(name="corp/base:1.0", kind="prefab")
   save_registry(path, {rec.name: rec})
 
-  raw = yaml.safe_load(path.read_text())
+  raw = parse_doc_text(path.read_text())
   assert "corp/base:1.0" in raw["rigs"]
   assert "corp/base:1.0" in load_registry(path)
 
@@ -141,7 +142,7 @@ def test_none_fields_are_not_written(reg_path: Path) -> None:
   rec = RigRecord(name="bare", kind="extended")
   save_registry(path, {rec.name: rec})
 
-  table = yaml.safe_load(path.read_text())["rigs"]["bare"]
+  table = parse_doc_text(path.read_text())["rigs"]["bare"]
   assert table["kind"] == "extended"
   for none_field in (
     "source",
