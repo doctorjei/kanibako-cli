@@ -12,7 +12,8 @@ import subprocess
 import time
 
 import pytest
-import yaml
+
+from kanibako.settings.config_io import parse_doc_text
 
 from tests.conftest_integration import requires_runtime
 from tests.support.filenames import CONFIG_FILENAME
@@ -140,7 +141,7 @@ class TestKanibakoLazyInit:
     # materializes it — so an ABSENT file is the strongest form of this pin, not
     # a failure of it.
     settings_file = data_path / "global" / "settings.yaml"
-    stored = (yaml.safe_load(settings_file.read_text()) or {}) if settings_file.is_file() else {}
+    stored = (parse_doc_text(settings_file.read_text()) or {}) if settings_file.is_file() else {}
     for scope in ("box", "system"):
       assert "COLORTERM" not in stored.get(scope, {}).get("env", {}), (
         f"first-run wrote {scope}.env.COLORTERM back; a default belongs in "

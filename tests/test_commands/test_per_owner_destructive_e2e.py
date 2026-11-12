@@ -23,7 +23,6 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-import yaml
 
 from kanibako.cli import main
 from kanibako.project.registry_store import load_deregistered
@@ -133,11 +132,7 @@ def world(config_file, tmp_home, credentials_dir, runtime, capsys) -> World:
   (dup / "f.txt").write_text("the destination's own")
 
   std.settings.parent.mkdir(parents=True, exist_ok=True)
-  std.settings.write_text(
-    yaml.safe_dump(
-      {"workset": {"boxes": str(worksets[0].projects_dir)}},
-    )
-  )
+  dump_doc(std.settings, {"workset": {"boxes": str(worksets[0].projects_dir)}})
   capsys.readouterr()
   runtime.reset_mock()
   return World(
@@ -217,10 +212,9 @@ class TestStateB:
 
 def _collide_mailboxes(world: World) -> None:
   """The partition-key state: the system file holds a collided ``workset.channels.mailboxes``."""
-  world.std.settings.write_text(
-    yaml.safe_dump(
-      {"workset": {"channels": {"mailboxes": str(world.dup.parent / "mb")}}},
-    )
+  dump_doc(
+    world.std.settings,
+    {"workset": {"channels": {"mailboxes": str(world.dup.parent / "mb")}}},
   )
 
 
