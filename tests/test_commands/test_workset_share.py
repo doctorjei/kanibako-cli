@@ -6,6 +6,8 @@ import argparse
 
 import pytest
 
+from kanibako.settings.config_io import convert_legacy_doc_text
+
 from kanibako.commands.workset_cmd import (
   run_share_add,
   run_share_list,
@@ -655,7 +657,9 @@ class TestEffectiveListingsReadTimeRefusals:
     from kanibako.settings import settings_launch as _launch
 
     base = tmp_home / "site-base.yaml"
-    base.write_text("workset:\n  auth:\n    path: foo\n", encoding="utf-8")
+    base.write_text(
+      convert_legacy_doc_text("workset:\n  auth:\n    path: foo\n"), encoding="utf-8"
+    )
     monkeypatch.setattr(_assemble, "settings_base_path", lambda: base)
     monkeypatch.setattr(_launch, "settings_base_path", lambda: base)
     assert _run_share_list_effective() == 1

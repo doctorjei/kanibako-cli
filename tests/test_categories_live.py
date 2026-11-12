@@ -24,6 +24,8 @@ from pathlib import Path
 
 import pytest
 
+from kanibako.settings.config_io import convert_legacy_doc_text
+
 from kanibako.errors import PackagingError
 from kanibako.settings.config_keys import ConfigLevel
 from kanibako.settings.paths import BoxMode
@@ -818,7 +820,7 @@ class TestB3ImagesStoreKey:
     box_path = None
     if box_yaml is not None:
       box_path = tmp_path / "box-settings.yaml"
-      box_path.write_text(box_yaml)
+      box_path.write_text(convert_legacy_doc_text(box_yaml))
 
     ctx = make_ctx()
     floor = dict(
@@ -1894,7 +1896,7 @@ class TestForgedDerivationsTableNeverEntersTheMerge:
     the only place "the forged table never entered the merge" can be read
     without the seam's own write sitting on top of the answer.
     """
-    import yaml
+    from kanibako.settings.config_io import dump_doc
 
     from kanibako.commands.start import _install_derived_bindings
     from kanibako.settings.settings_categories import derive_binding_keys
@@ -1907,25 +1909,24 @@ class TestForgedDerivationsTableNeverEntersTheMerge:
     )
 
     box_file = tmp_path / "box.yaml"
-    box_file.write_text(
-      yaml.safe_dump(
-        {
-          "box": {"enable_vault": False},
-          "binding_derivations": {
-            # (i) collides with the REAL declaration key below — which under
-            # dest-keying ENDS in the resolved box DESTINATION.
-            "agent": {
-              "claude": {
-                "common": {
-                  "/home/agent/claude-plugins": ["/forged/src", "~/forged"],
-                }
+    dump_doc(
+      box_file,
+      {
+        "binding_derivations": {
+          # (i) collides with the REAL declaration key below — which under
+          # dest-keying ENDS in the resolved box DESTINATION.
+          "agent": {
+            "claude": {
+              "common": {
+                "/home/agent/claude-plugins": ["/forged/src", "~/forged"],
               }
-            },
-            # (ii) non-Bind junk — pre-fix this leaf crashed the lens.
-            "junk": "zebra-not-a-bind",
+            }
           },
-        }
-      )
+          # (ii) non-Bind junk — pre-fix this leaf crashed the lens.
+          "junk": "zebra-not-a-bind",
+        },
+        "box": {"enable_vault": False},
+      },
     )
 
     # ONE terminal dest-keyed key; the dest is the map KEY and ``Z`` is the
@@ -2944,7 +2945,7 @@ def _launch_over_nulled_key(tmp_path, caplog, workset_yaml, table):
 
   reset_none_warnings()  # one warning per process, not per resolve
   ws_path = tmp_path / "workset.yaml"
-  ws_path.write_text(workset_yaml)
+  ws_path.write_text(convert_legacy_doc_text(workset_yaml))
   caplog.set_level("WARNING", logger="kanibako.settings.settings_launch")
   ctx = make_ctx(
     workset_name=None,

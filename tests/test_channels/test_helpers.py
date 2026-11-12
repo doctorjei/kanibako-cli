@@ -8,6 +8,8 @@ from unittest.mock import patch
 
 import pytest
 
+from kanibako.settings.config_io import convert_legacy_doc_text
+
 from kanibako.channels.helpers import (
   DEFAULT_BREADTH,
   DEFAULT_DEPTH,
@@ -156,18 +158,18 @@ class TestSpawnBudgetIO:
 
   def test_read_no_helpers_table(self, tmp_path):
     path = tmp_path / "empty.yaml"
-    path.write_text("other:\n  foo: 1\n")
+    path.write_text(convert_legacy_doc_text("other:\n  foo: 1\n"))
     assert read_spawn_budget(path) is None
 
   def test_a_retired_spawn_table_is_not_a_budget(self, tmp_path):
     """The pre-declaration spelling is not a key, so it carries no budget."""
     path = tmp_path / "legacy.yaml"
-    path.write_text("spawn:\n  depth: 9\n  breadth: 9\n")
+    path.write_text(convert_legacy_doc_text("spawn:\n  depth: 9\n  breadth: 9\n"))
     assert read_spawn_budget(path) is None
 
   def test_one_leaf_is_a_partial_override(self, tmp_path):
     path = tmp_path / "partial.yaml"
-    path.write_text("system:\n  helpers:\n    depth: 2\n")
+    path.write_text(convert_legacy_doc_text("system:\n  helpers:\n    depth: 2\n"))
     result = read_spawn_budget(path)
     assert result == SpawnBudget(depth=2, breadth=DEFAULT_BREADTH)
 
@@ -176,7 +178,7 @@ class TestSpawnBudgetIO:
     from kanibako.errors import ConfigError
 
     path = tmp_path / "bad.yaml"
-    path.write_text("system:\n  helpers:\n    depth: lots\n")
+    path.write_text(convert_legacy_doc_text("system:\n  helpers:\n    depth: lots\n"))
     with pytest.raises(ConfigError, match="system.helpers.depth"):
       read_spawn_budget(path)
 
@@ -186,7 +188,7 @@ class TestSpawnBudgetIO:
     from kanibako.settings.config_io import load_doc
 
     path = tmp_path / "spawn.yaml"
-    path.write_text("other:\n  foo: 1\nsystem:\n  agent: claude\n")
+    path.write_text(convert_legacy_doc_text("other:\n  foo: 1\nsystem:\n  agent: claude\n"))
     write_helper_number(path, 5)
     write_spawn_budget(path, SpawnBudget(depth=2, breadth=3))
     assert load_doc(path) == {"system": {"helpers": {"depth": 2, "breadth": 3}}}

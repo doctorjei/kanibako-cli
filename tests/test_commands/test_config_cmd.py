@@ -1388,7 +1388,7 @@ class TestLoadProjectOverrides:
     null itself: a present null and an absent key differ in the file, but neither is an override.
     """
     p = tmp_path / "box.yaml"
-    p.write_text("box:\n  shell: null\n")
+    dump_doc(p, {"box": {"shell": None}})
     assert load_project_overrides(p) == {}
 
   def test_an_undeclared_flat_spelling_is_not_an_override(self, tmp_path):
@@ -1399,7 +1399,7 @@ class TestLoadProjectOverrides:
     ``box: image:`` were indistinguishable by the time anything looked.
     """
     p = tmp_path / "box.yaml"
-    p.write_text('box_image: "flat:v1"\n')
+    dump_doc(p, {"box_image": "flat:v1"})
     assert load_project_overrides(p) == {}
 
 

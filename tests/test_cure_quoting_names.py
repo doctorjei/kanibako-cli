@@ -41,6 +41,8 @@ from pathlib import Path
 
 import pytest
 
+from kanibako.settings.config_io import convert_legacy_doc_text
+
 # ⚑ HOSTILE OPERANDS A REAL ``create``/``rig add`` PRODUCES.  ``q;>pwned`` needs
 # the ``;``; the ``$( )`` form needs no separator, so the two fail differently.
 _HOSTILE = ["q;>pwned", "q$(touch pwned)"]
@@ -170,7 +172,7 @@ def cli_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> "dict[str, str]"
 
   child = os.environ.copy()
   child.update({key: str(value) for key, value in dirs.items()})
-  child["PYTHONPATH"] = str(_REPO_SRC)
+  child["PYTHONPATH"] = os.pathsep.join(filter(None, (str(_REPO_SRC), child.get("PYTHONPATH"))))
   for key, value in dirs.items():
     monkeypatch.setenv(key, str(value))
 
@@ -449,7 +451,7 @@ def _member_with_retired(std, config, tmp_home, leaf_yaml: str):
   proj = resolve_workset_project(WorksetSpec.from_workset(ws), "bar", std, config, initialize=True)
   box_path, _ = box_workset_settings_paths(proj)
   box_path.parent.mkdir(parents=True, exist_ok=True)
-  box_path.write_text(leaf_yaml)
+  box_path.write_text(convert_legacy_doc_text(leaf_yaml))
   return proj, box_path
 
 
@@ -534,7 +536,7 @@ def test_a_standalone_root_with_a_space_is_quoted_exactly_once(
   proj = resolve_box_target(std, config, str(root), initialize=False)
   box_path, _ = box_workset_settings_paths(proj)
   box_path.parent.mkdir(parents=True, exist_ok=True)
-  box_path.write_text("box:\n  agent_name: claude\n")
+  box_path.write_text(convert_legacy_doc_text("box:\n  agent_name: claude\n"))
   with pytest.raises(SettingsError) as refused:
     select_agent(std=std, proj=proj)
 

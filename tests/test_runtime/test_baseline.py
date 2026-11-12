@@ -6,6 +6,8 @@ from pathlib import Path
 
 import pytest
 
+from kanibako.settings.config_io import convert_legacy_doc_text
+
 from kanibako.errors import ConfigError
 from kanibako.runtime import baseline
 from tests.support.filenames import CONFIG_FILENAME
@@ -65,7 +67,7 @@ class TestOverlayMerge:
   def test_etc_adds_package(self, overlay_dirs) -> None:
     etc, _user = overlay_dirs
     etc.parent.mkdir(parents=True)
-    etc.write_text("jq: [jq]\n")
+    etc.write_text(convert_legacy_doc_text("jq: [jq]\n"))
     merged = baseline.load_baseline()
     assert merged["jq"] == ["jq"]
     # Original packages preserved.
@@ -74,7 +76,7 @@ class TestOverlayMerge:
   def test_user_overrides_executable_list(self, overlay_dirs) -> None:
     _etc, user = overlay_dirs
     user.parent.mkdir(parents=True)
-    user.write_text("ripgrep: [rg, ripgrep]\n")
+    user.write_text(convert_legacy_doc_text("ripgrep: [rg, ripgrep]\n"))
     merged = baseline.load_baseline()
     assert merged["ripgrep"] == ["rg", "ripgrep"]
 
@@ -82,15 +84,15 @@ class TestOverlayMerge:
     etc, user = overlay_dirs
     etc.parent.mkdir(parents=True)
     user.parent.mkdir(parents=True)
-    etc.write_text("tmux: [tmux-etc]\n")
-    user.write_text("tmux: [tmux-user]\n")
+    etc.write_text(convert_legacy_doc_text("tmux: [tmux-etc]\n"))
+    user.write_text(convert_legacy_doc_text("tmux: [tmux-user]\n"))
     merged = baseline.load_baseline()
     assert merged["tmux"] == ["tmux-user"]
 
   def test_bare_string_value_normalized(self, overlay_dirs) -> None:
     etc, _user = overlay_dirs
     etc.parent.mkdir(parents=True)
-    etc.write_text("htop: htop\n")
+    etc.write_text(convert_legacy_doc_text("htop: htop\n"))
     merged = baseline.load_baseline()
     assert merged["htop"] == ["htop"]
 
@@ -112,7 +114,7 @@ class TestUserOverlayPath:
   @staticmethod
   def _plant(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("htop: [htop]\n")
+    path.write_text(convert_legacy_doc_text("htop: [htop]\n"))
 
   def test_overlay_under_config_data_global_is_merged(self, tmp_home) -> None:
     self._plant(tmp_home / "data" / "kanibako" / "global" / baseline.BASELINE_FILENAME)
@@ -124,7 +126,9 @@ class TestUserOverlayPath:
 
   def test_overlay_follows_a_config_data_repoint(self, tmp_home) -> None:
     store = tmp_home / "srv" / "store"
-    (tmp_home / "config" / CONFIG_FILENAME).write_text(f'config:\n  data: "{store}"\n')
+    (tmp_home / "config" / CONFIG_FILENAME).write_text(
+      convert_legacy_doc_text(f'config:\n  data: "{store}"\n')
+    )
     self._plant(tmp_home / "data" / "kanibako" / "global" / baseline.BASELINE_FILENAME)
     assert "htop" not in baseline.load_baseline()
     self._plant(store / "global" / baseline.BASELINE_FILENAME)
@@ -191,7 +195,7 @@ class TestReadDoc:
     only a document that is not a mapping refuses.
     """
     p = tmp_path / "list.yaml"
-    p.write_text("- a\n- b\n")
+    p.write_text(convert_legacy_doc_text("- a\n- b\n"))
 
     with pytest.raises(ConfigError) as exc:
       baseline._read_doc(p)
@@ -202,38 +206,41 @@ class TestReadDoc:
   def test_repeated_key_is_refused_naming_the_file(self, tmp_path) -> None:
     """A package listed twice used to keep the LAST list and lose the first in silence."""
     p = tmp_path / "image-baseline.yaml"
-    p.write_text("mypkg: [aaa]\nmypkg: [bbb]\n")
+    p.write_text('mypkg: ["aaa"]\nmypkg: ["bbb"]\n')
 
     with pytest.raises(ConfigError) as exc:
       baseline._read_doc(p)
-    assert str(exc.value) == (
-      f"the config file {p} sets 'mypkg' twice (line 1 and line 2). "
-      "Remove one of the two, then retry."
-    )
+    message = str(exc.value)
+    assert message.startswith(f"the config file {p} is not valid Yapyon: ")
+    assert f"{p}:2:0: duplicate key 'mypkg' (first defined on line 1)" in message
+    assert message.endswith("Fix or remove the file, then retry.")
 
-  def test_invalid_yaml_is_refused_not_a_traceback(self, tmp_path) -> None:
-    """An unterminated flow sequence used to raise a raw ``yaml`` error out of the CLI."""
+  def test_invalid_yapyon_is_refused_not_a_traceback(self, tmp_path) -> None:
+    """An unterminated owned list raises ConfigError, not a parser traceback."""
     p = tmp_path / "image-baseline.yaml"
-    p.write_text("mypkg: [aaa\n")
+    p.write_text('mypkg: ["aaa"\n')
 
     with pytest.raises(ConfigError) as exc:
       baseline._read_doc(p)
-    assert str(exc.value).startswith(f"the config file {p} is not valid YAML: ")
+    assert str(exc.value).startswith(f"the config file {p} is not valid Yapyon: ")
+    assert "unclosed bracket" in str(exc.value)
     assert str(exc.value).endswith("Fix or remove the file, then retry.")
 
-  def test_a_self_referential_anchor_is_refused_naming_the_file(self, tmp_path) -> None:
-    """A package list that contains itself is a document hazard, not an executable list."""
-    p = tmp_path / "image-baseline.yaml"
-    p.write_text("mypkg: &a [x, *a]\n")
+  def test_a_legacy_self_referential_anchor_is_refused_at_conversion(self, tmp_path) -> None:
+    """Cyclic YAML is refused at the explicit legacy conversion boundary."""
+    from kanibako.migration.yaml_to_yapyon import ConversionError
+    from kanibako.settings.config_io import CyclicAnchorError
 
-    with pytest.raises(ConfigError) as exc:
-      baseline._read_doc(p)
-    assert f"{p} refers to itself at 'mypkg[1]'" in str(exc.value)
+    p = tmp_path / "image-baseline.yaml"
+    with pytest.raises(ConversionError) as exc:
+      convert_legacy_doc_text("mypkg: &a [x, *a]\n", source=str(p))
+    assert f"{p}: refers to itself at 'mypkg[1]'" in str(exc.value)
+    assert isinstance(exc.value.__cause__, CyclicAnchorError)
 
   def test_values_still_normalize(self, tmp_path) -> None:
     """⚑ THE CONTROL: the reader's own normalization is unchanged by the reroute."""
     p = tmp_path / "image-baseline.yaml"
-    p.write_text("bare: rg\nnulled:\nlisted: [a, 2]\n")
+    p.write_text(convert_legacy_doc_text("bare: rg\nnulled:\nlisted: [a, 2]\n"))
 
     assert baseline._read_doc(p) == {
       "bare": ["rg"],
@@ -253,7 +260,7 @@ class TestReadDoc:
   def test_scalar_value_is_refused_naming_the_package(self, tmp_path) -> None:
     """A package mapped to a number is REFUSED BY NAME rather than iterated."""
     p = tmp_path / "image-baseline.yaml"
-    p.write_text("git: 5\n")
+    p.write_text(convert_legacy_doc_text("git: 5\n"))
 
     with pytest.raises(ConfigError) as exc:
       baseline._read_doc(p)
@@ -262,7 +269,7 @@ class TestReadDoc:
   def test_table_value_is_refused_naming_the_package(self, tmp_path) -> None:
     """A package mapped to a table is REFUSED: a table's KEYS are not executable names."""
     p = tmp_path / "image-baseline.yaml"
-    p.write_text("git: {a: 1}\n")
+    p.write_text(convert_legacy_doc_text("git: {a: 1}\n"))
 
     with pytest.raises(ConfigError) as exc:
       baseline._read_doc(p)
@@ -271,7 +278,7 @@ class TestReadDoc:
   def test_nested_list_value_is_refused_naming_the_package(self, tmp_path) -> None:
     """A list holding a list is REFUSED: its inner value is not an executable name."""
     p = tmp_path / "image-baseline.yaml"
-    p.write_text("git: [[x]]\n")
+    p.write_text(convert_legacy_doc_text("git: [[x]]\n"))
 
     with pytest.raises(ConfigError) as exc:
       baseline._read_doc(p)
@@ -280,7 +287,7 @@ class TestReadDoc:
   def test_null_item_in_a_list_is_refused_naming_the_package(self, tmp_path) -> None:
     """``git: [~, true]`` items are YAML keywords; ``str`` would invent "None"/"True"."""
     p = tmp_path / "image-baseline.yaml"
-    p.write_text("git: [~, true]\n")
+    p.write_text(convert_legacy_doc_text("git: [~, true]\n"))
 
     with pytest.raises(ConfigError) as exc:
       baseline._read_doc(p)
@@ -289,7 +296,7 @@ class TestReadDoc:
   def test_yaml_yes_item_in_a_list_is_refused(self, tmp_path) -> None:
     """A bare ``yes`` is a YAML 1.1 boolean, so it never means the executable "yes"."""
     p = tmp_path / "image-baseline.yaml"
-    p.write_text("git: [yes]\n")
+    p.write_text(convert_legacy_doc_text("git: [yes]\n"))
 
     with pytest.raises(ConfigError) as exc:
       baseline._read_doc(p)
@@ -298,7 +305,7 @@ class TestReadDoc:
   def test_bare_true_item_alone_is_refused(self, tmp_path) -> None:
     """A single boolean item is refused on its own, not only beside a null one."""
     p = tmp_path / "image-baseline.yaml"
-    p.write_text("git: [x, false]\n")
+    p.write_text(convert_legacy_doc_text("git: [x, false]\n"))
 
     with pytest.raises(ConfigError) as exc:
       baseline._read_doc(p)
@@ -320,7 +327,7 @@ class TestReadDoc:
     the value's, and several are not even legal inside a quoted scalar.
     """
     p = tmp_path / "image-baseline.yaml"
-    p.write_text(f'git: ["rg{escape}sh"]\n')
+    p.write_text(convert_legacy_doc_text(f'git: ["rg{escape}sh"]\n'))
 
     with pytest.raises(ConfigError) as exc:
       baseline._read_doc(p)
@@ -329,7 +336,7 @@ class TestReadDoc:
   def test_control_character_in_a_bare_scalar_value_is_refused(self, tmp_path) -> None:
     """The bare-string form reaches the same refusal as the list form."""
     p = tmp_path / "image-baseline.yaml"
-    p.write_text('git: "rg\\nsh"\n')
+    p.write_text(convert_legacy_doc_text('git: "rg\\nsh"\n'))
 
     with pytest.raises(ConfigError) as exc:
       baseline._read_doc(p)
@@ -338,6 +345,6 @@ class TestReadDoc:
   def test_a_name_holding_no_control_character_is_untouched(self, tmp_path) -> None:
     """The guard on the guard: a space and a non-ASCII letter are still names."""
     p = tmp_path / "image-baseline.yaml"
-    p.write_text('git: ["my tool", "café"]\n')
+    p.write_text(convert_legacy_doc_text('git: ["my tool", "café"]\n'))
 
     assert baseline._read_doc(p) == {"git": ["my tool", "café"]}

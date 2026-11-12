@@ -35,6 +35,8 @@ from pathlib import Path
 
 import pytest
 
+from kanibako.settings.config_io import convert_legacy_doc_text
+
 from kanibako.errors import PackagingError
 from kanibako.settings.agent_config import agent_settings_path
 from tests.support.agent_selection import agent_selection
@@ -1581,7 +1583,7 @@ class TestInternalBindEntryRefusal:
     from kanibako.settings.store_shape import build_store_shape_set
 
     box = tmp_path / "box.yaml"
-    box.write_text("box:\n  canon: /opt/kanibako\n" + arm)
+    box.write_text(convert_legacy_doc_text("box:\n  canon: /opt/kanibako\n" + arm))
     snap = build_launch_snapshot(
       agent_name="claude",
       ctx=_ctx(),

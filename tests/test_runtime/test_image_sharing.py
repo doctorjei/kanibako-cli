@@ -7,6 +7,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from kanibako.settings.config_io import convert_legacy_doc_text
+
 from kanibako.runtime.container import ContainerRuntime
 from kanibako.runtime.image_sharing import (
   SHARED_STORE_CONTAINER_PATH,
@@ -394,7 +396,9 @@ class TestImageSharingInRunContainer:
     store_dir.mkdir()
     box_meta = tmp_path / "box-meta"
     box_meta.mkdir()
-    (box_meta / BOX_META_FILE).write_text(f"box:\n  images_store: {store_dir}\n")
+    (box_meta / BOX_META_FILE).write_text(
+      convert_legacy_doc_text(f"box:\n  images_store: {store_dir}\n")
+    )
 
     with start_mocks() as m:
       m.proj.metadata_path = box_meta
@@ -802,7 +806,7 @@ class TestImageSharingConfig:
     from kanibako.settings.settings_launch import load_merged_config
 
     box_settings = tmp_path / BOX_META_FILE
-    box_settings.write_text("box:\n  share_images: true\n")
+    box_settings.write_text(convert_legacy_doc_text("box:\n  share_images: true\n"))
     cfg = load_merged_config(box_settings)
     assert cfg.box_share_images is True
 
@@ -823,7 +827,7 @@ class TestImageSharingConfig:
     from kanibako.settings.settings_launch import load_merged_config
 
     workset_settings = tmp_path / WORKSET_META_FILE
-    workset_settings.write_text("box:\n  share_images: true\n")
+    workset_settings.write_text(convert_legacy_doc_text("box:\n  share_images: true\n"))
     # ⚑ SELF-EMPTINESS GUARD (P15): the floor has to be LIVE, or the ``False``
     # below is just the declared default and this case witnesses nothing.
     assert (
@@ -834,7 +838,7 @@ class TestImageSharingConfig:
     )
 
     box_settings = tmp_path / BOX_META_FILE
-    box_settings.write_text("box:\n  share_images: false\n")
+    box_settings.write_text(convert_legacy_doc_text("box:\n  share_images: false\n"))
     cfg = load_merged_config(
       box_settings,
       workset_path=workset_settings,
