@@ -23,11 +23,13 @@ the verdict is ever revisited silently.
 
 from __future__ import annotations
 
+import re
 import sys
 import types
 from pathlib import Path
 
 import pytest
+from yapyon import AkanError
 
 from kanibako.errors import PackagingError
 from kanibako.settings import core_defaults, settings_keyspace
@@ -246,7 +248,7 @@ def test_a_packaging_defect_raises_packaging_error(
 
 
 def test_the_keyspace_manifest_defect_raises_packaging_error(monkeypatch, tmp_path):
-  """The registry is RELEASE AUTHORITY and ships in the wheel — an unparseable one is packaging.
+  """The registry is RELEASE AUTHORITY and ships in the wheel — a nonmapping one is packaging.
 
   Separate from the sweep only because it needs its own module's ``lru_cache``
   cleared on BOTH sides: the bad result would otherwise outlive the monkeypatch and
@@ -255,19 +257,33 @@ def test_the_keyspace_manifest_defect_raises_packaging_error(monkeypatch, tmp_pa
   from kanibako.settings import keyspace_manifest
 
   bad = tmp_path / "keyspace-manifest.yaml"
-  bad.write_text("- not\n- a mapping\n")
+  bad.write_text('- "not"\n- "a mapping"\n')
   monkeypatch.setattr(keyspace_manifest, "packaged_data_dir", lambda *p: bad)
   keyspace_manifest._parse_manifest.cache_clear()
   try:
-    with pytest.raises(PackagingError, match="is empty or is not a YAML mapping"):
+    expected = rf"^{re.escape(bad.name)} \(read from {re.escape(str(bad))}\) is empty or is not a Yapyon mapping"
+    with pytest.raises(PackagingError, match=expected) as exc:
       keyspace_manifest.manifest_doc()
+    assert exc.value.__cause__ is None
   finally:
     keyspace_manifest._parse_manifest.cache_clear()
 
 
-@pytest.mark.parametrize("text", ["", "- not\n- a mapping\n", "just a string\n"])
-def test_the_core_defaults_defect_raises_packaging_error(monkeypatch, tmp_path, text):
-  """An empty or non-mapping ``core-defaults.yaml`` is a broken install, never an empty floor.
+@pytest.mark.parametrize(
+  ("text", "expected", "parse_error"),
+  [
+    pytest.param("", "is invalid Yapyon:.*empty document", True, id="empty"),
+    pytest.param(
+      '- "not"\n- "a mapping"\n', "is empty or is not a Yapyon mapping", False, id="sequence"
+    ),
+    pytest.param('"just a string"\n', "is empty or is not a Yapyon mapping", False, id="scalar"),
+    pytest.param("broken: [\n", "is invalid Yapyon:", True, id="malformed"),
+  ],
+)
+def test_the_core_defaults_defect_raises_packaging_error(
+  monkeypatch, tmp_path, text, expected, parse_error
+):
+  """Malformed, empty, or nonmapping ``core-defaults.yaml`` is a broken install.
 
   RED before the one loader: two shapes came back ``{}`` and every default went silently missing.
   """
@@ -276,17 +292,32 @@ def test_the_core_defaults_defect_raises_packaging_error(monkeypatch, tmp_path, 
   monkeypatch.setattr(core_defaults, "packaged_data_dir", lambda *p: bad)
   core_defaults._parse_doc.cache_clear()
   try:
-    with pytest.raises(
-      PackagingError, match="core-defaults.yaml is empty or is not a YAML mapping"
-    ):
+    message = rf"^{re.escape(bad.name)} \(read from {re.escape(str(bad))}\) {expected}"
+    with pytest.raises(PackagingError, match=message) as exc:
       core_defaults._load_doc()
+    if parse_error:
+      assert isinstance(exc.value.__cause__, AkanError)
+    else:
+      assert exc.value.__cause__ is None
   finally:
     core_defaults._parse_doc.cache_clear()
 
 
-@pytest.mark.parametrize("text", ["", "- not\n- a mapping\n", "just a string\n"])
-def test_a_plugin_defaults_defect_raises_packaging_error(monkeypatch, tmp_path, text):
-  """A plugin's empty or non-mapping defaults file is a broken install, never "no defaults"."""
+@pytest.mark.parametrize(
+  ("text", "expected", "parse_error"),
+  [
+    pytest.param("", "is invalid Yapyon:.*empty document", True, id="empty"),
+    pytest.param(
+      '- "not"\n- "a mapping"\n', "is empty or is not a Yapyon mapping", False, id="sequence"
+    ),
+    pytest.param('"just a string"\n', "is empty or is not a Yapyon mapping", False, id="scalar"),
+    pytest.param("broken: [\n", "is invalid Yapyon:", True, id="malformed"),
+  ],
+)
+def test_a_plugin_defaults_defect_raises_packaging_error(
+  monkeypatch, tmp_path, text, expected, parse_error
+):
+  """A plugin's malformed, empty, or nonmapping defaults file is a broken install."""
   from kanibako.settings import agent_defaults
 
   pkg = tmp_path / "fake_defaults_pkg"
@@ -297,10 +328,14 @@ def test_a_plugin_defaults_defect_raises_packaging_error(monkeypatch, tmp_path, 
   # ⚑ Purged on both sides: a cached package would read an earlier case's tmp_path.
   sys.modules.pop("fake_defaults_pkg", None)
   try:
-    with pytest.raises(
-      PackagingError, match="fake-defaults.yaml is empty or is not a YAML mapping"
-    ):
+    path = pkg / "fake-defaults.yaml"
+    message = rf"^fake-defaults\.yaml \(read from {re.escape(str(path))}\) {expected}"
+    with pytest.raises(PackagingError, match=message) as exc:
       agent_defaults._load_doc("fake_defaults_pkg", "fake-defaults.yaml")
+    if parse_error:
+      assert isinstance(exc.value.__cause__, AkanError)
+    else:
+      assert exc.value.__cause__ is None
   finally:
     sys.modules.pop("fake_defaults_pkg", None)
 
