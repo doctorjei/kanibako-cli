@@ -25,7 +25,7 @@ from kanibako.settings.agent_file import (
   write_leaf,
 )
 from kanibako.settings.settings_assemble import ReadPurpose, agent_record
-from kanibako.settings.config_io import dump_doc
+from kanibako.settings.config_io import convert_legacy_doc_text, dump_doc
 from kanibako.settings.kb_store import SCOPE_CONTAINMENT
 from kanibako.settings.settings_keyspace import BIND_LEAF_CATEGORIES
 from kanibako.settings.settings_resolve import SettingsError
@@ -49,7 +49,9 @@ class TestSecretPathSection:
   def test_load_secret_path_section(self, tmp_path):
     cfg_path = self._node_file(tmp_path)
     cfg_path.write_text(
-      'self:\n  secret_path:\n    ANTHROPIC_AUTH_TOKEN: "~/.config/claude/nav/token"\n'
+      convert_legacy_doc_text(
+        'self:\n  secret_path:\n    ANTHROPIC_AUTH_TOKEN: "~/.config/claude/nav/token"\n'
+      )
     )
     cfg = agent_record(cfg_path, node="claude", purpose=ReadPurpose.RESOLVE)
     # Only the PATH is loaded (a pointer), never any secret value. secret_path
@@ -60,7 +62,7 @@ class TestSecretPathSection:
 
   def test_load_missing_secret_path_section(self, tmp_path):
     cfg_path = self._node_file(tmp_path)
-    cfg_path.write_text('self:\n  model: "opus"\n')
+    cfg_path.write_text(convert_legacy_doc_text('self:\n  model: "opus"\n'))
     assert agent_record(cfg_path, node="claude", purpose=ReadPurpose.RESOLVE).secret_path == {}
 
   def test_load_present_null_secret_path_is_kept_as_none(self, tmp_path):
@@ -74,7 +76,9 @@ class TestSecretPathSection:
     # ``str(v)``-for-every-entry load and this comes back as the string
     # ``"None"`` → RED.)
     cfg_path = self._node_file(tmp_path)
-    cfg_path.write_text("self:\n  secret_path:\n    ANTHROPIC_AUTH_TOKEN: null\n")
+    cfg_path.write_text(
+      convert_legacy_doc_text("self:\n  secret_path:\n    ANTHROPIC_AUTH_TOKEN: null\n")
+    )
     cfg = agent_record(cfg_path, node="claude", purpose=ReadPurpose.RESOLVE)
     assert "ANTHROPIC_AUTH_TOKEN" in cfg.secret_path
     assert cfg.secret_path["ANTHROPIC_AUTH_TOKEN"] is None
@@ -121,12 +125,14 @@ class TestLoad:
   def test_load_all_sections(self, tmp_path):
     cfg_path = tmp_path / "test.yaml"
     cfg_path.write_text(
-      "self:\n"
-      '  run_args: ["--verbose", "--debug"]\n'
-      '  model: "opus"\n'
-      '  access: "permissive"\n'
-      "  env:\n"
-      '    MY_VAR: "hello"\n'
+      convert_legacy_doc_text(
+        "self:\n"
+        '  run_args: ["--verbose", "--debug"]\n'
+        '  model: "opus"\n'
+        '  access: "permissive"\n'
+        "  env:\n"
+        '    MY_VAR: "hello"\n'
+      )
     )
     cfg = agent_record(cfg_path, node="claude", purpose=ReadPurpose.RESOLVE)
     assert cfg.run_args == ["--verbose", "--debug"]
@@ -143,7 +149,7 @@ class TestLoad:
     # (Mutation: restore the unconditional ``str(v)`` and this comes back as
     # the string ``"None"`` → RED.)
     cfg_path = tmp_path / "test.yaml"
-    cfg_path.write_text("self:\n  model: null\n")
+    cfg_path.write_text(convert_legacy_doc_text("self:\n  model: null\n"))
     cfg = agent_record(cfg_path, node="claude", purpose=ReadPurpose.RESOLVE)
     assert "model" in cfg.state
     assert cfg.state["model"] is None
@@ -151,7 +157,7 @@ class TestLoad:
 
   def test_load_agent_section_only(self, tmp_path):
     cfg_path = tmp_path / "test.yaml"
-    cfg_path.write_text('self:\n  run_args: ["--verbose"]\n')
+    cfg_path.write_text(convert_legacy_doc_text('self:\n  run_args: ["--verbose"]\n'))
     cfg = agent_record(cfg_path, node="claude", purpose=ReadPurpose.RESOLVE)
     assert cfg.run_args == ["--verbose"]
     assert cfg.state == {}
@@ -160,7 +166,7 @@ class TestLoad:
   def test_load_state_keys_without_identity(self, tmp_path):
     # A root table with only state keys (no identity keys) → all land in state.
     cfg_path = tmp_path / "test.yaml"
-    cfg_path.write_text('self:\n  access: "safe"\n')
+    cfg_path.write_text(convert_legacy_doc_text('self:\n  access: "safe"\n'))
     cfg = agent_record(cfg_path, node="claude", purpose=ReadPurpose.RESOLVE)
     assert cfg.state == {"access": "safe"}
 
@@ -168,7 +174,7 @@ class TestLoad:
     # A root table holding only env (no identity/state keys): env still
     # loads, state stays empty.
     cfg_path = tmp_path / "test.yaml"
-    cfg_path.write_text('self:\n  env:\n    FOO: "bar"\n')
+    cfg_path.write_text(convert_legacy_doc_text('self:\n  env:\n    FOO: "bar"\n'))
     cfg = agent_record(cfg_path, node="claude", purpose=ReadPurpose.RESOLVE)
     assert cfg.state == {}
     assert cfg.env == {"FOO": "bar"}
@@ -191,7 +197,7 @@ class TestLoad:
     and this reds on the empty list.
     """
     cfg_path = tmp_path / "test.yaml"
-    cfg_path.write_text('self:\n  run_args: "--c --d"\n')
+    cfg_path.write_text(convert_legacy_doc_text('self:\n  run_args: "--c --d"\n'))
     assert agent_record(cfg_path, node="claude", purpose=ReadPurpose.RESOLVE).run_args == [
       "--c",
       "--d",
@@ -202,7 +208,7 @@ class TestLoad:
     the four-byte argument ``None`` — the same trap the ``model: null`` row
     above records."""
     cfg_path = tmp_path / "test.yaml"
-    cfg_path.write_text("self:\n  run_args:\n")
+    cfg_path.write_text(convert_legacy_doc_text("self:\n  run_args:\n"))
     assert agent_record(cfg_path, node="claude", purpose=ReadPurpose.RESOLVE).run_args == []
 
 
@@ -335,7 +341,7 @@ class TestRoundTrip:
     assert "state:" not in content
     assert content.count("self:") == 1
     assert "run_args:" in content
-    assert "model: sonnet" in content
+    assert 'model: "sonnet"' in content
 
     loaded = agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
     assert loaded.state == {"model": "sonnet"}
@@ -364,7 +370,7 @@ class TestCategoryTablesCarryThrough:
 
   def test_load_captures_the_unmodeled_categories(self, tmp_path):
     path = tmp_path / "agent.yaml"
-    path.write_text(self._FLAT_YAML)
+    path.write_text(convert_legacy_doc_text(self._FLAT_YAML))
     cfg = agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
     assert cfg.category_tables == {"bindings": {"ro": {"/box/share": ["/host/share"]}}}
     # And it is NOT mistaken for flat state (dict-valued entries excluded).
@@ -374,7 +380,7 @@ class TestCategoryTablesCarryThrough:
     from kanibako.settings.config_io import load_doc
 
     path = tmp_path / "agent.yaml"
-    path.write_text(self._FLAT_YAML)
+    path.write_text(convert_legacy_doc_text(self._FLAT_YAML))
     cfg = agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
     cfg.state["endpoint"] = "https://e.example"  # a read-modify-write
     save(path, cfg)
@@ -388,12 +394,14 @@ class TestCategoryTablesCarryThrough:
     # models, so widening one widens the other — no second list to keep in step.
     path = tmp_path / "agent.yaml"
     path.write_text(
-      "self:\n"
-      "  caches: {~/.cache/uv: [/store/uv]}\n"
-      "  seeded: {'~': [/store/template]}\n"
-      "  common: {~/.claude/plugins: [/store/plugins]}\n"
-      "  synced: {~/.config/x: [/store/x]}\n"
-      "  masks: {~/.ssh: true}\n"
+      convert_legacy_doc_text(
+        "self:\n"
+        "  caches: {~/.cache/uv: [/store/uv]}\n"
+        "  seeded: {'~': [/store/template]}\n"
+        "  common: {~/.claude/plugins: [/store/plugins]}\n"
+        "  synced: {~/.config/x: [/store/x]}\n"
+        "  masks: {~/.ssh: true}\n"
+      )
     )
     assert set(agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE).category_tables) == {
       "caches",
@@ -406,13 +414,15 @@ class TestCategoryTablesCarryThrough:
   def test_env_secret_transform_not_double_captured(self, tmp_path):
     path = tmp_path / "agent.yaml"
     path.write_text(
-      "self:\n"
-      "  env:\n"
-      "    A: b\n"
-      "  secret_path:\n"
-      "    TOK: /t\n"
-      "  transform_settings:\n"
-      "    theme: dark\n"
+      convert_legacy_doc_text(
+        "self:\n"
+        "  env:\n"
+        "    A: b\n"
+        "  secret_path:\n"
+        "    TOK: /t\n"
+        "  transform_settings:\n"
+        "    theme: dark\n"
+      )
     )
     cfg = agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
     assert cfg.category_tables == {}
@@ -432,7 +442,7 @@ class TestCategoryTablesCarryThrough:
     # beside it until D8b retired it, so a dict-valued ``name:`` IS a nested sub-table
     # now and DOES refuse.
     path = tmp_path / "agent.yaml"
-    path.write_text("self:\n  run_args:\n    weird: 2\n")
+    path.write_text(convert_legacy_doc_text("self:\n  run_args:\n    weird: 2\n"))
     cfg = agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
     assert cfg.category_tables == {}
 
@@ -543,7 +553,7 @@ class TestTheDestIsData:
   def _file_with(self, tmp_path, body):
     path = agent_settings_path(tmp_path, "claude")
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(body)
+    path.write_text(convert_legacy_doc_text(body))
     return path
 
   def test_a_dotted_bindings_dest_reads_back_whole(self, tmp_path):
@@ -847,7 +857,7 @@ class TestLoadSurvivesAMalformedTable:
 
   def test_a_scalar_at_a_table_key_does_not_raise(self, tmp_path):
     path = tmp_path / "agent.yaml"
-    path.write_text("self:\n  model: opus\n  transform_settings: oops\n")
+    path.write_text(convert_legacy_doc_text("self:\n  model: opus\n  transform_settings: oops\n"))
     cfg = agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)  # must not raise
     assert cfg.state == {"model": "opus"}
     assert cfg.transform_settings == {}
@@ -860,7 +870,7 @@ class TestLoadSurvivesAMalformedTable:
     # refused under ``agent: <node>:`` — so under ``self:`` too, where the launch used to
     # drop it without a word. The repair door (``reset --all``) never reads through here.
     path = tmp_path / "agent.yaml"
-    path.write_text(f"self:\n  model: opus\n  {key}: oops\n")
+    path.write_text(convert_legacy_doc_text(f"self:\n  model: opus\n  {key}: oops\n"))
     with pytest.raises(SettingsError) as exc:
       agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
     assert f"'agent.claude.{key}' is a namespace" in str(exc.value)
@@ -876,15 +886,17 @@ class TestClearOverrides:
 
     path = tmp_path / "agent.yaml"
     path.write_text(
-      "self:\n"
-      "  model: opus\n"
-      "  access: full\n"
-      "  secret_path:\n"
-      "    TOK_A: /a\n"
-      "    TOK_B: /b\n"
-      "  bindings:\n"
-      "    ro:\n"
-      "      /box/share: [/h/share]\n"
+      convert_legacy_doc_text(
+        "self:\n"
+        "  model: opus\n"
+        "  access: full\n"
+        "  secret_path:\n"
+        "    TOK_A: /a\n"
+        "    TOK_B: /b\n"
+        "  bindings:\n"
+        "    ro:\n"
+        "      /box/share: [/h/share]\n"
+      )
     )
     # FIVE LEAVES, the unit every scope's ``reset --all`` counts in
     # (``config_io.count_leaves``): model + access + TOK_A + TOK_B + one ``ro`` bind.
@@ -898,7 +910,7 @@ class TestClearOverrides:
     from kanibako.settings.config_io import load_doc
 
     path = tmp_path / "agent.yaml"
-    path.write_text("self:\n  model: opus\n")
+    path.write_text(convert_legacy_doc_text("self:\n  model: opus\n"))
     assert clear_overrides(path) == 1
     assert load_doc(path) == {}
 
@@ -911,7 +923,7 @@ class TestClearOverrides:
     from kanibako.settings.config_io import load_doc
 
     path = tmp_path / "agent.yaml"
-    path.write_text(f"self:\n  model: opus\n{stray}: x\n")
+    path.write_text(convert_legacy_doc_text(f"self:\n  model: opus\n{stray}: x\n"))
     with pytest.raises(SettingsError):
       agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
     assert clear_overrides(path) == 1
@@ -925,7 +937,7 @@ class TestClearOverrides:
     from kanibako.settings.config_io import load_doc
 
     path = tmp_path / "agent.yaml"
-    path.write_text(f"self: {value}\n")
+    path.write_text(convert_legacy_doc_text(f"self: {value}\n"))
     with pytest.raises(SettingsError):
       agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
     assert clear_overrides(path) == 1
@@ -936,7 +948,7 @@ class TestClearOverrides:
     from kanibako.settings.config_io import load_doc
 
     path = tmp_path / "agent.yaml"
-    path.write_text("self: {}\nbox: null\nworkset:\n  env:\n    A: '1'\n")
+    path.write_text(convert_legacy_doc_text("self: {}\nbox: null\nworkset:\n  env:\n    A: '1'\n"))
     assert clear_overrides(path) == 2
     assert load_doc(path) == {}
 
@@ -945,7 +957,7 @@ class TestClearOverrides:
     # It used to hold the one unconditional ``name`` line, which is why this case named
     # that key before.
     path = tmp_path / "agent.yaml"
-    path.write_text("self: {}\n")
+    path.write_text(convert_legacy_doc_text("self: {}\n"))
     assert clear_overrides(path) == 0
 
 
@@ -1172,7 +1184,7 @@ class TestTheStrayRuleOnTheProductionPath:
     from tests.support.assembly import assemble_levels_at
 
     agent_path = tmp_path / "agent.yaml"
-    agent_path.write_text(text)
+    agent_path.write_text(convert_legacy_doc_text(text))
     return assemble_levels_at(
       agent_name="claude",
       base_path=tmp_path / "absent-base.yaml",
@@ -1519,7 +1531,7 @@ class TestTheAgentTable:
     # ``box:`` here and ``agent: null`` in the system file.
     # (Mutation: exempt a ``None`` ``agent:`` again → both reads pass → RED.)
     path = tmp_path / "agent.yaml"
-    path.write_text("self:\n  env:\n    A: '1'\nagent:\n")
+    path.write_text(convert_legacy_doc_text("self:\n  env:\n    A: '1'\nagent:\n"))
     from tests.support.assembly import assemble_levels_at
 
     for read in (
@@ -1688,7 +1700,7 @@ class TestTheForwardCompatPassthroughIsClosed:
     # every file `kanibako setup` ever wrote carries that line, so this IS the poisoned
     # file a user meets. Every reader refuses it, and it still clears.
     path = tmp_path / "agent.yaml"
-    path.write_text("self:\n  name: Nav\n  junk: x\n")
+    path.write_text(convert_legacy_doc_text("self:\n  name: Nav\n  junk: x\n"))
     with pytest.raises(SettingsError, match="'name'"):
       agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
     assert clear_overrides(path) == 2
@@ -1718,7 +1730,9 @@ class TestLoadSharesTheRefusal:
 
   def test_load_refuses_what_the_cascade_refuses(self, tmp_path):
     path = tmp_path / "agent.yaml"
-    path.write_text("self:\n  model: opus\n  claude:\n    env:\n      EDITOR: vim\n")
+    path.write_text(
+      convert_legacy_doc_text("self:\n  model: opus\n  claude:\n    env:\n      EDITOR: vim\n")
+    )
     with pytest.raises(SettingsError) as exc:
       agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
     message = str(exc.value)
@@ -1729,7 +1743,9 @@ class TestLoadSharesTheRefusal:
     # The control: the predicate must not refuse the shape the flatten blesses.
     path = tmp_path / "agent.yaml"
     path.write_text(
-      "self:\n  model: opus\n  env:\n    EDITOR: vim\n  bindings:\n    ro:\n      /box/x: [/h/x]\n"
+      convert_legacy_doc_text(
+        "self:\n  model: opus\n  env:\n    EDITOR: vim\n  bindings:\n    ro:\n      /box/x: [/h/x]\n"
+      )
     )
     cfg = agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
     assert cfg.env == {"EDITOR": "vim"}
@@ -1809,7 +1825,7 @@ class TestAStoredBoolReachesTheVerbUnrendered:
   def _file(self, tmp_path, body):
     p = tmp_path / "claude" / "agent.yaml"
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text("self:\n" + body)
+    p.write_text(convert_legacy_doc_text("self:\n" + body))
     return agent_record(p, node="claude", purpose=ReadPurpose.RESOLVE)
 
   def test_env_bool_is_carried_as_a_bool(self, tmp_path):
@@ -1866,7 +1882,7 @@ class TestEveryNeighborOfABoolIsUntouched:
   def _file(self, tmp_path, body):
     p = tmp_path / "claude" / "agent.yaml"
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text("self:\n" + body)
+    p.write_text(convert_legacy_doc_text("self:\n" + body))
     return agent_record(p, node="claude", purpose=ReadPurpose.RESOLVE)
 
   @pytest.mark.parametrize("stored, rendered", ROWS)
@@ -1929,7 +1945,7 @@ class TestRecordLegacyVocabulary:
 
     path = tmp_path / "agent.yaml"
     path.write_text("self: [unterminated\n")
-    with pytest.raises(ConfigError, match="not valid YAML") as exc:
+    with pytest.raises(ConfigError, match="not valid Yapyon") as exc:
       agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
     assert str(path) in str(exc.value)
     dump_doc(path, {"self": {"model": "repaired"}})

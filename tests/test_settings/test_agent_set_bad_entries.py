@@ -24,6 +24,8 @@ from pathlib import Path
 
 import pytest
 
+from kanibako.settings.config_io import convert_legacy_doc_text
+
 _LOGGER = "kanibako.commands.agent_cmd"
 
 
@@ -322,8 +324,10 @@ class TestTheTempCopyPathNeverReachesTheUser:
     path = home / ".local/share/kanibako/agents/claude/agent.yaml"
     path.parent.mkdir(parents=True)
     path.write_text(
-      "self:\n  model: x\nagent:\n  Claude:\n    env:\n      A: b\n"
-      "pref:\n  agent:\n    claude:\n      model: y\n"
+      convert_legacy_doc_text(
+        "self:\n  model: x\nagent:\n  Claude:\n    env:\n      A: b\n"
+        "pref:\n  agent:\n    claude:\n      model: y\n"
+      )
     )
     env = {k: v for k, v in os.environ.items() if not k.startswith(("XDG_", "KANIBAKO"))}
     env.update(
@@ -387,7 +391,7 @@ class TestTheTempCopyPathNeverReachesTheUser:
 
   def test_a_write_step_refusal_names_the_real_file(self, agent_door, capsys):
     """A value the WRITE step rejects (not the reader) must also name the real file."""
-    path = self._write_raw(agent_door, b"self:\n  env: str\n")
+    path = self._write_raw(agent_door, b'self:\n  env: "str"\n')
 
     rc = _agent_set("claude", "env.FOO=bar")
     cap = capsys.readouterr()
@@ -402,7 +406,7 @@ class TestTheTempCopyPathNeverReachesTheUser:
     ("raw", "kv"),
     [
       (b"self:\n  model: [unclosed\n", "model=opus"),
-      (b"self:\n  env: str\n", "env.FOO=bar"),
+      (b'self:\n  env: "str"\n', "env.FOO=bar"),
     ],
     ids=["malformed-yaml", "non-table-parent"],
   )

@@ -19,7 +19,7 @@ import yaml
 
 from kanibako.settings.agent_config import agent_settings_path
 from kanibako.settings.agent_file import _CONTRIBUTED, _contribution, level_table
-from kanibako.settings.config_io import dump_doc, load_doc
+from kanibako.settings.config_io import convert_legacy_doc_text, dump_doc, load_doc
 from kanibako.settings.settings_assemble import (
   file_partial,
   parse_marker_map,
@@ -41,7 +41,7 @@ _SCOPE_TABLES: tuple[str, ...] = tuple(sorted(_CONTRIBUTED))
 def _agent_file(tmp_path: Path, body: str) -> Path:
   path = agent_settings_path(tmp_path / "agents", "claude")
   path.parent.mkdir(parents=True, exist_ok=True)
-  path.write_text(body)
+  path.write_text(convert_legacy_doc_text(body))
   return path
 
 

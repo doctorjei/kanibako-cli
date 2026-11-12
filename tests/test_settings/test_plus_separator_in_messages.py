@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import pytest
 
+from kanibako.settings.config_io import convert_legacy_doc_text
+
 from kanibako import cli
 from kanibako.settings.settings_resolve import SettingsError
 
@@ -50,7 +52,9 @@ class TestThroughTheCli:
   ):
     store = credentials_dir / "agents" / "nav+claude"
     store.mkdir(parents=True)
-    (store / "agent.yaml").write_text("self:\n  model: opus\n  zippity: 1\n")
+    (store / "agent.yaml").write_text(
+      convert_legacy_doc_text("self:\n  model: opus\n  zippity: 1\n")
+    )
     out = _run(["agent", "get", "nav+claude", "model"], capsys)
     assert "\n  kanibako agent reset nav+claude --all\n" in out, out
     assert "the agent settings file for 'nav+claude'" in out, out
@@ -63,7 +67,7 @@ class TestThroughTheCli:
   ):
     store = credentials_dir / "agents" / "nav+claude"
     store.mkdir(parents=True)
-    (store / "agent.yaml").write_text("self:\n  bindings:\n    zz: {}\n")
+    (store / "agent.yaml").write_text(convert_legacy_doc_text("self:\n  bindings:\n    zz: {}\n"))
     out = _run(["agent", "get", "nav+claude", "model"], capsys)
     assert "carries 'agent.nav+claude.bindings.zz'" in out, out
     assert "℘" not in out, out

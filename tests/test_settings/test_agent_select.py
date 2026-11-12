@@ -19,7 +19,7 @@ from pathlib import Path
 
 import pytest
 
-from kanibako.settings.config_io import dump_doc, parse_doc_text
+from kanibako.settings.config_io import convert_legacy_doc_text, dump_doc, parse_doc_text
 
 from kanibako.settings.agent_select import AgentSelection, SELECTION_KEY
 from tests.support.agent_selection import agent_selection
@@ -560,7 +560,7 @@ class TestSelectAgentSeam:
     )
     std, proj = _std(tmp_path), _proj(tmp_path)
     box_file, _ws = _box_workset(proj)
-    box_file.write_text("box:\n  agent_name:\n")
+    box_file.write_text(convert_legacy_doc_text("box:\n  agent_name:\n"))
     with pytest.raises(SettingsError) as ei:
       select_agent(std=std, proj=proj, explicit_agent=None)
     assert "box.agent_name" in str(ei.value)
@@ -617,9 +617,8 @@ class TestSelectAgentSeam:
     ``pref.system.agent: shell`` (the retired underscore spelling — MIGRATION.md
     § "The plain-shell store is").
 
-    ⚑ Every spelling here is one YAML reads as Python ``None`` — including a key
-    left BLANK after its colon, which makes this state reachable by typo. The
-    refusal therefore has to name the state, not echo a value.
+    Legacy null spellings pass through the explicit converter; native ``None``
+    goes directly to the owned reader. Each must reach the same refusal.
 
     MUTATION: return ``AgentSelection(node="", source="suppressed")`` again and
     every row launches a plain shell where the user asked for an agent.
@@ -634,7 +633,11 @@ class TestSelectAgentSeam:
     std, proj = _std(tmp_path), _proj(tmp_path)
     dump_doc(std.settings, {"system": {"agent": "claude"}})
     box_file, _ws = _box_workset(proj)
-    box_file.write_text(f"pref:\n  system:\n    agent: {spelling}\n")
+    box_file.write_text(
+      f"pref:\n  system:\n    agent: {spelling}\n"
+      if spelling == "None"
+      else convert_legacy_doc_text(f"pref:\n  system:\n    agent: {spelling}\n")
+    )
     with pytest.raises(AgentNoDefaultError) as ei:
       select_agent(std=std, proj=proj, explicit_agent=None)
     msg = str(ei.value)
@@ -665,7 +668,7 @@ class TestSelectAgentSeam:
     )
     std, proj = _std(tmp_path), _proj(tmp_path)
     box_file, _ws = _box_workset(proj)
-    box_file.write_text(f"pref:\n  system:\n    agent: {spelling}\n")
+    box_file.write_text(convert_legacy_doc_text(f"pref:\n  system:\n    agent: {spelling}\n"))
     with pytest.raises(AgentNotInstalledError) as ei:
       select_agent(std=std, proj=proj, explicit_agent=None)
     msg = str(ei.value)
@@ -734,7 +737,7 @@ class TestABlankExplicitRefIsGivenNotUnset:
     std, proj = _std(tmp_path), _proj(tmp_path)
     dump_doc(std.settings, {"system": {"agent": "claude"}})
     box_file, _ws = _box_workset(proj)
-    box_file.write_text("pref:\n  system:\n    agent:\n")
+    box_file.write_text(convert_legacy_doc_text("pref:\n  system:\n    agent:\n"))
 
     with pytest.raises(ConfigError) as ei:
       select_agent(std=std, proj=proj, explicit_agent=blank)
@@ -1233,7 +1236,9 @@ class TestSelectedRegisteredPrefs:
 
     env = public_input
     env.box.write_text(
-      "pref:\n  agent:\n    scout:\n      provider: first\n    claude:\n      provider: second\n"
+      convert_legacy_doc_text(
+        "pref:\n  agent:\n    scout:\n      provider: first\n    claude:\n      provider: second\n"
+      )
     )
     with pytest.raises(SettingsError, match="scout.provider"):
       select_agent(std=env.std, proj=env.proj)
