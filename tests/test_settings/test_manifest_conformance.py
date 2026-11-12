@@ -77,6 +77,7 @@ from kanibako.settings.config import (
   AGENT_META_FILE,
   WORKSET_META_FILE,
 )
+from kanibako.settings.config_io import load_packaged_mapping
 from kanibako.settings.config_keys import _KEY_ROUTES
 from kanibako.launch.templates import agent_template_defaults
 from kanibako.settings.core_defaults import (
@@ -191,7 +192,7 @@ class TestManifestLoader:
       )
     )
     assert shipped.is_file(), f"packaged manifest not found at {shipped}"
-    assert manifest_doc() == yaml.safe_load(shipped.read_text())
+    assert manifest_doc() == load_packaged_mapping(shipped, KEYSPACE_MANIFEST_FILENAME)
 
   def test_it_hands_out_a_fresh_document_every_call(self):
     """Copy-out at the boundary (P8): the parse is shared, the document is not.
@@ -1562,40 +1563,54 @@ def _kinemata_selects(where: object, key: str, row: dict) -> bool:
   )
 
 
-#: The ``[[registry]]`` keys this ledger reads — every one the carrying views use today.
-#: kinemata accepts more on a ``yaml-mapping`` (``flatten``/``separator`` respell every
-#: identifier, and others it may add), and each could change which rows a view compares.
-_READ_REGISTRY_KEYS = frozenset({"name", "kind", "source", "section", "where"})
+#: Only the owned adapter's constructor and the loader's name/kind/target keys.
+_MANIFEST_TARGET = "kinemata_manifest:ManifestRegistry"
+_READ_REGISTRY_KEYS = frozenset({"name", "kind", "target", "section", "where", "clause_field"})
 
 
 def _assert_registry_is_read(registry: dict) -> None:
-  """Refuse a carrying registry this ledger would misread — the ``where`` stance again.
-
-  A ``yaml-mapping`` over the manifest's ``keys`` is the one shape read here: a
-  ``flatten`` would spell the ids ``a<sep>b`` where this ledger reads manifest row ids,
-  and a key it does not know might narrow the rows.  Guessing would count a row kinemata
-  never compares, or drop one it does, so the derivation RAISES naming the key instead.
-  """
+  """Refuse a carrier whose target or arguments this ledger would misread."""
   name = registry.get("name")
-  assert registry.get("kind") == "yaml-mapping", (
-    f"kinemata registry {name!r} reads the manifest as {registry.get('kind')!r}, which "
-    f"this ledger does not read — teach _kinemata_carried the kind, never skip the view"
+  assert registry.get("kind") == "import" and registry.get("target") == _MANIFEST_TARGET, (
+    f"kinemata registry {name!r} must use {_MANIFEST_TARGET!r} via kind='import'"
   )
   unread = sorted(set(registry) - _READ_REGISTRY_KEYS)
   assert not unread, (
     f"kinemata registry {name!r} sets {unread}, which this ledger does not read — "
     f"teach _kinemata_carried what they do to the compared rows, never skip the view"
   )
+  section = registry.get("section")
+  assert isinstance(section, str) or (
+    isinstance(section, list) and all(isinstance(step, str) for step in section)
+  ), f"kinemata registry {name!r} needs a literal section key or list path"
 
 
 def _reads_manifest(registry: dict) -> bool:
-  """Whether a ``[[registry]]`` reads the shipped keyspace manifest."""
-  return Path(str(registry.get("source", ""))).parts[-5:] == (
+  """Recognize the owned reader, retaining old sources so stale routes fail loudly."""
+  return registry.get("target") == _MANIFEST_TARGET or Path(str(registry.get("source", ""))).parts[
+    -5:
+  ] == (
     "kanibako",
     "data",
     *PACKAGED_SETTINGS_PARTS,
     KEYSPACE_MANIFEST_FILENAME,
   )
+
+
+@pytest.mark.parametrize(
+  "change",
+  [
+    {"kind": "yaml-mapping"},
+    {"target": "kinemata_views:EntryOwners"},
+    {"source": "alternate.yaml"},
+    {"flatten": 2},
+    {"section": 42},
+  ],
+)
+def test_manifest_ledger_refuses_unread_carriers(change):
+  registry = {"name": "probe", "kind": "import", "target": _MANIFEST_TARGET, "section": "keys"}
+  with pytest.raises(AssertionError):
+    _assert_registry_is_read(registry | change)
 
 
 def _kinemata_carried() -> dict[str, dict[str, tuple[str, ...]]]:

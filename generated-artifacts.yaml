@@ -196,4 +196,5 @@ artifacts:
   api-docs/kanibako/vscode/__init__.py.md:
   api-docs/kanibako/vscode/vscode_config.py.md:
   api-docs/kanibako/vscode/vscode_remote.py.md:
+  api-docs/kinemata_manifest.py.md:
   api-docs/kinemata_views.py.md:

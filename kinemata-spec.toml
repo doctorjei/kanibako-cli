@@ -30,22 +30,22 @@ root = "."
 # `spec-2g-not-keys` the two names the table declares are NOT keys.
 [[registry]]
 name = "spec-2g-defaults"
-kind = "yaml-mapping"
-source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
+kind = "import"
+target = "kinemata_manifest:ManifestRegistry"
 section = "keys"
 where = { holds = "kinemata_views:system_value_row" }
 
 [[registry]]
 name = "spec-2g-keys"
-kind = "yaml-mapping"
-source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
+kind = "import"
+target = "kinemata_manifest:ManifestRegistry"
 section = "keys"
 where = { id_matches = '^system\.' }
 
 [[registry]]
 name = "spec-2g-not-keys"
-kind = "yaml-mapping"
-source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
+kind = "import"
+target = "kinemata_manifest:ManifestRegistry"
 section = "keys"
 where = { id_matches = '^system\.' }
 
