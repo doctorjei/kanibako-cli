@@ -146,6 +146,52 @@ class TestCreateWorkset:
       with pytest.raises(WorksetError, match="is reserved"):
         create_workset(spelling, tmp_home / "worksets" / spelling, std)
 
+  @pytest.mark.parametrize("name", ["__", "___", "____", "_____", "__x__", "__cache__", "__MiXeD__"])
+  def test_dunder_rejection_does_not_create_or_register(self, std, tmp_home, name):
+    create_workset("keeper", tmp_home / "keeper", std)
+    before = std.registry.read_bytes()
+    root = tmp_home / "absent_parent" / name
+    with pytest.raises(WorksetError, match="must not be a dunder") as exc:
+      create_workset(name, root, std)
+    assert f"kanibako workset create {root} --name <new-name>" in str(exc.value)
+    assert not root.parent.exists()
+    assert std.registry.read_bytes() == before
+
+  @pytest.mark.parametrize("name", ["_", "__x", "x__", "_x_", "items", "get", "MiXeD"])
+  def test_non_dunder_names_keep_their_case(self, std, tmp_home, name):
+    root = tmp_home / "worksets" / name
+    assert create_workset(name, root, std).name == name
+    assert list_worksets(std) == {name: root.resolve()}
+
+  @pytest.mark.parametrize(
+    "name, expected",
+    [
+      ("__bad-name__", "must not contain '-'"),
+      ("__" + "x" * 61 + "__", "must be at most 64 characters"),
+      ("__DEFAULT__", "is reserved and cannot be used"),
+      ("__primary__", "is reserved and cannot be used"),
+    ],
+  )
+  def test_existing_refusal_priority_survives(self, std, tmp_home, name, expected):
+    root = tmp_home / "absent_parent" / "root"
+    with pytest.raises(WorksetError) as exc:
+      create_workset(name, root, std)
+    assert expected in str(exc.value)
+    assert "dunder" not in str(exc.value)
+    assert not root.parent.exists()
+    assert not std.registry.exists()
+
+  def test_workset_rule_does_not_change_generic_or_generated_box_names(self):
+    from kanibako.identifiers import LEADING_DIGIT_FLAW, name_flaw
+    from kanibako.launch.box_identity import is_valid_box_name
+    from kanibako.project.workset import workset_name_flaw
+
+    assert name_flaw("__cache__") is None
+    assert workset_name_flaw("__cache__") == "must not be a dunder ('__*__')"
+    assert workset_name_flaw("2set") == LEADING_DIGIT_FLAW
+    assert is_valid_box_name("__cache__")
+    assert is_valid_box_name("00001_app")
+
   def test_existing_root_raises(self, std, tmp_home):
     root = tmp_home / "worksets" / "existing"
     root.mkdir(parents=True)

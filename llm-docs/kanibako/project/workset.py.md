@@ -641,14 +641,14 @@ Create a new workset directory structure and register it globally.
 **The refusals, in the order they fire — every one BEFORE any on-disk side effect** (each raises
 `WorksetError`):
 
-1. **The name rule** — an empty name, then `name_flaw` (spec §0), with a cure offering the name's
-   spelling (`box_identity.name_spelling`).
-2. **Reserved sentinel** — see `RESERVED_WORKSET_NAMES`.
-3. **Same-kind uniqueness (D-B3)** — a NAMED workset's name is a user-typed shared-channel address,
-   so it must be unique across all registered worksets, compared case-blind; the refusal names the
-   STORED spelling when it differs. Refuse on collision, **never auto-suffix**, and point the user
-   at the existing root. Box and workset names are separate namespaces (system-design § Detection &
-   import); only a same-kind collision refuses.
+1. **The name rule** — empty, then `workset_name_flaw`: generic `name_flaw` (spec §0), then
+   names starting AND ending with `__` (`__`, `___`, `____`, `__x__`). Finite reserved names
+   keep their refusal. Cure: `box_identity.name_spelling` if legal, else `<new-name>`.
+2. **Reserved sentinel** — see `RESERVED_WORKSET_NAMES`; its predicate and registered-name readers
+   stay unchanged. Import shares this verdict for introductions only.
+3. **Same-kind uniqueness (D-B3)** — NAMED workset names must be unique, case-blind. Refuse collisions;
+   name the STORED spelling and root; **never auto-suffix**. Box and workset namespaces stay separate
+   (system-design § Detection & import).
 4. **The root already exists.**
 5. **An inherited per-owner key** (`refuse_inherited_per_owner`): a system-tier value for a
    per-owner early key that reaches no owner identity. A value the grammar refuses (an old

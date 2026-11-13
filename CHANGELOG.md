@@ -42,17 +42,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New standalone markers use quoted YamlPlus; legacy markers stay unchanged. See
   [MIGRATION.md](MIGRATION.md#owned-documents-read-yapyon-and-write-yamlplus) before
   downgrading to a raw-only 1.8.x reader.
-- **A blank `-e VAR=` now suppresses the credential instead of being ignored.** On
-  `kanibako start`, a blank or whitespace-only value for a persona's token
-  variable means "run without it": nothing is read, stat'd, fetched, staged,
-  mounted or exported for the shadowed `secret_path`, and the persona
-  verification probe is skipped. The launch reports `UNVERIFIED` and proceeds —
-  it is never reported as passing. Previously a blank `-e` fell through to the
-  `secret_path.<VAR>` file and the launch was verified against it. A launch that
-  used to fail with *"no usable auth token"* (no `secret_path` configured and a
-  blank `-e`) now starts, unverified. A non-blank `-e VAR=<token>` is unchanged.
-  An intentionally keyless endpoint (`secret_path.<VAR>: null`) is unaffected and
-  is still probed without an `Authorization` header.
+- New named worksets reject dunder names, including directory-derived names and
+  imports. See [New workset names cannot be dunders](MIGRATION.md#new-workset-names-cannot-be-dunders).
+- **Blank `-e VAR=` now suppresses credentials.** On `kanibako start`, blank or
+  whitespace-only persona tokens skip all shadowed `secret_path` reads, stats,
+  fetches, staging, mounts, exports, and persona verification probes. Launch proceeds
+  as `UNVERIFIED`, never passing. Previously blank `-e` used `secret_path.<VAR>`
+  for verification; without that setting it failed with *"no usable auth token"*.
+  It now starts unverified. Non-blank `-e VAR=<token>` is unchanged. Intentionally
+  keyless endpoints (`secret_path.<VAR>: null`) still probe without an
+  `Authorization` header.
 
 ## [1.8.0] - 2026-10-25
 

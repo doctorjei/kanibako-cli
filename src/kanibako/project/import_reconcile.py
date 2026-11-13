@@ -382,7 +382,7 @@ def import_named_workset(
   root = Path(literal_path(root))
   root_str = str(root)
 
-  from kanibako.project.workset import is_reserved_workset_name
+  from kanibako.project.workset import is_reserved_workset_name, workset_name_flaw
 
   # ⚑ A DERIVED name must clear the SAME bars ``create_workset`` puts in front of a
   # typed one: no empty name (only the filesystem root has one), no reserved
@@ -427,6 +427,13 @@ def import_named_workset(
   if registered is not None:
     _clear_stale_import(journal, Path(names_section[registered[0]]))
     return registered[0]
+  if (flaw := workset_name_flaw(name)) is not None:
+    print(
+      f"Warning: not importing the workset at {root}: the workset name '{name}' "
+      f"taken from its directory {flaw}. Rename the directory to import it.",
+      file=sys.stderr,
+    )
+    return None
   current = names_section.get(name)
   if current is not None:
     # SAME-KIND: the name is another WORKSET's.  Refuse, leave the tree on disk.

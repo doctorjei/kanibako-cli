@@ -118,6 +118,34 @@ class TestWorksetCreate:
     assert f"kanibako workset create {ws_root} --name {spelled}" in err, err
     assert not ws_root.exists()
 
+  @pytest.mark.parametrize(
+    "folder, typed",
+    [
+      ("typed_root", "__cache__"), ("__", None), ("___", None),
+      ("____", None), ("__x__", None), ("--cache..", None),
+    ],
+  )
+  def test_create_dunder_refusal_precedes_disk_and_registry_writes(
+    self, config_file, tmp_home, capsys, folder, typed
+  ):
+    from kanibako.cli import build_parser
+    from kanibako.commands.workset_cmd import run_create
+
+    std = load_std_paths(load_config(config_file))
+    create_workset("keeper", tmp_home / "keeper", std)
+    before = std.registry.read_bytes()
+    root = tmp_home / "absent_parent" / folder
+    argv = ["workset", "create", str(root)]
+    if typed is not None:
+      argv += ["--name", typed]
+    args = build_parser().parse_args(argv)
+    assert run_create(args) == 1
+    err = capsys.readouterr().err
+    assert "must not be a dunder" in err
+    assert f"kanibako workset create {root} --name <new-name>" in err
+    assert not root.parent.exists()
+    assert std.registry.read_bytes() == before
+
   def test_create_with_name_override(self, config_file, tmp_home, capsys):
     from kanibako.commands.workset_cmd import run_create
 

@@ -551,13 +551,13 @@ $XDG_DATA_HOME/kanibako/primary_workset/
 
 ### Named workset
 
-A workset is a *named* project group rooted at a directory you pick.  It groups
-related projects under one human-readable root, with a single `<root>/workset.yaml`
-(identity + member list + a group-level settings/auth tier that member boxes
-inherit; see [Configuration](#configuration)).  A workset name is a shared
-address and must be unique -- a collision at create/import time is refused.
-Box and workset names are ASCII letters, digits, and `_`, and do not start with
-a digit; a name taken from a directory writes `_` for each `-` and `.`.
+A *named* workset groups projects under a directory you pick. Its `<root>/workset.yaml`
+holds inherited group settings/auth (see [Configuration](#configuration)); `<root>/registry.yaml`
+holds members.
+Workset names are unique shared addresses; create/import refuses collisions.
+Box and workset names use ASCII letters, digits, and `_`, without a leading digit;
+directory-derived names replace `-` and `.` with `_`. New worksets, including imports,
+cannot use dunder names (`__x__`); other name kinds are unchanged.
 
 ```bash
 kanibako workset create ~/worksets/research --name my_research

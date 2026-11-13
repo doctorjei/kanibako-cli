@@ -1344,6 +1344,17 @@ def is_reserved_workset_name(name: str) -> bool:
   return find_identifier(name, RESERVED_WORKSET_NAMES) is not None
 
 
+def workset_name_flaw(name: str) -> str | None:
+  """Why a NEW workset name is invalid; finite reserved names keep their own refusal."""
+  flaw = name_flaw(name)
+  if flaw is not None:
+    return flaw
+  if name.startswith("__") and name.endswith("__"):
+    if not is_reserved_workset_name(name):
+      return "must not be a dunder ('__*__')"
+  return None
+
+
 # ---------------------------------------------------------------------------
 # Data classes
 # ---------------------------------------------------------------------------
@@ -2029,12 +2040,16 @@ def create_workset(
     raise WorksetError("Workset name must not be empty.")
 
   # ⚑ The name rule (spec §0) — the ONE gate, typed (``--name``) or derived alike.
-  flaw = name_flaw(name)
+  flaw = workset_name_flaw(name)
   if flaw is not None:
     from kanibako.launch.box_identity import name_spelling
 
     offer = name_spelling(name)
-    spelled = offer[0] if offer is not None else "<new-name>"
+    spelled = (
+      offer[0]
+      if offer is not None and workset_name_flaw(offer[0]) is None
+      else "<new-name>"
+    )
     raise WorksetError(
       ERR_WORKSET_NAME
       % (

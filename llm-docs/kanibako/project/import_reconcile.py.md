@@ -85,10 +85,10 @@ message text is built once in `_conflict` so standalone and workset refusals rea
 Box and workset names are separate namespaces (system-design § Detection & import); only a
 same-kind collision refuses. A workset sharing a primary box's name imports normally.
 
-⚑ The derived name does clear create's bars — no empty name, no name-rule flaw, no reserved name. It
-RETURNS `None` where create RAISES, because this one is answering a treewalk stepping past an
-ordinary directory rather than a user who can retype: a directory named `default` must not make
-every command fail.
+⚑ Import declines empty, generic-invalid, or finite reserved names before its registered-root
+return. New names pass `workset.workset_name_flaw`: starting AND ending with `__` refuses,
+including `__` and `___`. It warns with a directory-rename cure and RETURNS `None`, leaving tree,
+registry, and journal untouched; registered-root behavior stays unchanged.
 
 ## `box_data/` — the box dir, and the journal key it forms
 
@@ -183,9 +183,9 @@ box is already seeded on disk.
 (system-design § "Detection & import") as `identifiers.derived_name(root.name)`: `_` for each
 `-` and `.` (spec §0).
 
-Order of operations: derive the name → bar checks → `$HOME` guard → already-registered check by
-DIRECTORY (`names.lookup_by_path`, under any name; plus stale-entry clear) → same-kind collision
-check → journaled register → alert.
+Order: derive name → generic/reserved checks → `$HOME` guard → registered DIRECTORY
+(`names.lookup_by_path`, any name; stale-entry clear) → new-name dunder check → same-kind collision
+→ journaled register → alert.
 The section it writes is `registry.worksets`, the name → root index backing both name lookups and
 workset discovery. Registration goes through `names.register_name` — the SOLE writer of that
 section.

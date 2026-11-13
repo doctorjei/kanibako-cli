@@ -19,15 +19,14 @@ config notes are in the [CHANGELOG](CHANGELOG.md).
 ## Owned documents read Yapyon and write YamlPlus
 
 Owned config/settings, agent/default files, registries, and `spawn.yaml` read public
-Yapyon and write YamlPlus; extensions stay `.cfg`/`.yaml`. There is no runtime
-format selector or legacy fallback. Native tool configs, workflows, and template
-formats stay native; third-party stores, including Persona Grata's, are not
-Kanibako-owned conversion targets. Do not convert every `.yaml` file.
+Yapyon and write YamlPlus, retaining `.cfg`/`.yaml`. No format selector or
+legacy fallback exists. Native tool configs/workflows/templates stay native;
+third-party stores, including Persona Grata's, are excluded. Do not convert every
+`.yaml` file.
 
-Use `kanibako.settings.config_io.convert_legacy_doc_text(text, *, source=None) -> str`
-for explicitly selected legacy owned YAML. `source` labels diagnostics; it opens
-no path. In a Python environment containing this Kanibako build, preview disposable
-text before considering any real file:
+In this build's Python environment, preview selected legacy owned YAML as disposable
+text with `kanibako.settings.config_io.convert_legacy_doc_text(text, *, source=None) -> str`.
+`source` labels diagnostics, opening no path:
 
 ```bash
 python -I - <<'PY'
@@ -38,27 +37,35 @@ print(convert_legacy_doc_text(text, source="disposable-agent.yaml"), end="")
 PY
 ```
 
-This prints text only: no discovery, file replacement, or conversion CLI. It does
-not rename keys or perform the historical release guides' manual steps.
+This prints text only: no discovery, file replacement, conversion CLI, key renaming,
+or historical guides' manual steps.
 
-Output normalization turns tuples into lists, dates/timestamps into ISO text
-(using their string spelling, including spaces/offsets), and bytes into strings
-such as `"b'abc'"`. References, environment expressions, and `~` paths remain
-unresolved strings. Python-type identity, alias identity, and source layout are
-not preserved; NaN/infinity handling is outside this conversion's scope.
+Normalization makes tuples lists, dates/timestamps ISO strings (preserving their
+string spelling, including spaces/offsets), and bytes strings such as `"b'abc'"`.
+References, environment expressions, and `~` paths stay unresolved strings.
+Python-type/alias identity and source layout are not preserved; NaN/infinity is
+outside scope.
 
-Conversion retains comment occurrences and destinations: trailing comments may
-move before their values; merge comments move to the receiving mapping. Later
-registry writes still rebuild the document, lose user comments, and restore the
-generated warning header; unknown top-level sections are dropped with a warning.
-Blank/comment-only bootstraps remain unchanged.
+Conversion retains comment occurrences and destinations; trailing comments may
+precede values, and merge comments move to receiving mappings. Later registry
+writes rebuild documents, lose user comments, restore the generated warning header,
+and warn when dropping unknown top-level sections. Blank/comment-only bootstraps
+stay unchanged.
 
-New standalone markers contain `"__STANDALONE__"`, a quoted YamlPlus string.
-Existing raw markers remain accepted and are never automatically rewritten.
-Raw-only 1.8.x readers, including released 1.8.0, do not recognize quoted markers.
-Before downgrading, replace only the standalone marker with raw
-`__STANDALONE__`, by hand. No unrestricted 1.8.x/new-reader round trip is promised:
-an older writer may emit legacy text again. This change adds no 1.8.x shim.
+New standalone markers contain the quoted YamlPlus string `"__STANDALONE__"`.
+Raw markers stay accepted, never automatically rewritten. Raw-only
+1.8.x readers, including released 1.8.0, cannot recognize quoted markers.
+Before downgrading, hand-replace only the standalone marker with raw
+`__STANDALONE__`. No unrestricted 1.8.x/new-reader round trip is promised:
+older writers may re-emit legacy text. No 1.8.x shim.
+
+## New workset names cannot be dunders
+
+For new worksets—explicit, directory-derived, or imported—choose non-dunder names.
+Names starting and ending with `__` (`__`, `___`, `____`, `__x__`, `__cache__`)
+are refused before mutation; one-sided forms remain legal. Other name kinds,
+virtual aliases, and reserved-name rules/cures stay unchanged. No automatic data
+renaming/deletion occurs; legacy dunders may fail.
 
 ## Registered Persona Grata agents and one-shot credentials
 

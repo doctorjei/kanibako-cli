@@ -447,6 +447,49 @@ class TestNamedWorksetImport:
     assert str(root.resolve()) in err, err
     assert f"'{leaf}' is a reserved workset name" in err, err
 
+  @pytest.mark.parametrize("leaf", ["__", "___", "____", "__x__", "__cache__", "--cache..", "__bad-name__"])
+  def test_dunder_import_leaves_tree_registry_and_journal_untouched(
+    self, std, tmp_home, capsys, leaf
+  ):
+    root = tmp_home / "holder" / leaf
+    create_workset("holder_ws", root, std)
+    registry_store.save_section(std.registry, "worksets", {})
+    before_registry = std.registry.read_bytes()
+    before_tree = sorted(p.relative_to(root) for p in root.rglob("*"))
+    capsys.readouterr()
+
+    assert import_reconcile.import_named_workset(std.registry, root, journal=std.journal) is None
+    err = capsys.readouterr().err
+    assert err.count("Warning: ") == 1
+    assert str(root) in err
+    assert "must not be a dunder" in err
+    if leaf == "__bad-name__":
+      assert "workset name '__bad_name__'" in err
+    assert "Rename the directory to import it." in err
+    assert std.registry.read_bytes() == before_registry
+    assert sorted(p.relative_to(root) for p in root.rglob("*")) == before_tree
+    assert not std.journal.exists()
+
+  @pytest.mark.parametrize("leaf", ["__x", "x__", "items", "get", "MiXeD"])
+  def test_non_dunder_import_keeps_case(self, std, tmp_home, capsys, leaf):
+    root = tmp_home / "holder" / leaf
+    create_workset("holder_ws", root, std)
+    registry_store.save_section(std.registry, "worksets", {})
+    assert import_reconcile.import_named_workset(std.registry, root) == leaf
+    assert registry_store.load_section(std.registry, "worksets") == {leaf: str(root)}
+
+  def test_registered_dunder_basename_still_returns_its_registered_name(
+    self, std, tmp_home, capsys
+  ):
+    """A valid registration wins over its dunder basename, not an invalid registry key."""
+    root = tmp_home / "__cache__"
+    create_workset("old_name", root, std)
+    before = std.registry.read_bytes()
+    capsys.readouterr()
+    assert import_reconcile.import_named_workset(std.registry, root) == "old_name"
+    assert std.registry.read_bytes() == before
+    assert capsys.readouterr().err == ""
+
   def test_a_home_directory_root_is_declined_not_refused(
     self,
     std,
