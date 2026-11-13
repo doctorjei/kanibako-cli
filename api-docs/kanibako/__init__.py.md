@@ -9,5 +9,5 @@ _Signatures only: no comments, no docstrings, no bodies._
 ```
 SETUP_BCV = '1.8.0'
 SETUP_FCV = '1.8.0'
-__version__ = '1.8.0'
+__version__ = '1.9.0'
 ```
