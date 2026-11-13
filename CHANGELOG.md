@@ -8,23 +8,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > Releases before v1.3.0 are not yet backfilled here. For their notes and full
 > changelogs, see the [GitHub releases](https://github.com/doctorjei/kanibako-cli/releases).
 
-## [Unreleased]
+## [1.9.0] - 2026-11-13
 
 ### Added
 
-- Explicit legacy owned-YAML text conversion through
-  `kanibako.settings.config_io.convert_legacy_doc_text`; preview instructions in
+- Explicit legacy owned-YAML text conversion:
+  `kanibako.settings.config_io.convert_legacy_doc_text`; preview:
   [MIGRATION.md](MIGRATION.md#owned-documents-read-yapyon-and-write-yamlplus).
 - Select registered Persona Grata agents through its public API. Winning manager
-  credentials use a one-shot inherited pipe, closed before the existing entrypoint
-  starts. Ordinary harness and file-secret delivery remain unchanged.
+  credentials use a one-shot inherited pipe, closed before entrypoint execution.
+  Ordinary harness and file-secret delivery remain unchanged.
 
 ### Fixed
 
-- Box creation stops on invalid agent configuration before recording or seeding the box.
-- Effective box display preserves live persona values in scalar fields.
-- Box configuration validates references and reports reset values using live persona input.
-- System config commands retain live persona input when validating named-agent settings.
+- Invalid agent configuration stops box creation before recording or seeding.
+- Effective box display preserves scalar live persona values.
+- Box configuration validates references and reports resets with live persona input.
+- System config validation retains live persona input for named-agent settings.
 - Named-agent validation and label displays use live persona values.
 - Workset configuration validates persona-backed references without storing live values.
 - By-value persona probe diagnostics redact exact credentials, including short values;
@@ -44,14 +44,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   downgrading to a raw-only 1.8.x reader.
 - New named worksets reject dunder names, including directory-derived names and
   imports. See [New workset names cannot be dunders](MIGRATION.md#new-workset-names-cannot-be-dunders).
-- **Blank `-e VAR=` now suppresses credentials.** On `kanibako start`, blank or
-  whitespace-only persona tokens skip all shadowed `secret_path` reads, stats,
-  fetches, staging, mounts, exports, and persona verification probes. Launch proceeds
-  as `UNVERIFIED`, never passing. Previously blank `-e` used `secret_path.<VAR>`
-  for verification; without that setting it failed with *"no usable auth token"*.
-  It now starts unverified. Non-blank `-e VAR=<token>` is unchanged. Intentionally
-  keyless endpoints (`secret_path.<VAR>: null`) still probe without an
-  `Authorization` header.
+- **Blank `-e VAR=` suppresses credentials.** On `kanibako start`, blank or
+  whitespace-only persona tokens skip shadowed `secret_path` reads, stats,
+  fetches, staging, mounts, exports, and persona verification probes. Launch is
+  `UNVERIFIED`, never passing. Previously blank `-e` verified through `secret_path.<VAR>`
+  or failed with *"no usable auth token"* if unset. Non-blank `-e VAR=<token>` is unchanged.
+  Intentionally keyless endpoints (`secret_path.<VAR>: null`) still probe without
+  an `Authorization` header.
+- Goose/Codex plugins: 0.7.0. All plugins require `kanibako-cli>=1.9.0.dev0,<2.0`;
+  core 1.8.0 lacks their imported helpers. Meta-package Goose/Codex floors are `>=0.7.0`.
 
 ## [1.8.0] - 2026-10-25
 

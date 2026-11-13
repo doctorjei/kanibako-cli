@@ -1,11 +1,11 @@
 # kanibako migration guides
 
-Release guides are manual runbooks; unreleased changes are separate. Read your
-destination release's guide; when skipping releases, work oldest-first.
+Follow your destination release's manual guide; when skipping releases, work oldest-first.
 The v1.8.0 guide's YAML examples describe that release, not today's owned format.
 
 | Upgrading to | Guide |
 |---|---|
+| **v1.9.0** (from v1.8.0) | [Migrating to kanibako v1.9.0](#migrating-to-kanibako-v190) |
 | **v1.8.0** (from v1.7.2) | [Migrating to kanibako v1.8.0](#migrating-to-kanibako-v180) |
 | **1.6.0** (from pre-1.6.0) | [Migrating to kanibako 1.6.0](#migrating-to-kanibako-160) |
 
@@ -14,7 +14,7 @@ config notes are in the [CHANGELOG](CHANGELOG.md).
 
 ---
 
-# Unreleased changes
+# Migrating to kanibako v1.9.0
 
 ## Owned documents read Yapyon and write YamlPlus
 
@@ -24,8 +24,8 @@ legacy fallback exists. Native tool configs/workflows/templates stay native;
 third-party stores, including Persona Grata's, are excluded. Do not convert every
 `.yaml` file.
 
-In this build's Python environment, preview selected legacy owned YAML as disposable
-text with `kanibako.settings.config_io.convert_legacy_doc_text(text, *, source=None) -> str`.
+In 1.9.0's Python environment, preview selected legacy owned YAML as disposable
+text: `kanibako.settings.config_io.convert_legacy_doc_text(text, *, source=None) -> str`.
 `source` labels diagnostics, opening no path:
 
 ```bash
@@ -37,8 +37,8 @@ print(convert_legacy_doc_text(text, source="disposable-agent.yaml"), end="")
 PY
 ```
 
-This prints text only: no discovery, file replacement, conversion CLI, key renaming,
-or historical guides' manual steps.
+Text only: no discovery, file replacement, conversion CLI, key renaming,
+or historical manual steps.
 
 Normalization makes tuples lists, dates/timestamps ISO strings (preserving their
 string spelling, including spaces/offsets), and bytes strings such as `"b'abc'"`.
