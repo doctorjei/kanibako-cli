@@ -121,8 +121,12 @@ class TestWorksetCreate:
   @pytest.mark.parametrize(
     "folder, typed",
     [
-      ("typed_root", "__cache__"), ("__", None), ("___", None),
-      ("____", None), ("__x__", None), ("--cache..", None),
+      ("typed_root", "__cache__"),
+      ("__", None),
+      ("___", None),
+      ("____", None),
+      ("__x__", None),
+      ("--cache..", None),
     ],
   )
   def test_create_dunder_refusal_precedes_disk_and_registry_writes(

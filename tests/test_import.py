@@ -447,7 +447,9 @@ class TestNamedWorksetImport:
     assert str(root.resolve()) in err, err
     assert f"'{leaf}' is a reserved workset name" in err, err
 
-  @pytest.mark.parametrize("leaf", ["__", "___", "____", "__x__", "__cache__", "--cache..", "__bad-name__"])
+  @pytest.mark.parametrize(
+    "leaf", ["__", "___", "____", "__x__", "__cache__", "--cache..", "__bad-name__"]
+  )
   def test_dunder_import_leaves_tree_registry_and_journal_untouched(
     self, std, tmp_home, capsys, leaf
   ):

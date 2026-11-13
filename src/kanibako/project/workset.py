@@ -2046,9 +2046,7 @@ def create_workset(
 
     offer = name_spelling(name)
     spelled = (
-      offer[0]
-      if offer is not None and workset_name_flaw(offer[0]) is None
-      else "<new-name>"
+      offer[0] if offer is not None and workset_name_flaw(offer[0]) is None else "<new-name>"
     )
     raise WorksetError(
       ERR_WORKSET_NAME

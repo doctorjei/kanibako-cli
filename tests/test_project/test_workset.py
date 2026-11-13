@@ -146,7 +146,9 @@ class TestCreateWorkset:
       with pytest.raises(WorksetError, match="is reserved"):
         create_workset(spelling, tmp_home / "worksets" / spelling, std)
 
-  @pytest.mark.parametrize("name", ["__", "___", "____", "_____", "__x__", "__cache__", "__MiXeD__"])
+  @pytest.mark.parametrize(
+    "name", ["__", "___", "____", "_____", "__x__", "__cache__", "__MiXeD__"]
+  )
   def test_dunder_rejection_does_not_create_or_register(self, std, tmp_home, name):
     create_workset("keeper", tmp_home / "keeper", std)
     before = std.registry.read_bytes()
