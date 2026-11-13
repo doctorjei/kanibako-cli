@@ -24,6 +24,7 @@ import time
 
 import pytest
 
+from kanibako.settings.config_io import parse_doc_text
 from tests.e2e.conftest import e2e_requires, run_kanibako
 
 pytestmark = [pytest.mark.e2e, *e2e_requires]
@@ -164,8 +165,9 @@ class TestExtendExportImport:
         timeout=120,
       )
       assert meta.returncode == 0, f"rig.yaml missing in image:\n{meta.stderr}"
-      assert "name: e2e-rig" in meta.stdout, f"unexpected rig.yaml:\n{meta.stdout}"
-      assert "kind: extended" in meta.stdout, f"unexpected rig.yaml:\n{meta.stdout}"
+      rig_meta = parse_doc_text(meta.stdout)
+      assert rig_meta["name"] == RIG_NAME, f"unexpected rig.yaml:\n{meta.stdout}"
+      assert rig_meta["kind"] == "extended", f"unexpected rig.yaml:\n{meta.stdout}"
 
       # 3. EXPORT -> a .rig.tgz containing rig.yaml + image.tar.
       res = run_kanibako(
